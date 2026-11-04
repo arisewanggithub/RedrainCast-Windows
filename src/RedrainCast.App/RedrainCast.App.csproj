@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.22621.0</SupportedOSPlatformVersion>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">$(WindowsRuntimeIdentifier)</RuntimeIdentifier>
+    <PlatformTarget>$(WindowsArchitecture)</PlatformTarget>
+    <Platforms>ARM64;x64</Platforms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <EnableMsixTooling>false</EnableMsixTooling>
+    <PublishTrimmed>false</PublishTrimmed>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Product>RedrainCast</Product>
+    <Description>Send and receive screens on your local network.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.5"/>
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654"/>
+    <ProjectReference Include="..\RedrainCast.Core\RedrainCast.Core.csproj"/>
+    <ProjectReference Include="..\ScrcpyReceive.Media\ScrcpyReceive.Media.csproj"/>
+    <ProjectReference Include="..\ScrcpySend.Media\ScrcpySend.Media.csproj"/>
+  </ItemGroup>
+  <Target Name="ValidateArchitecture" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(RuntimeIdentifier)' != 'win-arm64' And '$(RuntimeIdentifier)' != 'win-x64'" Text="Only win-arm64 and win-x64 are supported."/>
+    <Error Condition="('$(Platform)' == 'x64' And '$(RuntimeIdentifier)' != 'win-x64') Or ('$(Platform)' == 'ARM64' And '$(RuntimeIdentifier)' != 'win-arm64')" Text="Platform and RuntimeIdentifier must match."/>
+  </Target>
+  <Target Name="PublishResources" AfterTargets="ComputeFilesToPublish">
+    <Error Condition="!Exists('$(TargetDir)$(AssemblyName).pri')" Text="WinUI resource index is missing."/>
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(TargetDir)$(AssemblyName).pri">
+        <RelativePath>$(AssemblyName).pri</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+</Project>

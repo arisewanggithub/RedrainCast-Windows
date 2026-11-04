@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/arisewanggithub/ScrcpySend",
+  "commit": "226b1c533bb1f2381ba09d7a03ccb0a7eae5517f",
+  "wireVersion": 3,
+  "protocolSha256": "B655318F2EA302C6A8CE7BA8943B1E36628DB9D51C0A33B6BE115ECC658CF53E",
+  "files": ["PROTOCOL.md", "protocol/fixtures/"]
+}

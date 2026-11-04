@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+artifacts/
+native/
+TestResults/
+.vs/
+*.user
+*.pfx
+*.cer

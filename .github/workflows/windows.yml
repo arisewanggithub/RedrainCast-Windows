@@ -1,0 +1,52 @@
+name: Windows build
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet test .\tests\RedrainCast.Tests.slnx -c Release --logger trx
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        if: always()
+        with:
+          name: test-results
+          path: tests/**/TestResults/*.trx
+  package:
+    needs: test
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [arm64, x64]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Prepare pinned media libraries
+        shell: pwsh
+        run: .\tools\PrepareSrt.ps1 -Architecture ${{ matrix.architecture }} -CacheDirectory "$env:LOCALAPPDATA\RedrainCast-build-cache"
+      - name: Publish
+        shell: pwsh
+        run: .\tools\Publish.ps1 -Architecture ${{ matrix.architecture }}
+      - name: Package unsigned MSIX
+        shell: pwsh
+        run: .\tools\Package.ps1 -Architecture ${{ matrix.architecture }} -PublishedDirectory .\artifacts\win-${{ matrix.architecture }} -OutputDirectory .\artifacts\msix-${{ matrix.architecture }}
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: RedrainCast-${{ matrix.architecture }}
+          path: |
+            artifacts/win-${{ matrix.architecture }}/
+            artifacts/msix-${{ matrix.architecture }}/*.msix

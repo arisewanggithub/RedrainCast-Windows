@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="../src/RedrainCast.Core/RedrainCast.Core.csproj" />
+  <Project Path="../src/ScrcpyReceive.Core/ScrcpyReceive.Core.csproj" />
+  <Project Path="../src/ScrcpySend.Core/ScrcpySend.Core.csproj" />
+  <Project Path="RedrainCast.Tests/RedrainCast.Tests.csproj" />
+  <Project Path="ScrcpyReceive.Tests/ScrcpyReceive.Tests.csproj" />
+  <Project Path="ScrcpySend.Tests/ScrcpySend.Tests.csproj" />
+</Solution>

@@ -1,0 +1,64 @@
+param(
+    [ValidateSet('arm64', 'x64')][string]$Architecture = 'arm64',
+    [string]$OutputDirectory,
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.1.0'
+)
+$ErrorActionPreference = 'Stop'
+$root = Split-Path -Parent $PSScriptRoot
+$rid = "win-$Architecture"
+$platform = if ($Architecture -eq 'arm64') { 'ARM64' } else { 'x64' }
+if (-not $OutputDirectory) { $OutputDirectory = Join-Path $root "artifacts\$rid" }
+elseif (-not [IO.Path]::IsPathRooted($OutputDirectory)) { $OutputDirectory = Join-Path $root $OutputDirectory }
+if ((Test-Path -LiteralPath $OutputDirectory) -and @(Get-ChildItem -LiteralPath $OutputDirectory -Force).Count -ne 0) {
+    throw 'Publish requires a new or empty output directory; existing work is preserved.'
+}
+foreach ($file in @('avcodec-61.dll', 'avformat-61.dll', 'avutil-59.dll', 'swresample-5.dll', 'srt.dll',
+    'FFmpeg-LICENSE.txt', 'FFmpeg-copyright.txt', 'FFmpeg-build-dependencies.txt', 'FFmpeg-dependencies.spdx.json',
+    'SRT-LICENSE.txt', 'SRT-1.5.7-source.zip')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $root "native\$rid\$file"))) {
+        throw "Missing pinned media dependency: $file. Run tools\PrepareSrt.ps1 -Architecture $Architecture first."
+    }
+}
+& dotnet publish (Join-Path $root 'src\RedrainCast.App\RedrainCast.App.csproj') -c Release `
+    -r $rid "-p:Platform=$platform" --self-contained true "-p:Version=$Version" `
+    -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o $OutputDirectory
+if ($LASTEXITCODE -ne 0) { throw 'Self-contained RedrainCast publish failed.' }
+foreach ($file in @('RedrainCast.App.exe', 'RedrainCast.App.pri', 'coreclr.dll', 'Microsoft.UI.Xaml.dll')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $OutputDirectory $file))) { throw "Missing runtime/resource: $file" }
+}
+if (@(Get-ChildItem -LiteralPath $OutputDirectory -Recurse -File -Filter '*.pdb').Count -ne 0) {
+    throw 'Debug symbols must not be distributed.'
+}
+$otherArchitecture = if ($Architecture -eq 'arm64') { 'x64' } else { 'arm64' }
+if (Test-Path -LiteralPath (Join-Path $OutputDirectory "native\win-$otherArchitecture")) {
+    throw 'Publication contains native dependencies for the wrong architecture.'
+}
+foreach ($name in @('README.md', 'PRIVACY.md', 'THIRD_PARTY_NOTICES.txt')) {
+    Copy-Item -LiteralPath (Join-Path $root $name) -Destination $OutputDirectory
+}
+Copy-Item -LiteralPath (Join-Path $root 'licenses') -Destination $OutputDirectory -Recurse
+$assets = Get-Content -LiteralPath (Join-Path $root 'src\RedrainCast.App\obj\project.assets.json') -Raw | ConvertFrom-Json
+$packageRoots = @($assets.packageFolders.PSObject.Properties.Name)
+$packagePaths = @($assets.libraries.PSObject.Properties | Where-Object { $_.Value.type -eq 'package' } |
+    ForEach-Object { $_.Value.path.Replace('/', '\') })
+$runtime = Get-Content -LiteralPath (Join-Path $OutputDirectory 'RedrainCast.App.runtimeconfig.json') -Raw | ConvertFrom-Json
+foreach ($framework in $runtime.runtimeOptions.includedFrameworks) {
+    if ($framework.name -eq 'Microsoft.NETCore.App') {
+        $packagePaths += "microsoft.netcore.app.runtime.$rid\$($framework.version)"
+    }
+}
+foreach ($packagePath in ($packagePaths | Sort-Object -Unique)) {
+    $package = $null
+    foreach ($packageRoot in $packageRoots) {
+        $candidate = Join-Path $packageRoot $packagePath
+        if (Test-Path -LiteralPath $candidate) { $package = $candidate; break }
+    }
+    if (-not $package) { throw "Restored dependency not found: $packagePath" }
+    $destination = Join-Path $OutputDirectory "licenses\$packagePath"
+    New-Item -ItemType Directory -Path $destination -Force | Out-Null
+    Get-ChildItem -LiteralPath $package -File |
+        Where-Object { $_.Name -match '(?i)license|notice|copyright|\.nuspec$' } |
+        Copy-Item -Destination $destination
+}
+& (Join-Path $PSScriptRoot 'ValidatePublication.ps1') -Architecture $Architecture -PublishedDirectory $OutputDirectory
+Write-Output "Self-contained RedrainCast build: $OutputDirectory"

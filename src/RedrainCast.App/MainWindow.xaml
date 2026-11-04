@@ -1,0 +1,170 @@
+<Window
+    x:Class="RedrainCast.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid x:Name="WindowRoot" PreviewKeyDown="Root_KeyDown" SizeChanged="WindowRoot_SizeChanged"
+          Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.Resources>
+            <ResourceDictionary>
+                <ResourceDictionary.ThemeDictionaries>
+                    <ResourceDictionary x:Key="Light">
+                        <SolidColorBrush x:Key="ReadyBackground" Color="#E3F5E9"/>
+                        <SolidColorBrush x:Key="ReadyForeground" Color="#146C36"/>
+                    </ResourceDictionary>
+                    <ResourceDictionary x:Key="Default">
+                        <SolidColorBrush x:Key="ReadyBackground" Color="#193C29"/>
+                        <SolidColorBrush x:Key="ReadyForeground" Color="#8CE8AB"/>
+                    </ResourceDictionary>
+                    <ResourceDictionary x:Key="HighContrast">
+                        <SolidColorBrush x:Key="ReadyBackground" Color="{ThemeResource SystemColorWindowColor}"/>
+                        <SolidColorBrush x:Key="ReadyForeground" Color="{ThemeResource SystemColorWindowTextColor}"/>
+                    </ResourceDictionary>
+                </ResourceDictionary.ThemeDictionaries>
+            </ResourceDictionary>
+        </Grid.Resources>
+        <ContentControl x:Name="PlayerInput" IsTabStop="False"
+                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+            <Border Background="Black"><SwapChainPanel x:Name="VideoSurface"/></Border>
+        </ContentControl>
+        <Grid x:Name="HomePage" RowSpacing="16" Padding="24"
+              Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel Spacing="4">
+                    <TextBlock Text="RedrainCast" FontSize="30" FontWeight="SemiBold"/>
+                    <TextBlock Text="Send and receive screens." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </StackPanel>
+                <Button x:Name="SettingsButton" Grid.Column="1" Click="Settings_Click" VerticalAlignment="Center"
+                        AutomationProperties.Name="Settings" ToolTipService.ToolTip="Settings">
+                    <FontIcon Glyph="&#xE713;"/>
+                </Button>
+            </Grid>
+            <StackPanel Grid.Row="1" Spacing="8">
+                <InfoBar x:Name="Problem" IsOpen="False" IsClosable="True" Severity="Error"/>
+                <Border x:Name="SendingBanner" Visibility="Collapsed" Padding="14" CornerRadius="8"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <StackPanel Spacing="4">
+                            <TextBlock x:Name="SendingStatus" FontWeight="SemiBold" TextWrapping="Wrap"
+                                       AutomationProperties.LiveSetting="Polite"/>
+                            <TextBlock x:Name="EncoderStatus" FontSize="12" TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <Button x:Name="StopSharing" Grid.Column="1" Content="Stop sharing" Click="StopSharing_Click"/>
+                    </Grid>
+                </Border>
+            </StackPanel>
+            <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
+                          HorizontalContentAlignment="Stretch">
+                <Grid x:Name="Cards" ColumnSpacing="16" RowSpacing="16">
+                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <Border x:Name="SendCard" Padding="20" CornerRadius="12" VerticalAlignment="Top"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <StackPanel Spacing="18">
+                            <TextBlock Text="Send screen" FontSize="24" FontWeight="SemiBold"/>
+                            <TextBlock Text="Choose a nearby receiver to start sharing." TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <Button x:Name="ChooseSource" Click="ChooseSource_Click" HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Left" ToolTipService.ToolTip="Choose a display or window">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="Share a display or window" FontWeight="SemiBold"/>
+                                    <TextBlock x:Name="SourceLabel" Text="Choose what to share" TextWrapping="Wrap" FontSize="12"/>
+                                </StackPanel>
+                            </Button>
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="Nearby receivers" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="Auto-updating" FontSize="12" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </Grid>
+                            <ItemsControl x:Name="ReceiverList" HorizontalContentAlignment="Stretch">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Padding="12" Margin="0,0,0,10" CornerRadius="8" BorderThickness="1"
+                                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                <StackPanel Spacing="4">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding DisplayAddress}" FontFamily="Consolas" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding Status}" FontSize="12"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="1" Content="Send" Tag="{Binding Endpoint}" Click="Send_Click"
+                                                        IsEnabled="{Binding CanSend}" VerticalAlignment="Center"
+                                                        Style="{StaticResource AccentButtonStyle}"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock x:Name="DiscoveryStatus" Text="Looking for receivers..." TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <Button x:Name="ManualConnect" Content="Connect by IP : Port" Click="ManualConnect_Click"/>
+                        </StackPanel>
+                    </Border>
+                    <Border x:Name="ReceiveCard" Grid.Column="1" Padding="20" CornerRadius="12" VerticalAlignment="Top"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <StackPanel Spacing="18">
+                            <TextBlock Text="Receive screen" FontSize="24" FontWeight="SemiBold"/>
+                            <Border x:Name="ReadinessBanner" CornerRadius="8" Background="{ThemeResource ControlFillColorSecondaryBrush}">
+                                <Grid>
+                                <Border x:Name="ReadyTint" CornerRadius="8" Background="{ThemeResource ReadyBackground}" Visibility="Collapsed"/>
+                                <StackPanel Spacing="6" Padding="18">
+                                    <TextBlock x:Name="ReadinessTitle" Text="STARTING" FontSize="30" FontWeight="Bold"
+                                               AutomationProperties.LiveSetting="Polite"/>
+                                    <TextBlock x:Name="ReadinessDetail" Text="Opening the listener..." TextWrapping="Wrap"/>
+                                </StackPanel>
+                                </Grid>
+                            </Border>
+                            <TextBlock x:Name="DeviceName" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <TextBlock Text="Connect to this PC" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="AddressHint" Text="Use an address reachable from the sender's network." TextWrapping="Wrap"/>
+                            <ItemsControl x:Name="AddressList" HorizontalContentAlignment="Stretch">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Padding="12" Margin="0,0,0,8" CornerRadius="8" BorderThickness="1"
+                                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                <StackPanel Spacing="4">
+                                                    <TextBlock Text="{Binding Adapter}" FontSize="12" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding DisplayAddress}" FontFamily="Consolas" FontSize="18"
+                                                               IsTextSelectionEnabled="True" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="1" Tag="{Binding CanonicalAddress}" Click="CopyAddress_Click"
+                                                        VerticalAlignment="Center" AutomationProperties.Name="Copy address"
+                                                        ToolTipService.ToolTip="Copy IP:Port without spaces">
+                                                    <FontIcon Glyph="&#xE8C8;" FontSize="16"/>
+                                                </Button>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock x:Name="AddressFeedback" TextWrapping="Wrap" FontSize="12"
+                                       AutomationProperties.LiveSetting="Polite"/>
+                            <TextBlock Text="Incoming casts open automatically and fill this window." TextWrapping="Wrap"/>
+                            <TextBlock Text="Receiving pauses while you send your screen. Use only on trusted networks."
+                                       FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </ScrollViewer>
+            <Grid Grid.Row="3">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock x:Name="VersionText" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                <HyperlinkButton Grid.Column="1" Content="Connection help" Click="Help_Click"/>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>
