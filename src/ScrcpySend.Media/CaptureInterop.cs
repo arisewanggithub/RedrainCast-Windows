@@ -29,24 +29,24 @@ internal static partial class CaptureInterop
     [LibraryImport("user32.dll")]
     private static partial nint MonitorFromPoint(Point point, uint flags);
 
-    public static Windows.Graphics.Capture.GraphicsCaptureItem DefaultDisplay()
+    public static CaptureSource DefaultDisplay()
     {
         if (!Windows.Graphics.Capture.GraphicsCaptureSession.IsSupported())
             throw new NotSupportedException("Windows display capture is unavailable. Choose another capture source.");
         var monitor = MonitorFromPoint(new Point { X = 0, Y = 0 }, 1);
         if (monitor == 0) throw new IOException("The primary display is unavailable. Choose a capture source.");
-        return CreateItem(monitor, 4);
+        return new(CreateItem(monitor, 4), monitor, false);
     }
 
-    public static Windows.Graphics.Capture.GraphicsCaptureItem OwnWindowForDiagnostics(nint window)
+    public static CaptureSource OwnWindowForDiagnostics(nint window)
     {
         GetWindowThreadProcessId(window, out var process);
         if (process != Environment.ProcessId)
             throw new ArgumentException("Capture diagnostics may only capture a window owned by this process.");
-        return CreateItem(window, 3);
+        return new(CreateItem(window, 3), window, true);
     }
 
-    private static unsafe Windows.Graphics.Capture.GraphicsCaptureItem CreateItem(nint target, int method)
+    internal static unsafe Windows.Graphics.Capture.GraphicsCaptureItem CreateItem(nint target, int method)
     {
         const string className = "Windows.Graphics.Capture.GraphicsCaptureItem";
         Marshal.ThrowExceptionForHR(WindowsCreateString(className, (uint)className.Length, out var text));

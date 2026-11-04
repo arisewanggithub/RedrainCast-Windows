@@ -13,10 +13,17 @@ public partial class App : Application
         var arguments = Environment.GetCommandLineArgs();
         var testIndex = Array.IndexOf(arguments, "--self-test");
         var mediaIndex = Array.IndexOf(arguments, "--media-self-test");
-        window = new MainWindow(testIndex >= 0 || mediaIndex >= 0);
+        var colorIndex = Array.IndexOf(arguments, "--color-self-test");
+        window = new MainWindow(testIndex >= 0 || mediaIndex >= 0 || colorIndex >= 0);
         window.Activate();
         await window.InitializeAsync();
-        if (mediaIndex >= 0)
+        if (colorIndex >= 0)
+        {
+            if (colorIndex + 1 >= arguments.Length) throw new ArgumentException("--color-self-test requires a report path.");
+            await window.RunColorSelfTestAsync(arguments[colorIndex + 1]);
+            window.Close();
+        }
+        else if (mediaIndex >= 0)
         {
             if (mediaIndex + 2 >= arguments.Length) throw new ArgumentException("--media-self-test requires a synthetic fixture and a report path.");
             await window.RunMediaSelfTestAsync(arguments[mediaIndex + 1], arguments[mediaIndex + 2]);

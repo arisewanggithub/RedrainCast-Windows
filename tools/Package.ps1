@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)][ValidateSet('arm64', 'x64')][string]$Architecture,
     [Parameter(Mandatory = $true)][string]$PublishedDirectory,
     [Parameter(Mandatory = $true)][string]$OutputDirectory,
-    [ValidatePattern('^\d+\.\d+\.\d+\.0$')][string]$Version = '0.1.2.0'
+    [ValidatePattern('^\d+\.\d+\.\d+\.0$')][string]$Version = '0.1.3.0'
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot

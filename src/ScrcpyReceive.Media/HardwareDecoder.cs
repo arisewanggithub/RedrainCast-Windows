@@ -250,6 +250,10 @@ public sealed unsafe class HardwareFrame : IDisposable
     public int Width => frame->width;
     public int Height => frame->height;
     public long PtsUs => frame->pts;
+    public int PrimariesCode => (int)frame->color_primaries;
+    public int TransferCode => (int)frame->color_trc;
+    public int MatrixCode => (int)frame->colorspace;
+    public int RangeCode => (int)frame->color_range;
     public uint ColorMatrix => frame->colorspace switch
     {
         AVColorSpace.AVCOL_SPC_BT709 => 1,

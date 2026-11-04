@@ -124,6 +124,11 @@ public sealed class HardwareEncoder : IDisposable
         if ((uint)(size >> 32) != width || (uint)size != height || (uint)rate == 0 ||
             (ulong)(uint)(rate >> 32) != (ulong)fps * (uint)rate)
             throw new NotSupportedException($"Hardware encoder did not accept {width}x{height} at {fps} FPS. No format/FPS substitution is allowed.");
+        if (type.GetUInt32(MediaTypeAttributeKeys.VideoPrimaries) != (uint)VideoPrimaries.Bt709 ||
+            type.GetUInt32(MediaTypeAttributeKeys.TransferFunction) != (uint)VideoTransferFunction.Func709 ||
+            type.GetUInt32(MediaTypeAttributeKeys.YuvMatrix) != (uint)VideoTransferMatrix.Bt709 ||
+            type.GetUInt32(MediaTypeAttributeKeys.VideoNominalRange) != (uint)NominalRange.Range16_235)
+            throw new NotSupportedException("Hardware encoder did not retain the required BT.709 limited-range SDR color metadata.");
     }
 
     private static IMFMediaType MediaType(Guid subtype, int width, int height, int fps)
@@ -137,6 +142,10 @@ public sealed class HardwareEncoder : IDisposable
             type.Set(MediaTypeAttributeKeys.FrameRate, ((ulong)(uint)fps << 32) | 1).CheckError();
             type.Set(MediaTypeAttributeKeys.PixelAspectRatio, (1UL << 32) | 1).CheckError();
             type.Set(MediaTypeAttributeKeys.InterlaceMode, 2u).CheckError();
+            type.Set(MediaTypeAttributeKeys.VideoPrimaries, (uint)VideoPrimaries.Bt709).CheckError();
+            type.Set(MediaTypeAttributeKeys.TransferFunction, (uint)VideoTransferFunction.Func709).CheckError();
+            type.Set(MediaTypeAttributeKeys.YuvMatrix, (uint)VideoTransferMatrix.Bt709).CheckError();
+            type.Set(MediaTypeAttributeKeys.VideoNominalRange, (uint)NominalRange.Range16_235).CheckError();
             return type;
         }
         catch { type.Dispose(); throw; }

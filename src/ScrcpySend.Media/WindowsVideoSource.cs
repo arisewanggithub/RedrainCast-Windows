@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using ScrcpySend.Core;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
+using Vortice.DXGI;
 using Windows.Graphics;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
@@ -13,8 +14,10 @@ namespace ScrcpySend.Media;
 
 public sealed class WindowsVideoSource : IVideoSource
 {
-    public static GraphicsCaptureItem SelectDefaultDisplay() => CaptureInterop.DefaultDisplay();
+    public static CaptureSource SelectDefaultDisplay() => CaptureInterop.DefaultDisplay();
 
+    private readonly CaptureSource source;
+    private readonly Action<string>? diagnostic;
     private readonly GraphicsCaptureItem item;
     private readonly CaptureSettings settings;
     private readonly ID3D11Device device;
@@ -32,11 +35,15 @@ public sealed class WindowsVideoSource : IVideoSource
     public int Height => encoder.Height;
     public string Statistics => $"Captured {Volatile.Read(ref capturedFrames)}, submitted {Volatile.Read(ref submittedFrames)}, encoded {Volatile.Read(ref encodedFrames)}; output {Width}x{Height}.";
 
-    public WindowsVideoSource(GraphicsCaptureItem item, CaptureSettings settings)
+    public WindowsVideoSource(CaptureSource source, CaptureSettings settings, Action<string>? diagnostic = null)
     {
         settings.Validate();
         if (!GraphicsCaptureSession.IsSupported()) throw new NotSupportedException("Windows graphics capture is unavailable.");
-        this.item = item;
+        this.source = source;
+        this.diagnostic = diagnostic;
+        item = source.Item;
+        // Validate HDR metadata before negotiating a session with the receiver.
+        _ = source.ReadColor();
         this.settings = settings;
         var (width, height) = settings.OutputSize(item.Size.Width, item.Size.Height);
         device = CreateHardwareDevice();
@@ -104,8 +111,11 @@ public sealed class WindowsVideoSource : IVideoSource
         {
             token.ThrowIfCancellationRequested();
             var size = item.Size;
+            var color = source.ReadColor();
+            diagnostic?.Invoke($"Capture color: {(color.Hdr ? "HDR scRGB -> SDR BT.709" : "SDR direct")}; white={color.SdrWhiteNits:F1} nits, peak={color.PeakNits:F1} nits.");
+            var pixelFormat = color.Hdr ? DirectXPixelFormat.R16G16B16A16Float : DirectXPixelFormat.B8G8R8A8UIntNormalized;
             using var pool = Direct3D11CaptureFramePool.CreateFreeThreaded(captureDevice,
-                DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, size);
+                pixelFormat, 2, size);
             var progress = new CaptureProgress();
             // Notifications coalesce; raw capture frames are paced before encoding.
             void FrameArrived(Direct3D11CaptureFramePool sender, object args) => progress.Arrived();
@@ -117,18 +127,35 @@ public sealed class WindowsVideoSource : IVideoSource
             item.Closed += Closed;
             try
             {
-                processor = new GpuProcessor(device, size.Width, size.Height, Width, Height, settings.MaxFps);
+                processor = new GpuProcessor(device, size.Width, size.Height, Width, Height, settings.MaxFps, color.Hdr);
                 token.ThrowIfCancellationRequested();
                 encoder.Start();
                 session.StartCapture();
                 var pacer = new DeferredFramePacer(settings.MaxFps);
                 using var wait = new CaptureWait(token);
                 var clock = System.Diagnostics.Stopwatch.StartNew();
+                var nextColorCheck = TimeSpan.FromMilliseconds(500);
                 SizeInt32? pendingSize = null;
                 while (true)
                 {
                     token.ThrowIfCancellationRequested();
                     progress.Check(clock.Elapsed);
+                    if (clock.Elapsed >= nextColorCheck)
+                    {
+                        nextColorCheck = clock.Elapsed + TimeSpan.FromMilliseconds(500);
+                        var nextColor = source.ReadColor();
+                        if (nextColor != color)
+                        {
+                            var formatChanged = nextColor.Hdr != color.Hdr;
+                            color = nextColor;
+                            if (formatChanged)
+                            {
+                                pixelFormat = color.Hdr ? DirectXPixelFormat.R16G16B16A16Float : DirectXPixelFormat.B8G8R8A8UIntNormalized;
+                                pendingSize ??= size;
+                            }
+                            diagnostic?.Invoke($"Capture color changed: HDR={color.Hdr}; white={color.SdrWhiteNits:F1} nits, peak={color.PeakNits:F1} nits. Format changed={formatChanged}.");
+                        }
+                    }
                     if (pendingSize is { } resized)
                     {
                         latest?.Dispose();
@@ -136,8 +163,8 @@ public sealed class WindowsVideoSource : IVideoSource
                         pacer.DiscardPending();
                         processor.Dispose();
                         processor = null;
-                        pool.Recreate(captureDevice, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, resized);
-                        processor = new GpuProcessor(device, resized.Width, resized.Height, Width, Height, settings.MaxFps);
+                        pool.Recreate(captureDevice, pixelFormat, 2, resized);
+                        processor = new GpuProcessor(device, resized.Width, resized.Height, Width, Height, settings.MaxFps, color.Hdr);
                         size = resized;
                         pendingSize = null;
                     }
@@ -162,7 +189,7 @@ public sealed class WindowsVideoSource : IVideoSource
                                 TimeSpan.TicksPerSecond / System.Diagnostics.Stopwatch.Frequency);
                             if (pacer.TryTake(now, out var sourceTimestamp))
                             {
-                                using var nv12 = processor.Convert(latest!, size.Width, size.Height);
+                                using var nv12 = processor.Convert(latest!, size.Width, size.Height, color);
                                 encoder.Submit(nv12, sourceTimestamp);
                                 progress.Submitted(clock.Elapsed);
                                 Interlocked.Increment(ref submittedFrames);
@@ -182,15 +209,21 @@ public sealed class WindowsVideoSource : IVideoSource
                         continue;
                     }
                     var timestamp = frame.SystemRelativeTime.Ticks;
-                    using var source = CaptureInterop.Texture(frame.Surface);
-                    latest ??= device.CreateTexture2D(source.Description);
-                    device.ImmediateContext.CopyResource(latest, source);
+                    using var captured = CaptureInterop.Texture(frame.Surface);
+                    if (latest is null)
+                    {
+                        var description = captured.Description;
+                        if (color.Hdr) description = new Texture2DDescription(Format.R16G16B16A16_Float,
+                            description.Width, description.Height, 1, 1, BindFlags.ShaderResource);
+                        latest = device.CreateTexture2D(description);
+                    }
+                    device.ImmediateContext.CopyResource(latest, captured);
                     pacer.Offer(timestamp);
                     var currentTime = (long)((Int128)System.Diagnostics.Stopwatch.GetTimestamp() *
                         TimeSpan.TicksPerSecond / System.Diagnostics.Stopwatch.Frequency);
                     if (pacer.TryTake(currentTime, out var pendingTimestamp))
                     {
-                        using var nv12 = processor.Convert(latest, size.Width, size.Height);
+                        using var nv12 = processor.Convert(latest, size.Width, size.Height, color);
                         encoder.Submit(nv12, pendingTimestamp);
                         progress.Submitted(clock.Elapsed);
                         Interlocked.Increment(ref submittedFrames);

@@ -1,6 +1,7 @@
 using Vortice;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
+using ScrcpySend.Core;
 
 namespace ScrcpySend.Media;
 
@@ -14,8 +15,9 @@ internal sealed class GpuProcessor : IDisposable
     private readonly ID3D11VideoProcessor processor;
     private readonly int width;
     private readonly int height;
+    private readonly HdrToneMapper? toneMapper;
 
-    public GpuProcessor(ID3D11Device device, int inputWidth, int inputHeight, int outputWidth, int outputHeight, int fps)
+    public GpuProcessor(ID3D11Device device, int inputWidth, int inputHeight, int outputWidth, int outputHeight, int fps, bool hdr = false)
     {
         this.device = device;
         width = outputWidth;
@@ -49,9 +51,11 @@ internal sealed class GpuProcessor : IDisposable
                 Rgba = new() { R = 0, G = 0, B = 0, A = 1 }
             });
             videoContext.VideoProcessorSetOutputTargetRect(processor, true, new RawRect(0, 0, width, height));
+            if (hdr) toneMapper = new(device, inputWidth, inputHeight);
         }
         catch
         {
+            toneMapper?.Dispose();
             processor?.Dispose();
             enumerator?.Dispose();
             videoContext?.Dispose();
@@ -61,8 +65,12 @@ internal sealed class GpuProcessor : IDisposable
         }
     }
 
-    public ID3D11Texture2D Convert(ID3D11Texture2D source, int sourceWidth, int sourceHeight)
+    public ID3D11Texture2D Convert(ID3D11Texture2D source, int sourceWidth, int sourceHeight, CaptureColor? color = null)
     {
+        if (toneMapper is not null)
+            source = toneMapper.Convert(source, color ?? throw new ArgumentException("HDR conversion requires display color metadata."));
+        else if (source.Description.Format != Format.B8G8R8A8_UNorm)
+            throw new ArgumentException("SDR conversion requires BGRA8 capture.");
         var output = device.CreateTexture2D(new Texture2DDescription(Format.NV12, (uint)width, (uint)height,
             1, 1, BindFlags.RenderTarget));
         try
@@ -94,6 +102,7 @@ internal sealed class GpuProcessor : IDisposable
 
     public void Dispose()
     {
+        toneMapper?.Dispose();
         processor.Dispose();
         enumerator.Dispose();
         videoContext.Dispose();

@@ -36,7 +36,7 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? sendStop;
     private OutgoingCast? outgoing;
     private IReadOnlyList<ReceiverEndpoint> discovered = [];
-    private GraphicsCaptureItem? source;
+    private CaptureSource? source;
     private CaptureSettings settings = new();
     private ContentDialog? currentDialog;
     private int receiverGeneration;
@@ -293,10 +293,10 @@ public sealed partial class MainWindow : Window
         new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast ? TitleBarTheme.UseDefaultAppMode :
         WindowRoot.ActualTheme == ElementTheme.Dark ? TitleBarTheme.Dark : TitleBarTheme.Light;
 
-    private void SetSource(GraphicsCaptureItem selected)
+    private void SetSource(CaptureSource selected)
     {
         source = selected;
-        SourceLabel.Text = $"{selected.DisplayName} ({selected.Size.Width} x {selected.Size.Height})";
+        SourceLabel.Text = $"{selected.Item.DisplayName} ({selected.Item.Size.Width} x {selected.Item.Size.Height})";
         RenderDevices();
         ManualConnect.IsEnabled = CanSend;
     }
@@ -309,10 +309,23 @@ public sealed partial class MainWindow : Window
         Render();
         try
         {
-            var picker = new GraphicsCapturePicker();
-            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
-            var selected = await picker.PickSingleItemAsync();
-            if (selected is not null && !closing) SetSource(selected);
+            var targets = CaptureSource.Enumerate();
+            var choices = new ComboBox
+            {
+                Header = "Display or window", ItemsSource = targets, SelectedIndex = targets.Count > 0 ? 0 : -1,
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            };
+            var currentSource = source;
+            choices.SelectedItem = targets.FirstOrDefault(target => currentSource is not null &&
+                target.Handle == currentSource.Handle && target.IsWindow == currentSource.IsWindow)
+                ?? targets.FirstOrDefault();
+            var dialog = new ContentDialog
+            {
+                Title = "Choose what to share", Content = choices, PrimaryButtonText = "Choose", CloseButtonText = "Cancel",
+                IsPrimaryButtonEnabled = targets.Count > 0
+            };
+            if (await ShowDialogAsync(dialog) == ContentDialogResult.Primary && choices.SelectedItem is CaptureTarget target && !closing)
+                SetSource(target.Open());
         }
         catch (Exception error) { Report(error); }
         finally
@@ -371,7 +384,7 @@ public sealed partial class MainWindow : Window
             var selectedSettings = settings;
             await Task.Run(async () =>
             {
-                await using var outgoingVideo = new WindowsVideoSource(selected, selectedSettings);
+                await using var outgoingVideo = new WindowsVideoSource(selected, selectedSettings, Diagnostic);
                 await using var audio = selectedSettings.EnableAudio ? new WindowsAudioSource() : null;
                 DispatcherQueue.TryEnqueue(() =>
                 {
@@ -673,6 +686,12 @@ public sealed partial class MainWindow : Window
             currentDialog.Hide();
             await Task.Delay(50);
             checks.Add("The actual Settings dialog offers codec/orientation options without a transport selector.");
+            var captureTargets = CaptureSource.Enumerate();
+            if (!captureTargets.Any(target => !target.IsWindow) ||
+                !captureTargets.Any(target => target.IsWindow && target.Handle == WinRT.Interop.WindowNative.GetWindowHandle(this)))
+                throw new InvalidOperationException("The target-aware source selector did not enumerate displays and this window.");
+            (source ?? throw new InvalidOperationException("Capture source was not selected.")).ReadColor().Validate();
+            checks.Add("Target-aware capture enumerates displays/windows and reads valid per-display color metadata.");
             await RunInlineSendingSelfTestAsync(checks);
         }
         catch (Exception error) { failure = error.ToString(); }

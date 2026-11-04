@@ -10,7 +10,15 @@ namespace ScrcpySend.Media;
 
 public static class MediaDiagnostics
 {
-    public static Windows.Graphics.Capture.GraphicsCaptureItem OwnWindow(nint window) =>
+    public static async Task<EncodedVideo> EncodeColorProbeAsync(string codec, CancellationToken token)
+    {
+        await using var video = new GeneratedVideo(new(MaxSize: 640, MaxFps: 30, VideoCodec: codec));
+        await using var frames = video.ReadFramesAsync(token).GetAsyncEnumerator(token);
+        if (!await frames.MoveNextAsync()) throw new IOException("Hardware color probe produced no encoded video.");
+        return frames.Current;
+    }
+
+    public static CaptureSource OwnWindow(nint window) =>
         CaptureInterop.OwnWindowForDiagnostics(window);
 
     public static async Task<int> LoopbackAsync(IVideoSource source, CaptureSettings settings,

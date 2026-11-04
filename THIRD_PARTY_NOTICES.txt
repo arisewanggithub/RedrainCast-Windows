@@ -11,7 +11,9 @@ https://github.com/arisewanggithub/ScrcpySend-Windows
 Revision 76032580c678b51dc04f9b252ccd4c6c6e7cc029.
 That revision had no standalone source license; no additional grant is inferred.
 
-Sender dependencies also include Vortice.MediaFoundation 3.8.3 (MIT).
+Sender dependencies also include Vortice.MediaFoundation and
+Vortice.D3DCompiler 3.8.3 (MIT). The shader compiler dynamically uses the Windows
+system D3DCompiler component; no separate compiler binary is redistributed.
 The sender uses Windows hardware encoding and raw PCM over custom TCP.
 The receiver alone uses FFmpeg avcodec, avutil and swresample libraries
 for hardware decoding and audio conversion.

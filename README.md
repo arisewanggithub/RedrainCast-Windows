@@ -48,6 +48,24 @@ dependent. Enabled outgoing audio suppresses local playback and restores owned
 mute changes on normal Stop/close/handled failures. A crash or force kill cannot
 guarantee mute restoration.
 
+### HDR displays
+
+Windows HDR can stay enabled. HDR sources use floating-point scRGB capture,
+then a GPU shader normalizes the source display's Windows SDR white level,
+compresses highlights with a smooth shoulder and fits wide-gamut colors into
+SDR before NV12 conversion. All codecs explicitly signal BT.709 primaries,
+transfer, matrix and limited range. This sends SDR video, not HDR passthrough.
+SDR sources retain the existing BGRA8 conversion path.
+
+The display/window selector is target-aware instead of using the opaque system
+picker: it retains the selected monitor/window identity so HDR settings are read
+from the correct display, including a captured window moved between monitors.
+The capture pipeline checks color settings every 500 ms and recreates its frame
+pool/converter when needed. It never toggles the user's HDR setting. Missing or
+invalid HDR metadata fails explicitly, rather than silently reverting to clipped
+8-bit capture. Protected/minimized windows remain subject to Windows capture
+restrictions.
+
 Custom TCP is the only media transport. Outgoing audio uses raw stereo PCM;
 receiving AAC/Opus audio remains supported. There is no transport selector,
 alternate transport backend or MP4 muxer. Old settings selecting an unsupported
@@ -72,9 +90,9 @@ in a user-local cache. No native compiler or network-transport library is needed
 It does not install drivers or change system PATH.
 
 ```powershell
-.\tools\Publish.ps1 -Architecture arm64 -Version 0.1.2
+.\tools\Publish.ps1 -Architecture arm64 -Version 0.1.3
 .\tools\Package.ps1 -Architecture arm64 -PublishedDirectory .\artifacts\win-arm64 `
-  -OutputDirectory .\artifacts\msix-arm64 -Version 0.1.2.0
+  -OutputDirectory .\artifacts\msix-arm64 -Version 0.1.3.0
 ```
 
 Publication/package output directories must be new or empty. Packaging checks
@@ -91,6 +109,7 @@ No captured content is recorded or sent to another device:
 
 ```powershell
 RedrainCast.App.exe --self-test C:\temp\redrain-ui.json
+RedrainCast.App.exe --color-self-test C:\temp\redrain-color.json
 RedrainCast.App.exe --media-self-test `
   E:\gitpersonal\RedrainCast\tests\ScrcpyReceive.Tests\fixtures\synthetic-h264.json `
   C:\temp\redrain-media.json
@@ -99,6 +118,11 @@ RedrainCast.App.exe --media-self-test `
 Media self-tests transmit labeled synthetic content over real TCP through the
 sender protocol, receiver admission, hardware decoder and WinUI video surface.
 They are not a substitute for testing two physical devices and real audio.
+The color self-test uses synthetic HDR/SDR patches and diagnostic-only GPU
+readback to check RGB within 2 code values, NV12 luma/chroma within 3 code values and
+distinct HDR highlights above SDR white. It also checks each available hardware
+encoder and verifies the encoded color metadata through hardware decoding.
+No CPU readback or software video processing is used in the production path.
 
 ## Source provenance
 
