@@ -19,13 +19,6 @@ namespace RedrainCast.App;
 
 public sealed partial class MainWindow : Window
 {
-    private sealed record DeviceRow(ReceiverEndpoint Endpoint, bool CanSend)
-    {
-        public string Name => Endpoint.Name;
-        public string DisplayAddress => EndpointText.Format(Endpoint.Address, Endpoint.Port);
-        public string Status => Endpoint.Busy ? "Busy" : "Available";
-    }
-
     private sealed record AddressRow(string Adapter, string DisplayAddress, string CanonicalAddress);
 
     private readonly SessionRoles roles = new();
@@ -41,6 +34,7 @@ public sealed partial class MainWindow : Window
     private Task discovery = Task.CompletedTask;
     private Task? sending;
     private CancellationTokenSource? sendStop;
+    private OutgoingCast? outgoing;
     private IReadOnlyList<ReceiverEndpoint> discovered = [];
     private GraphicsCaptureItem? source;
     private CaptureSettings settings = new();
@@ -233,14 +227,18 @@ public sealed partial class MainWindow : Window
 
     private void RenderDevices()
     {
-        var rows = discovered.Where(endpoint => !IsSelf(endpoint))
-            .Select(endpoint => new DeviceRow(endpoint, CanSend && !endpoint.Busy)).ToArray();
-        if (ReceiverList.ItemsSource is not DeviceRow[] previous || !previous.SequenceEqual(rows))
+        var nearby = discovered.Where(endpoint => !IsSelf(endpoint)).ToArray();
+        var rows = ReceiverRows.Create(nearby, outgoing, CanSend);
+        if (ReceiverList.ItemsSource is not ReceiverRow[] previous || !previous.SequenceEqual(rows))
             ReceiverList.ItemsSource = rows;
-        DiscoveryStatus.Text = discoveryFailed ? "Discovery unavailable. Connect by IP : Port." :
-            rows.Length == 0 ? "No nearby receivers yet. Both devices need a reachable local network." :
-            $"{rows.Length} receiver(s) discovered. Updated automatically.";
+        DiscoveryStatus.Text = discoveryFailed
+            ? outgoing is null ? "Discovery unavailable. Connect by IP : Port." : "Discovery unavailable. The active destination is retained above."
+            : nearby.Length == 0
+                ? outgoing is null ? "No nearby receivers yet. Both devices need a reachable local network." : "No nearby receivers advertised. The active destination is shown above."
+                : $"{nearby.Length} receiver(s) discovered. Updated automatically.";
     }
+
+    public static Visibility OptionalTextVisibility(string text) => string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
 
     private void Render()
     {
@@ -265,8 +263,6 @@ public sealed partial class MainWindow : Window
             return new AddressRow(receiverState.AdapterLabels.TryGetValue(endpoint, out var label) ? label : "Local network",
                 EndpointText.Format(parsed.Address, parsed.Port), EndpointText.Format(parsed.Address, parsed.Port, false));
         }).ToArray() : Array.Empty<AddressRow>();
-        SendingBanner.Visibility = paused ? Visibility.Visible : Visibility.Collapsed;
-        StopSharing.IsEnabled = paused && sendStop is { IsCancellationRequested: false };
         SettingsButton.IsEnabled = ChooseSource.IsEnabled = !closing && !picking && role == CastRole.Idle;
         ManualConnect.IsEnabled = CanSend;
         RenderDevices();
@@ -327,11 +323,16 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void Send_Click(object sender, RoutedEventArgs args)
+    private async void DeviceAction_Click(object sender, RoutedEventArgs args)
     {
         try
         {
-            if (sender is Button { Tag: ReceiverEndpoint endpoint }) await StartSendingAsync(endpoint);
+            if (sender is not Button { Tag: ReceiverRow row } || !row.CanAct) return;
+            if (row.IsActive)
+            {
+                if (outgoing?.Target.Key == row.Endpoint.Key) StopSending();
+            }
+            else await StartSendingAsync(row.Endpoint);
         }
         catch (Exception error) { Report(error); }
     }
@@ -359,10 +360,10 @@ public sealed partial class MainWindow : Window
         }
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         sendStop = stop;
-        SendingStatus.Text = $"Connecting to {endpoint.Name}";
-        EncoderStatus.Text = EndpointText.Format(endpoint.Address, endpoint.Port);
+        outgoing = new(endpoint);
         Problem.IsOpen = false;
         Render();
+        ReceiverList.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false, VerticalAlignmentRatio = 0 });
         try
         {
             await StopReceiverAsync();
@@ -372,13 +373,30 @@ public sealed partial class MainWindow : Window
             {
                 await using var outgoingVideo = new WindowsVideoSource(selected, selectedSettings);
                 await using var audio = selectedSettings.EnableAudio ? new WindowsAudioSource() : null;
-                DispatcherQueue.TryEnqueue(() => EncoderStatus.Text =
-                    $"{outgoingVideo.EncoderName} - {outgoingVideo.Width} x {outgoingVideo.Height}");
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (!ReferenceEquals(sendStop, stop) || outgoing is null) return;
+                    var codec = selectedSettings.VideoCodec switch
+                    {
+                        "h264" => "H.264", "h265" => "HEVC", "av1" => "AV1",
+                        _ => throw new NotSupportedException("Unsupported video codec.")
+                    };
+                    outgoing = outgoing with
+                    {
+                        Parameters = $"{codec} - {outgoingVideo.Width} x {outgoingVideo.Height}",
+                        Encoder = outgoingVideo.EncoderName
+                    };
+                    RenderDevices();
+                });
                 stop.Token.ThrowIfCancellationRequested();
                 await new SenderSession().RunAsync(endpoint, selectedSettings, outgoingVideo,
                     text => DispatcherQueue.TryEnqueue(() =>
                     {
-                        if (!closing && ReferenceEquals(sendStop, stop)) SendingStatus.Text = text;
+                        if (!closing && ReferenceEquals(sendStop, stop) && outgoing is not null)
+                        {
+                            outgoing = outgoing.ApplyStatus(text);
+                            RenderDevices();
+                        }
                     }), stop.Token, audio);
             });
         }
@@ -387,16 +405,18 @@ public sealed partial class MainWindow : Window
         finally
         {
             sendStop = null;
+            outgoing = null;
             lease.Dispose();
             if (!closing) await StartReceiverAsync();
         }
     }
 
-    private void StopSharing_Click(object sender, RoutedEventArgs args)
+    private void StopSending()
     {
-        SendingStatus.Text = "Stopping sharing...";
+        if (outgoing is null) return;
+        outgoing = outgoing.ApplyStatus("Stopping");
+        RenderDevices();
         sendStop?.Cancel();
-        StopSharing.IsEnabled = false;
     }
 
     private async Task<ContentDialogResult> ShowDialogAsync(ContentDialog dialog)
@@ -521,7 +541,7 @@ public sealed partial class MainWindow : Window
                     Text = "Open RedrainCast on both PCs. Choose a nearby receiver and Send, or enter its IP : Port manually.\n\n" +
                         "Incoming casts are accepted automatically. While receiving, this window shows only video. " +
                         "Enter or F toggles fullscreen; Esc leaves fullscreen. End the cast from the sender to return home.\n\n" +
-                        "While sending, receiving is paused. Stop sharing to automatically resume receiving.\n\n" +
+                        "While sending, receiving is paused. Use Stop in the active receiver's row to automatically resume receiving.\n\n" +
                         "Allow RedrainCast through Windows Firewall on trusted Private networks. TCP 27184 carries casts; UDP 27183 discovers receivers. " +
                         "Traffic is not authenticated or encrypted. Do not expose these ports to the internet.",
                     TextWrapping = TextWrapping.Wrap
@@ -561,7 +581,7 @@ public sealed partial class MainWindow : Window
         closing = true;
         currentDialog?.Hide();
         lifetime.Cancel();
-        sendStop?.Cancel();
+        StopSending();
         try
         {
             if (startup is not null) await startup;
@@ -609,7 +629,7 @@ public sealed partial class MainWindow : Window
             checks.Add("Outgoing role closes the listener; release restarts a responsive listener.");
             discovered = [new(IPAddress.Loopback, receiver.Port, "Self", false), new(IPAddress.Parse("192.0.2.1"), 27184, "Other", false)];
             RenderDevices();
-            if (ReceiverList.ItemsSource is not DeviceRow[] devices || devices.Length != 1 || devices[0].Name != "Other")
+            if (ReceiverList.ItemsSource is not ReceiverRow[] devices || devices.Length != 1 || devices[0].Name != "Other")
                 throw new InvalidOperationException("Discovery listed this app as its own target.");
             checks.Add("Nearby list excludes this app's own listener.");
             AppWindow.Resize(new Windows.Graphics.SizeInt32(760, 740));
@@ -623,6 +643,7 @@ public sealed partial class MainWindow : Window
             var beforeFailure = diagnostics.Count;
             await StartSendingAsync(new(IPAddress.Loopback, unavailablePort, "Unavailable test receiver", false));
             if (receiver is null || ReadinessTitle.Text != "READY" || !Problem.IsOpen || roles.Role != CastRole.Idle ||
+                outgoing is not null || ReceiverList.ItemsSource is ReceiverRow[] failedRows && failedRows.Any(row => row.IsActive) ||
                 !diagnostics.Skip(beforeFailure).Any(detail => detail.Contains("SocketException", StringComparison.Ordinal)))
                 throw new InvalidOperationException("A real outgoing TCP connection failure did not report its error and restore receiving.");
             checks.Add("Hardware encoder preflight followed by a real outgoing TCP failure reports the error and restores READY.");
@@ -652,6 +673,7 @@ public sealed partial class MainWindow : Window
             currentDialog.Hide();
             await Task.Delay(50);
             checks.Add("The actual Settings dialog offers codec/orientation options without a transport selector.");
+            await RunInlineSendingSelfTestAsync(checks);
         }
         catch (Exception error) { failure = error.ToString(); }
         File.WriteAllText(reportFile, JsonSerializer.Serialize(new { passed = failure is null, checks, failure, diagnostics },

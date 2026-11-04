@@ -56,20 +56,18 @@ public sealed class WindowSizingTests
     }
 
     [Fact]
-    public void StopSharingAndSessionStatusRemainOutsideTheScrollingCards()
+    public void SessionControlsAndDetailsLiveOnlyInTheReceiverRow()
     {
         var document = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "fixtures", "MainWindow.xaml"));
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         XElement Named(string name) => document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == name);
-        var root = Named("HomePage");
-        var cards = Named("Cards");
-        var banner = Named("SendingBanner");
-        Assert.Contains(root, cards.Ancestors());
-        Assert.Contains(root, banner.Ancestors());
-        foreach (var name in new[] { "StopSharing", "SendingStatus", "EncoderStatus" })
-        {
-            Assert.Contains(banner, Named(name).Ancestors());
-            Assert.DoesNotContain(cards, Named(name).Ancestors());
-        }
+        Assert.DoesNotContain(document.Descendants(), element => element.Attribute(x + "Name")?.Value is
+            "SendingBanner" or "StopSharing" or "SendingStatus" or "EncoderStatus");
+        var receivers = Named("ReceiverList");
+        var action = Assert.Single(receivers.Descendants(), element => element.Attribute("Click")?.Value == "DeviceAction_Click");
+        Assert.Equal("{x:Bind ActionLabel}", action.Attribute("Content")?.Value);
+        Assert.Equal("{x:Bind CanAct}", action.Attribute("IsEnabled")?.Value);
+        foreach (var property in new[] { "Status", "Parameters", "Encoder" })
+            Assert.Contains(receivers.Descendants(), element => element.Attribute("Text")?.Value == $"{{x:Bind {property}}}");
     }
 }

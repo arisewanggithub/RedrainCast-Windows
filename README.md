@@ -10,12 +10,17 @@ Send and receive screens in one native Windows application. Windows 11 22H2+,
   Copy buttons produce canonical `IP:Port` values without display spaces.
 - Nearby receivers update automatically. Each device has its own Send button;
   there is no duplicate destination dropdown or Refresh button.
+- The active destination is pinned first, including manually entered devices
+  and devices whose discovery advertisement expires. Its row shows Connecting
+  with Cancel, Casting with Stop, or Stopping with a disabled control.
+  Codec, actual encoded dimensions and encoder details appear beneath its status.
+  Other occupied receivers still show Busy; there is no separate session bar.
 - Choose a display or window to share, or connect by a numeric IP and TCP port.
   Manual input accepts spaced endpoints and bracketed IPv6 addresses.
 - Incoming casts are accepted automatically. Once a real video frame is
   presented, the entire client area displays video, not sending controls.
   Enter/F toggles fullscreen; Esc exits fullscreen. End reception from the sender.
-- Receiving is paused while connecting/sending. Stop sharing, a remote stop,
+- Receiving is paused while connecting/sending. The inline Stop action, a remote stop,
   or a handled outgoing failure automatically restores the listener.
   READY appears only after listening succeeds and a network address is known.
 - If another receiver owns TCP 27184, the receive panel reports the bind error
@@ -26,7 +31,7 @@ Send and receive screens in one native Windows application. Windows 11 22H2+,
 - Settings retain maximum dimensions, FPS, bitrate, codec, orientation and audio.
   Capture targets and active sessions are not persisted.
 - Narrow windows stack the two panels; light, dark and high-contrast themes
-  follow Windows. Session status and Stop sharing stay outside scrolling cards.
+  follow Windows. Starting a cast brings its inline session controls into view.
 
 ## Network and media
 
@@ -67,9 +72,9 @@ in a user-local cache. No native compiler or network-transport library is needed
 It does not install drivers or change system PATH.
 
 ```powershell
-.\tools\Publish.ps1 -Architecture arm64 -Version 0.1.1
+.\tools\Publish.ps1 -Architecture arm64 -Version 0.1.2
 .\tools\Package.ps1 -Architecture arm64 -PublishedDirectory .\artifacts\win-arm64 `
-  -OutputDirectory .\artifacts\msix-arm64 -Version 0.1.1.0
+  -OutputDirectory .\artifacts\msix-arm64 -Version 0.1.2.0
 ```
 
 Publication/package output directories must be new or empty. Packaging checks
@@ -79,7 +84,10 @@ Partner Center identity. See [STORE.md](STORE.md).
 Interactive Windows self-tests use an isolated loopback listener without
 discovery or persisted settings. The UI self-test also selects the default
 display and preflights its hardware encoder to verify outgoing connection
-failure recovery, but never starts capturing it:
+failure recovery, but never captures that display. It then captures only its
+own RedrainCast window to an in-process loopback test peer to verify the real
+inline Cancel/Stop controls, discovery expiry and acknowledged cleanup.
+No captured content is recorded or sent to another device:
 
 ```powershell
 RedrainCast.App.exe --self-test C:\temp\redrain-ui.json
