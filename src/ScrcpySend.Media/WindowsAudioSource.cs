@@ -6,8 +6,6 @@ namespace ScrcpySend.Media;
 
 public sealed class WindowsAudioSource : IAudioSource
 {
-    private readonly int queueBytes;
-    public WindowsAudioSource(bool srt = false) => queueBytes = (srt ? 512 : 1024) * 1024;
     private readonly CancellationTokenSource lifetime = new();
     private RenderMuteLease? mute;
     private Exception? failure;
@@ -32,7 +30,7 @@ public sealed class WindowsAudioSource : IAudioSource
         if (started) throw new InvalidOperationException("Audio capture cannot be reused.");
         started = true;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, cancellationToken);
-        var queue = new AudioQueue(queueBytes);
+        var queue = new AudioQueue(1024 * 1024);
         var signals = Channel.CreateBounded<bool>(new BoundedChannelOptions(100) { SingleReader = true, SingleWriter = true });
         worker = Task.Run(() => CaptureAsync(queue, signals.Writer, linked.Token), CancellationToken.None);
         try

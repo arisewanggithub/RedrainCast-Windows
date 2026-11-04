@@ -1,9 +1,10 @@
 using System.Globalization;
+using System.Text.Json;
 
 namespace ScrcpySend.Core;
 
 public sealed record CaptureSettings(int MaxSize = 1920, int MaxFps = 60, int VideoBitrate = 8_000_000,
-    bool EnableAudio = false, string ReceiverOrientation = "auto", string VideoCodec = "h264", string MediaTransport = "tcp")
+    bool EnableAudio = false, string ReceiverOrientation = "auto", string VideoCodec = "h264")
 {
     public static IReadOnlyList<int> FpsPresets { get; } = Array.AsReadOnly<int>([15, 24, 25, 30, 50, 60, 90, 120]);
 
@@ -14,11 +15,24 @@ public sealed record CaptureSettings(int MaxSize = 1920, int MaxFps = 60, int Vi
         if (ReceiverOrientation is not ("auto" or "landscape" or "portrait"))
             throw new ArgumentException("Invalid receiver orientation.");
         if (VideoCodec is not ("h264" or "h265" or "av1")) throw new ArgumentException("Choose H.264, H.265 or AV1.");
-        if (MediaTransport is not ("tcp" or "srt")) throw new ArgumentException("Choose custom TCP or SRT/fMP4.");
+    }
+
+    public static CaptureSettings ReadSaved(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind != JsonValueKind.Object)
+            throw new JsonException("Saved sharing settings must be an object.");
+        if (document.RootElement.TryGetProperty("MediaTransport", out var transport) &&
+            (transport.ValueKind != JsonValueKind.String || transport.GetString() != "tcp"))
+            throw new NotSupportedException("Saved settings select an unsupported transport. Only TCP is supported. Open Settings and save to replace them.");
+        var settings = document.RootElement.Deserialize<CaptureSettings>()
+            ?? throw new InvalidDataException("Saved sharing settings are empty.");
+        settings.Validate();
+        return settings;
     }
 
     public static CaptureInput ParseInput(string maximumDimension, string bitrateMbps, int? fps,
-        string receiverOrientation, CultureInfo culture, string videoCodec = "h264", bool enableAudio = false, string mediaTransport = "tcp")
+        string receiverOrientation, CultureInfo culture, string videoCodec = "h264", bool enableAudio = false)
     {
         string? dimensionError = null, bitrateError = null, fpsError = null;
         if (!int.TryParse(maximumDimension.Trim(), NumberStyles.None, culture, out var size) || size is < 64 or > 3840)
@@ -33,16 +47,15 @@ public sealed record CaptureSettings(int MaxSize = 1920, int MaxFps = 60, int Vi
         CaptureSettings? settings = null;
         if (dimensionError == null && bitrateError == null && fpsError == null)
         {
-            settings = new(size, fps!.Value, (int)(mbps * 1_000_000), enableAudio, receiverOrientation, videoCodec, mediaTransport);
+            settings = new(size, fps!.Value, (int)(mbps * 1_000_000), enableAudio, receiverOrientation, videoCodec);
             settings.Validate();
         }
         return new(settings, dimensionError, bitrateError, fpsError);
     }
 
-    public object Request(string hardwareEncoder, SrtDescriptor? srt = null)
+    public object Request(string hardwareEncoder)
     {
         Validate();
-        if ((MediaTransport == "srt") != (srt != null)) throw new ArgumentException("SRT requires an explicitly prepared media descriptor.");
         var request = new Dictionary<string, object>
         {
             ["video"] = new
@@ -52,9 +65,8 @@ public sealed record CaptureSettings(int MaxSize = 1920, int MaxFps = 60, int Vi
                 crop = (object?)null, codecOptions = ""
             },
             ["receiverOrientation"] = ReceiverOrientation,
-            ["audio"] = new { enabled = EnableAudio, codec = MediaTransport == "srt" ? "aac" : "raw", encoder = "", bitrate = MediaTransport == "srt" ? 192000 : 1_536_000, source = "output", codecOptions = "" }
+            ["audio"] = new { enabled = EnableAudio, codec = "raw", encoder = "", bitrate = 1_536_000, source = "output", codecOptions = "" }
         };
-        if (srt != null) request["mediaTransport"] = srt.Json();
         return request;
     }
 

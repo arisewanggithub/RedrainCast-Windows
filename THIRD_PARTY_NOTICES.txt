@@ -11,13 +11,10 @@ https://github.com/arisewanggithub/ScrcpySend-Windows
 Revision 76032580c678b51dc04f9b252ccd4c6c6e7cc029.
 That revision had no standalone source license; no additional grant is inferred.
 
-Sender dependencies also include Vortice.MediaFoundation 3.8.3 (MIT) and
-libsrt 1.5.7 (MPL-2.0), dynamically linked. The pinned preparation script
-builds libsrt without encryption. Its license and unmodified corresponding
-source archive are distributed alongside srt.dll.
-https://github.com/Haivision/srt/tree/v1.5.7
-FFmpeg avformat is used for SRT/fMP4 sending, in addition to the receiver's
-avcodec, avutil and swresample libraries.
+Sender dependencies also include Vortice.MediaFoundation 3.8.3 (MIT).
+The sender uses Windows hardware encoding and raw PCM over custom TCP.
+The receiver alone uses FFmpeg avcodec, avutil and swresample libraries
+for hardware decoding and audio conversion.
 
 This is an independent application, not an official scrcpy application.
 No source or binary from scrcpy or the Android sender/receiver is included.
@@ -44,7 +41,7 @@ Tests only (not app dependencies): xUnit.net and its Visual Studio runner
 Hardware video dependencies in this preview:
 
 - FFmpeg 7.1.1, System233 ffmpeg-7.1.1-r2 ARM64/x64 shared LGPL builds.
-  SHA256-pinned archives are prepared by tools/PrepareSrt.ps1.
+  SHA256-pinned archives are prepared by tools/PrepareNative.ps1.
   Video uses hardware D3D11VA only; software video pixel formats are refused.
   AAC/Opus audio decoding and PCM sample conversion use the native audio
   components, including dynamically linked swresample.

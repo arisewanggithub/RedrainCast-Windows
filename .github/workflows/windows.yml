@@ -37,7 +37,7 @@ jobs:
           dotnet-version: 10.0.x
       - name: Prepare pinned media libraries
         shell: pwsh
-        run: .\tools\PrepareSrt.ps1 -Architecture ${{ matrix.architecture }} -CacheDirectory "$env:LOCALAPPDATA\RedrainCast-build-cache"
+        run: .\tools\PrepareNative.ps1 -Architecture ${{ matrix.architecture }} -CacheDirectory "$env:LOCALAPPDATA\RedrainCast-build-cache"
       - name: Publish
         shell: pwsh
         run: .\tools\Publish.ps1 -Architecture ${{ matrix.architecture }}

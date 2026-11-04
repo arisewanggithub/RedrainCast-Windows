@@ -73,9 +73,7 @@ public sealed partial class MainWindow : Window
             video.Dispose();
             layout.Dispose();
             lifetime.Dispose();
-            SrtMedia.NativeDiagnostic -= Diagnostic;
         };
-        SrtMedia.NativeDiagnostic += Diagnostic;
     }
 
     internal Task InitializeAsync() => startup ??= InitializeCoreAsync();
@@ -373,8 +371,7 @@ public sealed partial class MainWindow : Window
             await Task.Run(async () =>
             {
                 await using var outgoingVideo = new WindowsVideoSource(selected, selectedSettings);
-                await using var audio = selectedSettings.EnableAudio ? new WindowsAudioSource(selectedSettings.MediaTransport == "srt") : null;
-                await using var srt = selectedSettings.MediaTransport == "srt" ? new SrtMedia(Diagnostic) : null;
+                await using var audio = selectedSettings.EnableAudio ? new WindowsAudioSource() : null;
                 DispatcherQueue.TryEnqueue(() => EncoderStatus.Text =
                     $"{outgoingVideo.EncoderName} - {outgoingVideo.Width} x {outgoingVideo.Height}");
                 stop.Token.ThrowIfCancellationRequested();
@@ -382,7 +379,7 @@ public sealed partial class MainWindow : Window
                     text => DispatcherQueue.TryEnqueue(() =>
                     {
                         if (!closing && ReferenceEquals(sendStop, stop)) SendingStatus.Text = text;
-                    }), stop.Token, audio, srt);
+                    }), stop.Token, audio);
             });
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
@@ -461,14 +458,12 @@ public sealed partial class MainWindow : Window
         var bitrate = new TextBox { Header = "Video bitrate (0.1-100 Mbps)", Text = (settings.VideoBitrate / 1_000_000m).ToString(CultureInfo.CurrentCulture) };
         var codec = new ComboBox { Header = "Video codec", ItemsSource = new[] { "H.264", "HEVC", "AV1" },
             SelectedIndex = settings.VideoCodec switch { "h265" => 1, "av1" => 2, _ => 0 }, HorizontalAlignment = HorizontalAlignment.Stretch };
-        var transport = new ComboBox { Header = "Transport", ItemsSource = new[] { "Custom TCP", "SRT / fMP4 (compatible receivers only)" },
-            SelectedIndex = settings.MediaTransport == "srt" ? 1 : 0, HorizontalAlignment = HorizontalAlignment.Stretch };
         var orientation = new ComboBox { Header = "Receiver orientation", ItemsSource = new[] { "Auto", "Landscape", "Portrait" },
             SelectedIndex = settings.ReceiverOrientation switch { "landscape" => 1, "portrait" => 2, _ => 0 }, HorizontalAlignment = HorizontalAlignment.Stretch };
         var audio = new CheckBox { Content = "Send audio to receiver (silences local playback)", IsChecked = settings.EnableAudio };
         var errorLabel = new TextBlock { TextWrapping = TextWrapping.Wrap };
         var content = new StackPanel { Spacing = 12 };
-        foreach (var element in new FrameworkElement[] { size, fps, bitrate, codec, transport, orientation, audio, errorLabel })
+        foreach (var element in new FrameworkElement[] { size, fps, bitrate, codec, orientation, audio, errorLabel })
             content.Children.Add(element);
         var dialog = new ContentDialog
         {
@@ -482,8 +477,7 @@ public sealed partial class MainWindow : Window
                 var input = CaptureSettings.ParseInput(size.Text, bitrate.Text,
                     int.TryParse(fps.Text, NumberStyles.None, CultureInfo.CurrentCulture, out var cap) ? cap : null,
                     new[] { "auto", "landscape", "portrait" }[orientation.SelectedIndex], CultureInfo.CurrentCulture,
-                    new[] { "h264", "h265", "av1" }[codec.SelectedIndex], audio.IsChecked == true,
-                    transport.SelectedIndex == 1 ? "srt" : "tcp");
+                    new[] { "h264", "h265", "av1" }[codec.SelectedIndex], audio.IsChecked == true);
                 var next = input.Settings ?? throw new ArgumentException(string.Join(" ",
                     new[] { input.DimensionError, input.BitrateError, input.FpsError }.OfType<string>()));
                 Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
@@ -507,12 +501,9 @@ public sealed partial class MainWindow : Window
         try
         {
             if (!File.Exists(SettingsPath)) return;
-            var saved = JsonSerializer.Deserialize<CaptureSettings>(File.ReadAllText(SettingsPath))
-                ?? throw new InvalidDataException("Saved sharing settings are empty.");
-            saved.Validate();
-            settings = saved;
+            settings = CaptureSettings.ReadSaved(File.ReadAllText(SettingsPath));
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or ArgumentException or NotSupportedException)
         {
             Report(new IOException($"Saved settings could not be loaded; default sharing settings are in use. {error.Message}", error));
         }
@@ -652,6 +643,15 @@ public sealed partial class MainWindow : Window
             if (receiver is null || ReadinessTitle.Text != "READY")
                 throw new InvalidOperationException("Receiving did not recover after the conflicting listener was released.");
             checks.Add("Real bind conflict retains its startup error, leaves sending enabled, and recovers after the port is released.");
+            Settings_Click(SettingsButton, new RoutedEventArgs());
+            await Task.Delay(150);
+            if (currentDialog?.Content is not ScrollViewer { Content: StackPanel settingsPanel } ||
+                !settingsPanel.Children.OfType<ComboBox>().Select(combo => combo.Header?.ToString())
+                    .SequenceEqual(new[] { "Video codec", "Receiver orientation" }))
+                throw new InvalidOperationException("Sharing settings still expose a transport selector or lost the codec/orientation options.");
+            currentDialog.Hide();
+            await Task.Delay(50);
+            checks.Add("The actual Settings dialog offers codec/orientation options without a transport selector.");
         }
         catch (Exception error) { failure = error.ToString(); }
         File.WriteAllText(reportFile, JsonSerializer.Serialize(new { passed = failure is null, checks, failure, diagnostics },

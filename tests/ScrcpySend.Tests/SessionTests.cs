@@ -97,6 +97,30 @@ public sealed class SessionTests
         return request;
     }
 
+    [Theory]
+    [InlineData("srt")]
+    [InlineData("tcp")]
+    [InlineData("unknown")]
+    public async Task TransportOverrideIsRejectedBeforeCaptureStarts(string kind)
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var source = new Source();
+        var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
+            ((IPEndPoint)listener.LocalEndpoint).Port, "Test", false),
+            new(), source, _ => { }, deadline.Token);
+        using var peer = await listener.AcceptTcpClientAsync(deadline.Token);
+        var stream = peer.GetStream();
+        var request = await Handshake(stream, deadline.Token);
+        await Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, request.Session,
+            new { tracks = new[] { 1 }, mediaTransport = new { kind } }), deadline.Token);
+        var error = await Assert.ThrowsAsync<IOException>(() => run.WaitAsync(deadline.Token));
+        Assert.Contains("Only custom TCP", error.Message);
+        Assert.False(source.Started);
+        Assert.True(source.Disposed);
+    }
+
     [Fact]
     public async Task CaptureWaitsForAcceptanceMediaWaitsForReadinessAndStopIsAcknowledged()
     {

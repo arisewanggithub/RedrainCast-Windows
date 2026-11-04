@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Net.Sockets;
-using System.Net;
 using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -11,14 +10,12 @@ namespace ScrcpySend.Core;
 public sealed class SenderSession
 {
     public async Task RunAsync(ReceiverEndpoint endpoint, CaptureSettings settings, IVideoSource source,
-        Action<string> state, CancellationToken stopToken, IAudioSource? audio = null, ISrtMedia? srt = null)
+        Action<string> state, CancellationToken stopToken, IAudioSource? audio = null)
     {
         Exception? failure = null;
-        try { await RunOwnedAsync(endpoint, settings, source, state, stopToken, audio, srt); }
+        try { await RunOwnedAsync(endpoint, settings, source, state, stopToken, audio); }
         catch (Exception error) { failure = error; }
         var cleanupFailures = new List<Exception>();
-        try { if (srt != null) await srt.DisposeAsync(); }
-        catch (Exception error) { cleanupFailures.Add(error); }
         try { if (audio != null) await audio.DisposeAsync(); }
         catch (Exception error) { cleanupFailures.Add(error); }
         try { await source.DisposeAsync(); }
@@ -32,11 +29,9 @@ public sealed class SenderSession
     }
 
     private static async Task RunOwnedAsync(ReceiverEndpoint endpoint, CaptureSettings settings, IVideoSource source,
-        Action<string> state, CancellationToken stopToken, IAudioSource? audio, ISrtMedia? srt)
+        Action<string> state, CancellationToken stopToken, IAudioSource? audio)
     {
         settings.Validate();
-        if ((settings.MediaTransport == "srt") != (srt != null))
-            throw new NotSupportedException("Selected SRT media transport is unavailable; no fallback is allowed.");
         if (settings.EnableAudio != (audio != null))
             throw new NotSupportedException("Enabled audio requires a receiver-only audio source; audio cannot silently disappear.");
         using var client = new TcpClient(endpoint.Address.AddressFamily) { NoDelay = true };
@@ -62,7 +57,6 @@ public sealed class SenderSession
         var expectedMask = settings.EnableAudio ? 6 : 2;
         var failureCode = "CAPTURE_FAILED";
         var remoteStopping = 0;
-        var srtPlaying = 0;
 
         async Task Send(Message message, CancellationToken token)
         {
@@ -91,7 +85,6 @@ public sealed class SenderSession
                 switch (message.Type)
                 {
                     case MessageType.StreamReady:
-                        if (srt != null) throw new ProtocolException("Custom TCP stream readiness is forbidden in an SRT session.");
                         var trackBit = 1 << (int)message.Track;
                         if ((Volatile.Read(ref configurationSent) & trackBit) == 0 || (expectedMask & trackBit) == 0 ||
                             message.Generation != 1 || !StrictJson.Boolean(json, "ok"))
@@ -114,15 +107,8 @@ public sealed class SenderSession
                         _ = StrictJson.Integer(json, "nonce");
                         break;
                     case MessageType.Status:
-                        var status = StrictJson.String(json, "state", 80);
+                        _ = StrictJson.String(json, "state", 80);
                         _ = StrictJson.String(json, "message", 2048);
-                        if (srt != null && status == "srt-playing")
-                        {
-                            if (capture.IsCancellationRequested) break;
-                            if (Interlocked.Exchange(ref srtPlaying, 1) == 0) audio?.BeginTransmission();
-                            startup.CancelAfter(Timeout.InfiniteTimeSpan);
-                            state("Streaming (SRT/fMP4)");
-                        }
                         break;
                     case MessageType.Error:
                         var code = StrictJson.String(json, "code", 80);
@@ -134,7 +120,6 @@ public sealed class SenderSession
                         var reason = StrictJson.String(json, "reason", 1024);
                         Interlocked.Exchange(ref remoteStopping, 1);
                         capture.Cancel();
-                        srt?.Abort();
                         using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(2)))
                         {
                             try
@@ -153,7 +138,6 @@ public sealed class SenderSession
                         }
                         ended.TrySetResult();
                         lifetime.Cancel();
-                        srt?.Abort();
                         client.Close();
                         return;
                     case MessageType.SessionEnd:
@@ -229,8 +213,6 @@ public sealed class SenderSession
                 setup.CancelAfter(TimeSpan.FromSeconds(10));
                 await client.ConnectAsync(endpoint.Address, endpoint.Port, setup.Token);
                 stream = client.GetStream();
-                var descriptor = srt?.Prepare(((IPEndPoint)client.Client.LocalEndPoint!).Address,
-                    ((IPEndPoint)client.Client.RemoteEndPoint!).Address, session);
                 await Send(Message.Control(MessageType.Hello, 0,
                     new { role = "sender", versions = new[] { 3 }, name = "RedrainCast" }), setup.Token);
                 var hello = await Wire.ReadAsync(stream, setup.Token);
@@ -239,16 +221,14 @@ public sealed class SenderSession
                     throw new ProtocolException("Expected receiver HELLO.");
                 ValidateHello(hello.Json());
                 state("Negotiating");
-                await Send(Message.Control(MessageType.SessionRequest, session, settings.Request(source.EncoderName, descriptor)), setup.Token);
+                await Send(Message.Control(MessageType.SessionRequest, session, settings.Request(source.EncoderName)), setup.Token);
                 var accept = await Wire.ReadAsync(stream, setup.Token);
                 if (accept.Session != session) throw new ProtocolException("Acceptance has the wrong session.");
                 if (accept.Type == MessageType.Reject) ThrowRejected(accept);
                 if (accept.Type != MessageType.SessionAccept) throw new ProtocolException("Expected SESSION_ACCEPT.");
                 var json = accept.Json();
-                var hasTransport = json.TryGetProperty("mediaTransport", out var transport);
-                if (srt == null ? hasTransport : !hasTransport || transport.ValueKind != JsonValueKind.Object ||
-                    StrictJson.String(transport, "kind", 16) != "srt")
-                    throw new ProtocolException("Receiver did not explicitly accept the selected transport; no fallback is allowed.");
+                if (json.TryGetProperty("mediaTransport", out _))
+                    throw new ProtocolException("Only custom TCP media is supported; transport overrides are not accepted.");
                 if (!json.TryGetProperty("tracks", out var tracks) ||
                     tracks.ValueKind != JsonValueKind.Array ||
                     !tracks.EnumerateArray().All(item => item.ValueKind == JsonValueKind.Number) ||
@@ -263,18 +243,10 @@ public sealed class SenderSession
             capture.Token.ThrowIfCancellationRequested();
             state("Initializing capture");
             startup.CancelAfter(TimeSpan.FromSeconds(10));
-            if (srt != null)
-            {
-                await srt.RunAsync(source, audio, settings, startup.Token);
-                if (!capture.IsCancellationRequested) throw new IOException("SRT media ended unexpectedly.");
-            }
-            else
-            {
             var configured = false;
             var streaming = false;
             byte[] activeConfiguration = [];
             long lastPts = -1;
-            startup.CancelAfter(TimeSpan.FromSeconds(10));
             if (audio != null) audioPump = Monitor(SendAudio(), "AUDIO_FAILED");
             await foreach (var frame in source.ReadFramesAsync(startup.Token)
                                .WithCancellation(startup.Token))
@@ -304,7 +276,6 @@ public sealed class SenderSession
                 if (!streaming) { streaming = true; state("Streaming"); }
             }
             if (!capture.IsCancellationRequested) throw new IOException("Capture ended unexpectedly.");
-            }
         }
         catch (OperationCanceledException) when (capture.IsCancellationRequested)
         {
@@ -322,7 +293,6 @@ public sealed class SenderSession
             state("Stopping");
             controls.Writer.TryComplete();
             capture.Cancel();
-            srt?.Abort();
             if (Volatile.Read(ref remoteStopping) != 0 && reader != null) await reader;
             if (accepted && stream != null && !brokenWrite && !ended.Task.IsCompleted && !lifetime.IsCancellationRequested &&
                 Volatile.Read(ref remoteStopping) == 0)

@@ -75,7 +75,7 @@ public sealed class WindowsVideoSource : IVideoSource
         if (started) throw new InvalidOperationException("Capture cannot be reused.");
         started = true;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, cancellationToken);
-        var queue = new VideoQueue((settings.MediaTransport == "srt" ? 3 : settings.EnableAudio ? 7 : 8) * 1024 * 1024);
+        var queue = new VideoQueue((settings.EnableAudio ? 7 : 8) * 1024 * 1024);
         var signals = Channel.CreateBounded<bool>(new BoundedChannelOptions(64)
         {
             SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait

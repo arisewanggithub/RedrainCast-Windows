@@ -8,10 +8,16 @@ $nativeDirectories = @(Get-ChildItem -LiteralPath (Join-Path $published 'native'
 if ($nativeDirectories.Count -ne 1 -or $nativeDirectories[0].Name -ne "win-$Architecture") {
     throw 'Publication must contain only the selected native architecture.'
 }
+$nativeFiles = @('avcodec-61.dll', 'avutil-59.dll', 'swresample-5.dll',
+    'FFmpeg-LICENSE.txt', 'FFmpeg-copyright.txt', 'FFmpeg-build-dependencies.txt', 'FFmpeg-dependencies.spdx.json')
+$entries = @(Get-ChildItem -LiteralPath $nativeDirectories[0].FullName -Force)
+if ($entries.Count -ne $nativeFiles.Count -or
+    @($entries | Where-Object { $_.PSIsContainer -or $nativeFiles -notcontains $_.Name }).Count -ne 0) {
+    throw 'Publication contains unexpected native media dependencies; only the decoder/audio runtime is allowed.'
+}
 foreach ($file in @('RedrainCast.App.exe', 'coreclr.dll', 'Microsoft.UI.Xaml.dll',
-    "native\win-$Architecture\avcodec-61.dll", "native\win-$Architecture\avformat-61.dll",
-    "native\win-$Architecture\avutil-59.dll", "native\win-$Architecture\swresample-5.dll",
-    "native\win-$Architecture\srt.dll")) {
+    "native\win-$Architecture\avcodec-61.dll",
+    "native\win-$Architecture\avutil-59.dll", "native\win-$Architecture\swresample-5.dll")) {
     $path = Join-Path $published $file
     $reader = New-Object IO.BinaryReader([IO.File]::OpenRead($path))
     try {
@@ -26,8 +32,7 @@ foreach ($file in @('RedrainCast.App.exe', 'coreclr.dll', 'Microsoft.UI.Xaml.dll
     } finally { $reader.Dispose() }
 }
 foreach ($file in @('RedrainCast.App.pri', 'PRIVACY.md', 'THIRD_PARTY_NOTICES.txt',
-    'licenses\ScrcpyReceive-Windows-LICENSE.txt', "native\win-$Architecture\FFmpeg-LICENSE.txt",
-    "native\win-$Architecture\SRT-LICENSE.txt", "native\win-$Architecture\SRT-1.5.7-source.zip")) {
+    'licenses\ScrcpyReceive-Windows-LICENSE.txt', "native\win-$Architecture\FFmpeg-LICENSE.txt")) {
     if (-not (Test-Path -LiteralPath (Join-Path $published $file))) { throw "Missing resource or notice: $file" }
 }
 if (@(Get-ChildItem -LiteralPath $published -Recurse -File -Filter '*.pdb').Count -ne 0) {

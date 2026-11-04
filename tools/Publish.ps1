@@ -1,7 +1,7 @@
 param(
     [ValidateSet('arm64', 'x64')][string]$Architecture = 'arm64',
     [string]$OutputDirectory,
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.1.0'
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.1.1'
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -12,12 +12,17 @@ elseif (-not [IO.Path]::IsPathRooted($OutputDirectory)) { $OutputDirectory = Joi
 if ((Test-Path -LiteralPath $OutputDirectory) -and @(Get-ChildItem -LiteralPath $OutputDirectory -Force).Count -ne 0) {
     throw 'Publish requires a new or empty output directory; existing work is preserved.'
 }
-foreach ($file in @('avcodec-61.dll', 'avformat-61.dll', 'avutil-59.dll', 'swresample-5.dll', 'srt.dll',
-    'FFmpeg-LICENSE.txt', 'FFmpeg-copyright.txt', 'FFmpeg-build-dependencies.txt', 'FFmpeg-dependencies.spdx.json',
-    'SRT-LICENSE.txt', 'SRT-1.5.7-source.zip')) {
+$nativeFiles = @('avcodec-61.dll', 'avutil-59.dll', 'swresample-5.dll',
+    'FFmpeg-LICENSE.txt', 'FFmpeg-copyright.txt', 'FFmpeg-build-dependencies.txt', 'FFmpeg-dependencies.spdx.json')
+foreach ($file in $nativeFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "native\$rid\$file"))) {
-        throw "Missing pinned media dependency: $file. Run tools\PrepareSrt.ps1 -Architecture $Architecture first."
+        throw "Missing pinned media dependency: $file. Run tools\PrepareNative.ps1 -Architecture $Architecture first."
     }
+}
+$nativeEntries = @(Get-ChildItem -LiteralPath (Join-Path $root "native\$rid") -Force)
+if ($nativeEntries.Count -ne $nativeFiles.Count -or
+    @($nativeEntries | Where-Object { $_.PSIsContainer -or $nativeFiles -notcontains $_.Name }).Count -ne 0) {
+    throw 'Native inputs must contain only the pinned decoder/audio runtime and its notices.'
 }
 & dotnet publish (Join-Path $root 'src\RedrainCast.App\RedrainCast.App.csproj') -c Release `
     -r $rid "-p:Platform=$platform" --self-contained true "-p:Version=$Version" `

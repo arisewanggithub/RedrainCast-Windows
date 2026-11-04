@@ -10,17 +10,6 @@ namespace ScrcpySend.Media;
 
 public static class MediaDiagnostics
 {
-    public static async Task<string> NativeRuntimeProbeAsync(CancellationToken token)
-    {
-        using var encoder = new AacEncoder();
-        var count = 0;
-        for (var index = 0; index < 4; index++)
-            count += encoder.Encode(new AudioPacket(new byte[4096], 1_000_000 + index * 21333)).Count;
-        if (count == 0) throw new IOException("Native AAC encoder produced no real access units.");
-        await SrtNative.CheckAcceptCancellationAsync(token);
-        return $"{NativeArchitecture.RuntimeIdentifierForProcess}: matching FFmpeg loaded, AAC-LC configuration {Convert.ToHexString(encoder.Configuration)}, {count} encoded access units; libsrt listener/cancellation passed. No display capture, audio muting or LAN connection.";
-    }
-
     public static Windows.Graphics.Capture.GraphicsCaptureItem OwnWindow(nint window) =>
         CaptureInterop.OwnWindowForDiagnostics(window);
 
@@ -138,8 +127,7 @@ public static class MediaDiagnostics
         public ValueTask DisposeAsync() => source.DisposeAsync();
     }
 
-    internal sealed class GeneratedVideo(CaptureSettings settings, bool staticVideo = false, int width = 640, int height = 360,
-        long timestampOffsetUs = 0) : IVideoSource
+    internal sealed class GeneratedVideo(CaptureSettings settings, int width = 640, int height = 360) : IVideoSource
     {
         public string EncoderName => "Diagnostic hardware source";
         public int Width => width;
@@ -162,8 +150,7 @@ public static class MediaDiagnostics
                 token.ThrowIfCancellationRequested();
                 foreach (var output in encoder.TakeOutput())
                 {
-                    yield return output with { PtsUs = output.PtsUs + timestampOffsetUs };
-                    if (staticVideo) { await Task.Delay(Timeout.Infinite, token); yield break; }
+                    yield return output;
                 }
                 var now = (long)((Int128)Stopwatch.GetTimestamp() * TimeSpan.TicksPerSecond / Stopwatch.Frequency);
                 if (encoder.CanAcceptInput && pacer.ShouldCapture(now))
@@ -185,60 +172,6 @@ public static class MediaDiagnostics
         await using var audio = new ProbeAudio();
         var count = await LoopbackAsync(video, settings, _ => { }, token, audio);
         return $"{codec} configured at {fps} FPS: {count} real hardware video access units plus at least 10 real WASAPI PCM packets through localhost; both-track readiness and Stop acknowledged. Diagnostic intentionally does not mute any output, record content or contact LAN peers.";
-    }
-
-    public static async Task<string> SrtProbeAsync(string codec, string outputPath, CancellationToken token, int width = 640, int height = 360,
-        int bitrate = 8_000_000, bool videoFirst = false)
-    {
-        var settings = new CaptureSettings(MaxSize: Math.Max(width, height), VideoBitrate: bitrate,
-            EnableAudio: true, VideoCodec: codec, MediaTransport: "srt");
-        await SrtNative.CheckAcceptCancellationAsync(token);
-        await using var video = new GeneratedVideo(settings, true, width, height, videoFirst ? -1_000_000 : 0);
-        await using var audio = new ProbeAudio();
-        await using var media = new SrtMedia();
-        var descriptor = media.Prepare(IPAddress.Loopback, IPAddress.Loopback, 1);
-        try
-        {
-            await Task.Run(() => SrtNative.ReceiveProbeAsync(descriptor with { StreamId = "wrong-session" },
-                _ => throw new IOException("Unexpected bytes for a mismatched SRT stream ID."), token), token);
-            throw new IOException("SRT accepted a mismatched stream ID.");
-        }
-        catch (IOException error) when (error.Message.StartsWith("Connect SRT caller:", StringComparison.Ordinal)) { }
-        using var duration = CancellationTokenSource.CreateLinkedTokenSource(token);
-        duration.CancelAfter(TimeSpan.FromSeconds(2));
-        using var bytes = new MemoryStream();
-        var receiver = Task.Run(() => SrtNative.ReceiveProbeAsync(descriptor, data =>
-        {
-            if (bytes.Length + data.Length > 8 * 1024 * 1024) throw new IOException("SRT probe exceeded its memory bound.");
-            bytes.Write(data);
-        }, duration.Token), CancellationToken.None);
-        var sender = media.RunAsync(video, audio, settings, duration.Token);
-        Exception? failure = null;
-        try { await sender; }
-        catch (OperationCanceledException) when (duration.IsCancellationRequested) { }
-        catch (Exception error) { failure = error; }
-        duration.Cancel();
-        media.Abort();
-        try { await receiver; }
-        catch (Exception error) when (duration.IsCancellationRequested && error is OperationCanceledException or IOException) { }
-        if (failure != null) throw new IOException("Native SRT/fMP4 probe failed.", failure);
-        if (bytes.Length == 0) throw new IOException("SRT caller received no fMP4 bytes.");
-        var data = bytes.ToArray();
-        var offset = 0;
-        var initCount = 0; var fragments = 0;
-        while (offset + 8 <= data.Length)
-        {
-            var size = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(offset));
-            if (size < 8) throw new IOException("Invalid fMP4 box length.");
-            if (size > data.Length - offset) break; // Stop can cancel the final in-flight fragment.
-            var kind = System.Text.Encoding.ASCII.GetString(data, offset + 4, 4);
-            if (kind == "moov") initCount++;
-            if (kind == "moof") fragments++;
-            offset += (int)size;
-        }
-        if (initCount != 1 || fragments < 3) throw new IOException("Static-video fMP4 did not retain one init segment and periodically flush continuing audio.");
-        await File.WriteAllBytesAsync(outputPath, data, token);
-        return $"{codec} + AAC-LC: {bytes.Length} bytes, one init and {fragments} complete fragments transferred over localhost SRT; static video/audio progress, stream-ID rejection and accept cancellation passed. Saved synthetic diagnostic media to {outputPath}; no screen capture or output muting.";
     }
 
     public static async Task<string> SelfTestAsync(CancellationToken cancellationToken, int fps = 60, string codec = "h264")
@@ -281,49 +214,4 @@ public static class MediaDiagnostics
         return $"{encoder.Name}: GPU BGRA -> NV12 -> hardware {codec} configured at {fps} FPS; {received} access units, real codec configuration/keyframe, monotonic PTS, {watch.Elapsed.TotalMilliseconds:F0} ms. This synthetic test does not measure live capture FPS.";
     }
 
-    public static async Task<string> MuxTimestampRegressionAsync(string path, CancellationToken token)
-    {
-        var errors = new List<string>();
-        void Observe(string line)
-        {
-            if (line.Contains("Packet duration:", StringComparison.Ordinal) ||
-                line.Contains("pts has no value", StringComparison.Ordinal) ||
-                line.Contains("negative timestamp", StringComparison.Ordinal) ||
-                line.Contains("Assertion", StringComparison.Ordinal))
-                errors.Add(line);
-        }
-        FfmpegRuntime.Diagnostic += Observe;
-        try
-        {
-        var settings = new CaptureSettings(MaxSize: 640, EnableAudio: true, VideoCodec: "av1", MediaTransport: "srt");
-        using var aac = new AacEncoder();
-        IReadOnlyList<AudioPacket> accessUnits = [];
-        for (var index = 0; index < 4 && accessUnits.Count == 0; index++)
-            accessUnits = aac.Encode(new(new byte[4096], 1_000_000 + index * 21333));
-        if (accessUnits.Count == 0) throw new IOException("AAC regression input produced no real access unit.");
-        await using var video = new GeneratedVideo(settings);
-        await using var frames = video.ReadFramesAsync(token).GetAsyncEnumerator(token);
-        if (!await frames.MoveNextAsync()) throw new IOException("Hardware regression input produced no video.");
-        var sample = frames.Current;
-        using var bytes = new MemoryStream();
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-        bytes.SetLength(0);
-        using var mux = new FragmentedMp4Muxer(settings, 640, 360, sample.Configuration, aac.Configuration, 1_000_000, data => bytes.Write(data));
-            mux.Video(sample with { PtsUs = 1_032_240 }, 60);
-            mux.Audio(accessUnits[0] with { PtsUs = 1_000_000 });
-            mux.Flush();
-            for (var index = 1; index < 20; index++)
-            {
-                mux.Video(sample with { PtsUs = 1_032_240 + index * 16_660 }, 60);
-                mux.Audio(accessUnits[0] with { PtsUs = 1_000_000 + index * 21333 });
-                mux.Flush();
-            }
-        }
-        await File.WriteAllBytesAsync(path, bytes.ToArray(), token);
-        if (errors.Count > 0) throw new IOException($"Mux timestamp regression: {string.Join("; ", errors)}");
-        return $"Mux timestamp regression passed across 3 consecutive sessions: video starts 32240 us after audio; jittered video cadence and per-sample fragment boundaries, {bytes.Length} bytes.";
-        }
-        finally { FfmpegRuntime.Diagnostic -= Observe; }
-    }
 }

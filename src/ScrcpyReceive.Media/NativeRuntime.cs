@@ -22,7 +22,7 @@ internal static unsafe class NativeRuntime
             };
             ffmpeg.RootPath = Path.Combine(AppContext.BaseDirectory, "native", $"win-{architecture}");
             if (!File.Exists(Path.Combine(ffmpeg.RootPath, "avcodec-61.dll")))
-                throw new NotSupportedException("Pinned decoder runtime is missing. Run tools\\PrepareSrt.ps1 and rebuild.");
+                throw new NotSupportedException("Pinned decoder runtime is missing. Run tools\\PrepareNative.ps1 and rebuild.");
             if (ffmpeg.avcodec_version() >> 16 != 61 || ffmpeg.avutil_version() >> 16 != 59)
                 throw new NotSupportedException("FFmpeg 7.1 ABI is required.");
             ffmpeg.av_log_set_level(ffmpeg.AV_LOG_QUIET);

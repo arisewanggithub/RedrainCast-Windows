@@ -23,8 +23,8 @@ Send and receive screens in one native Windows application. Windows 11 22H2+,
   receiver yourself and reopen RedrainCast to receive; this app never stops it.
 - Incoming/outgoing setup races have one atomic winner; additional sessions
   cannot evict an active cast. This app excludes its own listener from discovery.
-- Settings retain maximum dimensions, FPS, bitrate, codec, orientation, audio,
-  and sender transport. Capture targets and active sessions are not persisted.
+- Settings retain maximum dimensions, FPS, bitrate, codec, orientation and audio.
+  Capture targets and active sessions are not persisted.
 - Narrow windows stack the two panels; light, dark and high-contrast themes
   follow Windows. Session status and Stop sharing stay outside scrolling cards.
 
@@ -43,9 +43,12 @@ dependent. Enabled outgoing audio suppresses local playback and restores owned
 mute changes on normal Stop/close/handled failures. A crash or force kill cannot
 guarantee mute restoration.
 
-Custom TCP is the default and is the transport supported by this receiver.
-SRT/fMP4 sending is retained for compatible external receivers; RedrainCast
-does not receive SRT. Discovery is IPv4; manual destinations also support IPv6.
+Custom TCP is the only media transport. Outgoing audio uses raw stereo PCM;
+receiving AAC/Opus audio remains supported. There is no transport selector,
+alternate transport backend or MP4 muxer. Old settings selecting an unsupported
+transport report an explicit load error; open Settings and save to replace them.
+Legacy TCP settings retain their existing sharing values.
+Discovery is IPv4; manual destinations also support IPv6.
 Android interoperability requires a compatible protocol-v3 companion, not
 Miracast, Google Cast or an arbitrary smart TV receiver.
 
@@ -53,19 +56,20 @@ Miracast, Google Cast or an arbitrary smart TV receiver.
 
 ```powershell
 dotnet test .\tests\RedrainCast.Tests.slnx -c Release
-.\tools\PrepareSrt.ps1 -Architecture arm64
+.\tools\PrepareNative.ps1 -Architecture arm64
 dotnet build .\src\RedrainCast.App\RedrainCast.App.csproj -c Release -p:Platform=ARM64 -r win-arm64
 .\src\RedrainCast.App\bin\ARM64\Release\net10.0-windows10.0.26100.0\win-arm64\RedrainCast.App.exe
 ```
 
 For x64, prepare `-Architecture x64` and build with `-p:Platform=x64 -r win-x64`.
-The pinned native preparation script downloads/builds FFmpeg/SRT dependencies
-in a user-local cache. It does not install drivers or change system PATH.
+The pinned native preparation script downloads the FFmpeg decoder/audio runtime
+in a user-local cache. No native compiler or network-transport library is needed.
+It does not install drivers or change system PATH.
 
 ```powershell
-.\tools\Publish.ps1 -Architecture arm64 -Version 0.1.0
+.\tools\Publish.ps1 -Architecture arm64 -Version 0.1.1
 .\tools\Package.ps1 -Architecture arm64 -PublishedDirectory .\artifacts\win-arm64 `
-  -OutputDirectory .\artifacts\msix-arm64 -Version 0.1.0.0
+  -OutputDirectory .\artifacts\msix-arm64 -Version 0.1.1.0
 ```
 
 Publication/package output directories must be new or empty. Packaging checks

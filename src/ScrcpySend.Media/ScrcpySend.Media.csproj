@@ -10,8 +10,5 @@
     <ProjectReference Include="..\ScrcpySend.Core\ScrcpySend.Core.csproj" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
     <PackageReference Include="Vortice.MediaFoundation" Version="3.8.3" />
-    <PackageReference Include="FFmpeg.AutoGen" Version="7.1.1" />
-    <Content Include="..\..\native\$(WindowsRuntimeIdentifier)\**\*" Link="native\$(WindowsRuntimeIdentifier)\%(RecursiveDir)%(Filename)%(Extension)"
-             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
