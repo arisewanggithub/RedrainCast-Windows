@@ -46,7 +46,7 @@ public sealed partial class MainWindow : Window
     private bool receiverFaulted;
     private bool discoveryFailed;
     private bool showingVideo;
-    private const int ListeningPort = 27184;
+    private readonly string instanceId = Guid.NewGuid().ToString("N");
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RedrainCast", "settings.json");
 
@@ -115,6 +115,7 @@ public sealed partial class MainWindow : Window
                 receiverState = receiverState with { Connecting = false, ProblemCode = receiverFaulted ? receiverState.ProblemCode : null };
             if (notice.ListeningEndpoints is not null)
             {
+                AddressFeedback.Text = "";
                 localAddresses.Clear();
                 localAddresses.UnionWith([IPAddress.Loopback, IPAddress.IPv6Loopback]);
                 foreach (var endpoint in notice.ListeningEndpoints) localAddresses.Add(EndpointText.Parse(endpoint).Address);
@@ -140,17 +141,18 @@ public sealed partial class MainWindow : Window
         return lease;
     }
 
-    private Task StartReceiverAsync(int? port = null)
+    private Task StartReceiverAsync(int port = 0)
     {
         if (closing || receiver is not null) return Task.CompletedTask;
         receiverState = new();
+        AddressFeedback.Text = "";
         receiverFaulted = false;
         var generation = ++receiverGeneration;
         ReceiverServer? candidate = null;
         try
         {
             candidate = new(Environment.MachineName, video, notice => OnReceiverNotice(notice, generation),
-                port ?? (isolated ? 0 : ListeningPort), isolated ? IPAddress.Loopback : IPAddress.Any, AcquireReceiving);
+                port, isolated ? IPAddress.Loopback : IPAddress.Any, AcquireReceiving, instanceId);
             candidate.Start(advertise: !isolated);
             receiver = candidate;
             if (isolated)
@@ -159,7 +161,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception error) when (error is SocketException or ArgumentException or NetworkInformationException)
         {
-            return HandleStartFailureAsync(candidate, error, port ?? ListeningPort);
+            return HandleStartFailureAsync(candidate, error, port);
         }
         Render();
         return Task.CompletedTask;
@@ -177,7 +179,9 @@ public sealed partial class MainWindow : Window
             OnReceiverNotice(new("Cleanup failed", $"Listener startup failed: {error.Message}. Cleanup also failed: {cleanupError}"), generation);
             return;
         }
-        OnReceiverNotice(new("Start failed", $"{error.Message} Close other receivers using TCP {port}, then reopen RedrainCast. Sending remains available."), generation);
+        var guidance = port == 0 ? "Windows could not allocate a TCP listener. Check network permissions, then reopen RedrainCast." :
+            $"Close other receivers using TCP {port}, then reopen RedrainCast.";
+        OnReceiverNotice(new("Start failed", $"{error.Message} {guidance} Sending remains available."), generation);
     }
 
     private async Task StopReceiverAsync()
@@ -220,6 +224,7 @@ public sealed partial class MainWindow : Window
     }
 
     private bool IsSelf(ReceiverEndpoint endpoint) =>
+        endpoint.InstanceId == instanceId ||
         receiver is not null && localAddresses.Contains(endpoint.Address) && endpoint.Port == receiver.Port;
 
     private bool CanSend => !closing && !picking && receiverState.ProblemCode != "Cleanup failed" &&
@@ -443,7 +448,7 @@ public sealed partial class MainWindow : Window
 
     private async void ManualConnect_Click(object sender, RoutedEventArgs args)
     {
-        var input = new TextBox { Header = "Receiver IP : Port", PlaceholderText = "192.168.1.42 : 27184" };
+        var input = new TextBox { Header = "Receiver IP : Port", PlaceholderText = "192.168.1.42 : 50432" };
         var errorLabel = new TextBlock { TextWrapping = TextWrapping.Wrap };
         var content = new StackPanel { Spacing = 12 };
         content.Children.Add(input);
@@ -555,8 +560,9 @@ public sealed partial class MainWindow : Window
                         "Incoming casts are accepted automatically. While receiving, this window shows only video. " +
                         "Enter or F toggles fullscreen; Esc leaves fullscreen. End the cast from the sender to return home.\n\n" +
                         "While sending, receiving is paused. Use Stop in the active receiver's row to automatically resume receiving.\n\n" +
-                        "Allow RedrainCast through Windows Firewall on trusted Private networks. TCP 27184 carries casts; UDP 27183 discovers receivers. " +
-                        "Traffic is not authenticated or encrypted. Do not expose these ports to the internet.",
+                        "Windows assigns each receiver an available TCP port. Use the current IP : Port shown by that receiver; it may change after listening restarts. UDP 27183 discovers receivers.\n\n" +
+                        "Allow the application through Windows Firewall on trusted Private networks, not just a fixed TCP port. " +
+                        "Traffic is not authenticated or encrypted. Do not expose listening ports to the internet.",
                     TextWrapping = TextWrapping.Wrap
                 },
                 CloseButtonText = "Close"
@@ -623,6 +629,7 @@ public sealed partial class MainWindow : Window
                 throw new InvalidOperationException("Endpoint display/copy formatting is incorrect.");
             checks.Add("Displayed endpoints contain spaces; clipboard values are canonical.");
             var original = receiver.Port;
+            var retiredSelf = new ReceiverEndpoint(IPAddress.Loopback, original, "Retired self", false, instanceId);
             await InitializeAsync();
             if (receiver.Port != original) throw new InvalidOperationException("Startup opened a second listener.");
             using (var lease = roles.TryAcquire(CastRole.Sending) ?? throw new InvalidOperationException("Could not reserve sending."))
@@ -640,11 +647,12 @@ public sealed partial class MainWindow : Window
             using var connection = new TcpClient();
             await connection.ConnectAsync(IPAddress.Loopback, receiver.Port);
             checks.Add("Outgoing role closes the listener; release restarts a responsive listener.");
-            discovered = [new(IPAddress.Loopback, receiver.Port, "Self", false), new(IPAddress.Parse("192.0.2.1"), 27184, "Other", false)];
+            discovered = [retiredSelf, new(IPAddress.Loopback, receiver.Port, "Self", false, instanceId),
+                new(IPAddress.Loopback, receiver.Port == 65535 ? 65534 : receiver.Port + 1, "Other", false, Guid.NewGuid().ToString("N"))];
             RenderDevices();
             if (ReceiverList.ItemsSource is not ReceiverRow[] devices || devices.Length != 1 || devices[0].Name != "Other")
                 throw new InvalidOperationException("Discovery listed this app as its own target.");
-            checks.Add("Nearby list excludes this app's own listener.");
+            checks.Add("Nearby list excludes current/retired self identities but retains a different local app instance.");
             AppWindow.Resize(new Windows.Graphics.SizeInt32(760, 740));
             await Task.Delay(150);
             if (Grid.GetRow(ReceiveCard) != 1) throw new InvalidOperationException("Narrow layout did not stack the cards.");

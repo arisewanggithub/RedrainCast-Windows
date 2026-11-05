@@ -50,6 +50,7 @@ public sealed partial class MainWindow
                 while (true)
                 {
                     var message = await Wire.ReadAsync(stream, timeout.Token);
+                    if (message.Type != MessageType.VideoFrame) Diagnostic($"Inline peer control: {message.Type}");
                     switch (message.Type)
                     {
                         case MessageType.StreamConfig:
@@ -104,6 +105,11 @@ public sealed partial class MainWindow
                 if (outgoing is not null || receiver is null || ReadinessTitle.Text != "READY" ||
                     ReceiverList.ItemsSource is not ReceiverRow[] idle || idle.Any(row => row.IsActive))
                     throw new InvalidOperationException("Session cleanup did not remove the manual row and restore receiving.");
+            }
+            catch (Exception error)
+            {
+                Diagnostic($"Inline session check failed: {error}");
+                throw;
             }
             finally
             {

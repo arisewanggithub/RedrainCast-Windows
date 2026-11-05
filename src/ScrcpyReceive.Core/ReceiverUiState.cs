@@ -51,7 +51,7 @@ public sealed record ReceiverUiState
 
     public string ProblemMessage => ProblemCode switch
     {
-        "Start failed" => "Could not open the receiver. Close any other receiver using this port, then reopen this app.",
+        "Start failed" => "Could not open a receiver listener. Check network permissions, then reopen this app.",
         "Listener failed" or "Cleanup failed" => "The receiver could not continue safely. Close and reopen this app.",
         "Discovery warning" => "Automatic discovery may be unavailable. Enter this PC's address manually on the sender.",
         "Discovery failed" => Addresses.Count == 0

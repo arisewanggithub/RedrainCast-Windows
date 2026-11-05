@@ -20,11 +20,11 @@ public static class EndpointText
         var value = text.Trim();
         var separator = value.LastIndexOf(':');
         if (separator <= 0)
-            throw new ArgumentException("Enter an IP : Port, for example 192.168.1.42 : 27184.");
+            throw new ArgumentException("Enter the receiver's current IP : Port, for example 192.168.1.42 : 50432.");
         var host = value[..separator].Trim();
         if (host.StartsWith('[') && host.EndsWith(']')) host = host[1..^1];
         else if (host.Contains(':'))
-            throw new ArgumentException("Enclose IPv6 addresses in brackets, for example [fe80::1] : 27184.");
+            throw new ArgumentException("Enclose IPv6 addresses in brackets, for example [fe80::1] : 50432.");
         var input = ManualReceiverInput.Parse(host, value[(separator + 1)..]);
         var endpoint = input.Endpoint ?? throw new ArgumentException(string.Join(" ",
             new[] { input.AddressError, input.PortError }.OfType<string>()));

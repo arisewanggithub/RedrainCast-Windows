@@ -35,9 +35,14 @@ public static class Discovery
                     entry.Adapter.Name);
             }).DistinctBy(item => item.Address).OrderBy(item => item.Address.ToString(), StringComparer.Ordinal).ToArray();
 
-    public static byte[] Advertisement(string name, int port, bool busy) =>
-        JsonSerializer.SerializeToUtf8Bytes(new
+    public static byte[] Advertisement(string name, int port, bool busy, string? instanceId = null)
+    {
+        var fields = new Dictionary<string, object>
         {
-            protocol = "screencopy", version = Wire.Version, name, port, state = busy ? "busy" : "available"
-        });
+            ["protocol"] = "screencopy", ["version"] = Wire.Version, ["name"] = name,
+            ["port"] = port, ["state"] = busy ? "busy" : "available"
+        };
+        if (instanceId is not null) fields["instanceId"] = instanceId;
+        return JsonSerializer.SerializeToUtf8Bytes(fields);
+    }
 }

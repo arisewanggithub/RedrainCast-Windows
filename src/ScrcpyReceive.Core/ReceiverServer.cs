@@ -12,6 +12,7 @@ public sealed class ReceiverServer : IAsyncDisposable
 {
     private readonly object gate = new();
     private readonly string name;
+    private readonly string instanceId;
     private readonly IPlaybackFactory factory;
     private readonly TcpListener listener;
     private readonly CancellationTokenSource lifetime = new();
@@ -24,23 +25,35 @@ public sealed class ReceiverServer : IAsyncDisposable
     private Task? shutdownTask;
     private bool started;
     private bool stopped;
+    private int boundPort;
 
     public ReceiverServer(string name, IPlaybackFactory factory, Action<ReceiverNotice> notify,
-        int port = 27184, IPAddress? bindAddress = null, Func<IDisposable?>? acquireSession = null)
+        int port = 0, IPAddress? bindAddress = null, Func<IDisposable?>? acquireSession = null, string? instanceId = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(port);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(port, 65535);
         if (name.Length is < 1 or > 80 || name.Any(char.IsControl))
             throw new ArgumentException("Receiver name requires 1..80 characters without controls.", nameof(name));
         this.name = name;
+        this.instanceId = instanceId is null ? Guid.NewGuid().ToString("N") :
+            Guid.TryParse(instanceId, out var identity) ? identity.ToString("N") :
+            throw new ArgumentException("Receiver instance ID must be a UUID.", nameof(instanceId));
         this.factory = factory;
         this.notify = notify;
         this.acquireSession = acquireSession;
         listener = new TcpListener(bindAddress ?? IPAddress.Any, port);
     }
 
-    public int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
+    public int Port
+    {
+        get
+        {
+            var port = Volatile.Read(ref boundPort);
+            return port > 0 ? port : throw new InvalidOperationException("The listener has not bound a TCP port.");
+        }
+    }
     public bool IsBusy { get { lock (gate) return active is not null; } }
+    public byte[] Advertisement => Discovery.Advertisement(name, Port, IsBusy, instanceId);
 
     public void Start(bool advertise = true)
     {
@@ -48,6 +61,7 @@ public sealed class ReceiverServer : IAsyncDisposable
         {
             if (started || stopped) throw new InvalidOperationException("Create a fresh listener for each start.");
             listener.Start(32);
+            boundPort = ((IPEndPoint)listener.LocalEndpoint).Port;
             started = true;
             acceptTask = Task.Run(AcceptAsync);
             discoveryTask = advertise ? Task.Run(AdvertiseAsync) : Task.CompletedTask;
@@ -153,7 +167,7 @@ public sealed class ReceiverServer : IAsyncDisposable
                     notify(new("Listening", "UDP discovery targets: " +
                         string.Join(", ", addresses.Select(item => $"{item.Address} -> {Discovery.DisplayEndpoint(item.Broadcast, Discovery.Port)}"))));
                 }
-                var bytes = Discovery.Advertisement(name, Port, IsBusy);
+                var bytes = Advertisement;
                 await broadcaster.PublishAsync(addresses, bytes, lifetime.Token);
             } while (await timer.WaitForNextTickAsync(lifetime.Token));
         }

@@ -21,7 +21,8 @@ the first submission.
    privacy policy URL, description, screenshots, support details and notes.
    This repository does not submit or publish automatically.
 5. Certification notes should describe the two-device trusted-LAN setup,
-   automatic incoming acceptance, TCP 27184/UDP 27183 firewall requirements,
+   automatic incoming acceptance, OS-assigned TCP listener ports, fixed UDP 27183
+   discovery and application-based Private-network firewall permissions,
    hardware codec requirements, and automatic receive/send role switching.
    Do not claim compatibility with generic Miracast/Google Cast receivers.
 

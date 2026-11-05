@@ -6,7 +6,7 @@ using System.Globalization;
 
 namespace ScrcpySend.Core;
 
-public sealed record ReceiverEndpoint(IPAddress Address, int Port, string Name, bool Busy)
+public sealed record ReceiverEndpoint(IPAddress Address, int Port, string Name, bool Busy, string? InstanceId = null)
 {
     public string Key => $"{Address}:{Port}";
     public override string ToString() => $"{Name} - {Address} : {Port}{(Busy ? " (busy)" : "")}";
@@ -113,7 +113,18 @@ public sealed class DiscoveryTable
         var state = StrictJson.String(json, "state", 16);
         if (name.Length == 0 || port is < 1 or > 65535 || state is not ("available" or "busy"))
             throw new ProtocolException("Invalid discovery fields.");
-        var endpoint = new ReceiverEndpoint(source, port, name, state == "busy");
+        string? instanceId = null;
+        if (json.TryGetProperty("instanceId", out _))
+        {
+            var value = StrictJson.String(json, "instanceId", 80);
+            if (!Guid.TryParse(value, out var identity)) throw new ProtocolException("Invalid receiver instance ID.");
+            instanceId = identity.ToString("N");
+            foreach (var key in entries.Where(item => item.Value.Endpoint.InstanceId == instanceId &&
+                         item.Value.Endpoint.Address.Equals(source) && item.Value.Endpoint.Port != port)
+                         .Select(item => item.Key).ToArray())
+                entries.Remove(key);
+        }
+        var endpoint = new ReceiverEndpoint(source, port, name, state == "busy", instanceId);
         if (!entries.ContainsKey(endpoint.Key) && entries.Count >= 64) return false;
         entries[endpoint.Key] = (endpoint, now);
         return true;
@@ -136,11 +147,13 @@ public sealed class DiscoveryTable
 public sealed class ReceiverDiscovery
 {
     public async Task RunAsync(Action<IReadOnlyList<ReceiverEndpoint>> changed,
-        Action<string> diagnostic, CancellationToken cancellationToken)
+        Action<string> diagnostic, CancellationToken cancellationToken, int port = 27183)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(port);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(port, 65535);
         using var socket = new UdpClient(AddressFamily.InterNetwork);
         socket.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-        socket.Client.Bind(new IPEndPoint(IPAddress.Any, 27183));
+        socket.Client.Bind(new IPEndPoint(IPAddress.Any, port));
         var table = new DiscoveryTable();
         var receive = socket.ReceiveAsync(cancellationToken).AsTask();
         var tick = Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);

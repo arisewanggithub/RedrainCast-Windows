@@ -23,9 +23,10 @@ Send and receive screens in one native Windows application. Windows 11 22H2+,
 - Receiving is paused while connecting/sending. The inline Stop action, a remote stop,
   or a handled outgoing failure automatically restores the listener.
   READY appears only after listening succeeds and a network address is known.
-- If another receiver owns TCP 27184, the receive panel reports the bind error
-  without pretending to be ready. Sending remains usable. Close that other
-  receiver yourself and reopen RedrainCast to receive; this app never stops it.
+- Windows assigns each listener an available TCP port atomically. Multiple app
+  instances can receive independently without competing for a fixed TCP port.
+  The current port is displayed and advertised; it may change after listening
+  restarts. Manual connections must use the receiver's current IP : Port.
 - Incoming/outgoing setup races have one atomic winner; additional sessions
   cannot evict an active cast. This app excludes its own listener from discovery.
 - Settings retain maximum dimensions, FPS, bitrate, codec, orientation and audio.
@@ -37,8 +38,15 @@ Send and receive screens in one native Windows application. Windows 11 22H2+,
 
 **Trusted local networks only.** Incoming casts require no approval and custom
 TCP/discovery are unauthenticated and unencrypted. Use a trusted Private network
-and appropriate Windows Firewall rules. Do not expose TCP 27184 or UDP 27183 to
-the internet. Network access does not grant remote mouse/keyboard control.
+and application-based Windows Firewall rules. TCP listener ports are OS-assigned;
+UDP 27183 remains the sender's known discovery listening port. Do not expose
+either to the internet. Network access does not grant remote mouse/keyboard control.
+
+An optional protocol-v3 `instanceId` UUID identifies a receiver across port
+changes. New peers replace old advertisements from that instance on the same IP,
+and each app filters its own identity without hiding other local app instances.
+Legacy advertisements without an ID remain supported and expire normally.
+This identifier is not authentication.
 
 The receive engine supports hardware H.264, HEVC and AV1, up to 60 FPS, with
 optional PCM/AAC/Opus audio. The send engine uses Windows Graphics Capture,
@@ -103,9 +111,9 @@ in a user-local cache. No native compiler or network-transport library is needed
 It does not install drivers or change system PATH.
 
 ```powershell
-.\tools\Publish.ps1 -Architecture arm64 -Version 0.1.4
+.\tools\Publish.ps1 -Architecture arm64 -Version 0.1.5
 .\tools\Package.ps1 -Architecture arm64 -PublishedDirectory .\artifacts\win-arm64 `
-  -OutputDirectory .\artifacts\msix-arm64 -Version 0.1.4.0
+  -OutputDirectory .\artifacts\msix-arm64 -Version 0.1.5.0
 ```
 
 Publication/package output directories must be new or empty. Packaging checks
