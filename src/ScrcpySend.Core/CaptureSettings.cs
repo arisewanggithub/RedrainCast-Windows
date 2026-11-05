@@ -6,7 +6,7 @@ namespace ScrcpySend.Core;
 public sealed record CaptureSettings(int MaxSize = 1920, int MaxFps = 60, int VideoBitrate = 8_000_000,
     bool EnableAudio = false, string ReceiverOrientation = "auto", string VideoCodec = "h264")
 {
-    public static IReadOnlyList<int> FpsPresets { get; } = Array.AsReadOnly<int>([15, 24, 25, 30, 50, 60, 90, 120]);
+    public static IReadOnlyList<int> FpsPresets { get; } = Array.AsReadOnly<int>([15, 24, 25, 30, 48, 50, 60, 90, 120]);
 
     public void Validate()
     {

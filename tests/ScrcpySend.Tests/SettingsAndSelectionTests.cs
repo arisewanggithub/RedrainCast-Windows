@@ -141,8 +141,8 @@ public sealed class SettingsAndSelectionTests
     public void NewSettingsDefaultTo60AndSavedCustomOrExistingRatesArePreserved()
     {
         Assert.Equal(60, new CaptureSettings().MaxFps);
-        Assert.Equal(new[] { 15, 24, 25, 30, 50, 60, 90, 120 }, CaptureSettings.FpsPresets);
-        foreach (var fps in new[] { 27, 30, 60, 90, 120 })
+        Assert.Equal(new[] { 15, 24, 25, 30, 48, 50, 60, 90, 120 }, CaptureSettings.FpsPresets);
+        foreach (var fps in new[] { 27, 30, 48, 60, 90, 120 })
         {
             var settings = new CaptureSettings(MaxFps: fps);
             settings.Validate();

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using RedrainCast.Core;
 using ScrcpySend.Core;
@@ -15,6 +16,11 @@ public sealed partial class MainWindow
         long presented = 0;
         var hardwareSurfaces = 0;
         var videoOnly = false;
+        var enteredFullscreen = false;
+        var originalPresenter = AppWindow.Presenter;
+        var originalPosition = AppWindow.Position;
+        var originalSize = AppWindow.Size;
+        var originalWindowState = (originalPresenter as OverlappedPresenter)?.State;
         Task? sender = null;
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         try
@@ -32,8 +38,16 @@ public sealed partial class MainWindow
             presented = video.PresentedFrames;
             hardwareSurfaces = video.HardwareSurfaceCount;
             videoOnly = HomePage.Visibility == Visibility.Collapsed && roles.Role == CastRole.Receiving;
+            enteredFullscreen = AppWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen;
             if (!videoOnly || hardwareSurfaces == 0)
                 throw new InvalidOperationException("Incoming cast did not show hardware-decoded video without the home controls.");
+            if (!enteredFullscreen)
+                throw new InvalidOperationException("Incoming playback did not automatically enter fullscreen.");
+            AppWindow.SetPresenter(originalPresenter);
+            Render();
+            if (AppWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen)
+                throw new InvalidOperationException("A manual fullscreen exit was overridden during playback.");
+            AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
         }
         catch (Exception error) { failure = error.ToString(); }
         finally
@@ -54,12 +68,18 @@ public sealed partial class MainWindow
             Render();
             if (HomePage.Visibility != Visibility.Visible || ReadinessTitle.Text != "READY" || video.KeepsDisplayAwake)
                 throw new InvalidOperationException("Ending reception did not restore the ready home and release media resources.");
+            if (AppWindow.Presenter.Kind != originalPresenter.Kind ||
+                (AppWindow.Presenter as OverlappedPresenter)?.State != originalWindowState ||
+                AppWindow.Position != originalPosition || AppWindow.Size != originalSize)
+                throw new InvalidOperationException("Ending reception did not restore the previous window presentation, position and size.");
         }
         catch (Exception error) { failure = $"{failure}\nCleanup: {error}"; }
         await File.WriteAllTextAsync(reportFile, JsonSerializer.Serialize(new
         {
             passed = failure is null, failure, presentedFrames = presented, hardwareSurfaces,
             receivingShowsVideoOnly = videoOnly, restoredReadyHome = ReadinessTitle.Text == "READY",
+            enteredFullscreen, restoredWindow = AppWindow.Presenter.Kind == originalPresenter.Kind &&
+                AppWindow.Position == originalPosition && AppWindow.Size == originalSize,
             detached = !video.IsAttached, syntheticOnly = true, physicalDeviceTested = false, diagnostics
         }, new JsonSerializerOptions { WriteIndented = true }));
     }

@@ -18,8 +18,9 @@ Send and receive screens in one native Windows application. Windows 11 22H2+,
 - Choose a display or window to share, or connect by a numeric IP and TCP port.
   Manual input accepts spaced endpoints and bracketed IPv6 addresses.
 - Incoming casts are accepted automatically. Once a real video frame is
-  presented, the entire client area displays video, not sending controls.
-  Enter/F toggles fullscreen; Esc exits fullscreen. End reception from the sender.
+  presented, playback enters fullscreen without sending controls. When playback
+  ends, the previous window presentation is restored.
+  Enter/F still toggles fullscreen; Esc exits fullscreen. End reception from the sender.
 - Receiving is paused while connecting/sending. The inline Stop action, a remote stop,
   or a handled outgoing failure automatically restores the listener.
   READY appears only after listening succeeds and a network address is known.
@@ -30,6 +31,8 @@ Send and receive screens in one native Windows application. Windows 11 22H2+,
 - Incoming/outgoing setup races have one atomic winner; additional sessions
   cannot evict an active cast. This app excludes its own listener from discovery.
 - Settings retain maximum dimensions, FPS, bitrate, codec, orientation and audio.
+  Maximum FPS uses a dropdown with 15, 24, 25, 30, 48, 50, 60 (default), 90 and 120.
+  Existing saved custom caps remain selectable; this receiver supports up to 60 FPS.
   Capture targets and active sessions are not persisted.
 - Narrow windows stack the two panels; light, dark and high-contrast themes
   follow Windows. Starting a cast brings its inline session controls into view.

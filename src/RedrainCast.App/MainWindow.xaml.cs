@@ -46,6 +46,7 @@ public sealed partial class MainWindow : Window
     private bool receiverFaulted;
     private bool discoveryFailed;
     private bool showingVideo;
+    private AppWindowPresenter? presenterBeforePlayback;
     private readonly string instanceId = Guid.NewGuid().ToString("N");
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RedrainCast", "settings.json");
@@ -277,11 +278,17 @@ public sealed partial class MainWindow : Window
         showingVideo = playing;
         HomePage.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
         PlayerInput.IsTabStop = playing;
-        if (playing) PlayerInput.Focus(FocusState.Programmatic);
+        if (playing)
+        {
+            presenterBeforePlayback = AppWindow.Presenter;
+            AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+            PlayerInput.Focus(FocusState.Programmatic);
+        }
         else
         {
-            if (AppWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen)
-                AppWindow.SetPresenter(AppWindowPresenterKind.Default);
+            if (presenterBeforePlayback is not null)
+                AppWindow.SetPresenter(presenterBeforePlayback);
+            presenterBeforePlayback = null;
             ChooseSource.Focus(FocusState.Programmatic);
         }
     }
@@ -492,7 +499,12 @@ public sealed partial class MainWindow : Window
     private async void Settings_Click(object sender, RoutedEventArgs args)
     {
         var size = new TextBox { Header = "Maximum dimension (64-3840 pixels)", Text = settings.MaxSize.ToString(CultureInfo.CurrentCulture) };
-        var fps = new TextBox { Header = "Maximum FPS (1-120; this receiver supports up to 60)", Text = settings.MaxFps.ToString(CultureInfo.CurrentCulture) };
+        var fps = new ComboBox
+        {
+            Header = "Maximum FPS (this receiver supports up to 60)",
+            ItemsSource = CaptureSettings.FpsPresets.Append(settings.MaxFps).Distinct().Order().ToArray(),
+            SelectedItem = settings.MaxFps, HorizontalAlignment = HorizontalAlignment.Stretch
+        };
         var bitrate = new TextBox { Header = "Video bitrate (0.1-100 Mbps)", Text = (settings.VideoBitrate / 1_000_000m).ToString(CultureInfo.CurrentCulture) };
         var codec = new ComboBox { Header = "Video codec", ItemsSource = new[] { "H.264", "HEVC", "AV1" },
             SelectedIndex = settings.VideoCodec switch { "h265" => 1, "av1" => 2, _ => 0 }, HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -513,7 +525,7 @@ public sealed partial class MainWindow : Window
             try
             {
                 var input = CaptureSettings.ParseInput(size.Text, bitrate.Text,
-                    int.TryParse(fps.Text, NumberStyles.None, CultureInfo.CurrentCulture, out var cap) ? cap : null,
+                    fps.SelectedItem is int cap ? cap : null,
                     new[] { "auto", "landscape", "portrait" }[orientation.SelectedIndex], CultureInfo.CurrentCulture,
                     new[] { "h264", "h265", "av1" }[codec.SelectedIndex], audio.IsChecked == true);
                 var next = input.Settings ?? throw new ArgumentException(string.Join(" ",
@@ -558,6 +570,7 @@ public sealed partial class MainWindow : Window
                 {
                     Text = "Open RedrainCast on both PCs. Choose a nearby receiver and Send, or enter its IP : Port manually.\n\n" +
                         "Incoming casts are accepted automatically. While receiving, this window shows only video. " +
+                        "Playback enters fullscreen automatically and restores the previous window when it ends. " +
                         "Enter or F toggles fullscreen; Esc leaves fullscreen. End the cast from the sender to return home.\n\n" +
                         "While sending, receiving is paused. Use Stop in the active receiver's row to automatically resume receiving.\n\n" +
                         "Windows assigns each receiver an available TCP port. Use the current IP : Port shown by that receiver; it may change after listening restarts. UDP 27183 discovers receivers.\n\n" +
@@ -590,7 +603,12 @@ public sealed partial class MainWindow : Window
         if (action == FullscreenAction.None) return;
         args.Handled = true;
         if (!args.KeyStatus.WasKeyDown)
-            AppWindow.SetPresenter(action == FullscreenAction.Enter ? AppWindowPresenterKind.FullScreen : AppWindowPresenterKind.Default);
+        {
+            if (action == FullscreenAction.Exit && presenterBeforePlayback is { Kind: not AppWindowPresenterKind.FullScreen })
+                AppWindow.SetPresenter(presenterBeforePlayback);
+            else
+                AppWindow.SetPresenter(action == FullscreenAction.Enter ? AppWindowPresenterKind.FullScreen : AppWindowPresenterKind.Default);
+        }
     }
 
     private async void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)
@@ -689,11 +707,31 @@ public sealed partial class MainWindow : Window
             await Task.Delay(150);
             if (currentDialog?.Content is not ScrollViewer { Content: StackPanel settingsPanel } ||
                 !settingsPanel.Children.OfType<ComboBox>().Select(combo => combo.Header?.ToString())
-                    .SequenceEqual(new[] { "Video codec", "Receiver orientation" }))
-                throw new InvalidOperationException("Sharing settings still expose a transport selector or lost the codec/orientation options.");
+                    .SequenceEqual(new[] { "Maximum FPS (this receiver supports up to 60)", "Video codec", "Receiver orientation" }))
+                throw new InvalidOperationException("Sharing settings lost the FPS/codec/orientation options or expose a transport selector.");
+            var fpsChoice = settingsPanel.Children.OfType<ComboBox>().First();
+            if (fpsChoice.IsEditable || !fpsChoice.Items.Cast<int>().SequenceEqual(CaptureSettings.FpsPresets) ||
+                fpsChoice.SelectedItem is not int defaultFps || defaultFps != 60)
+                throw new InvalidOperationException("The FPS dropdown must offer the common presets up to 120 and default to 60.");
+            fpsChoice.SelectedItem = 120;
+            if (fpsChoice.SelectedItem is not int selectedFps || selectedFps != 120)
+                throw new InvalidOperationException("The FPS dropdown could not select 120 FPS.");
             currentDialog.Hide();
-            await Task.Delay(50);
-            checks.Add("The actual Settings dialog offers codec/orientation options without a transport selector.");
+            using (var dialogClose = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                while (currentDialog is not null) await Task.Delay(25, dialogClose.Token);
+            var originalSettings = settings;
+            settings = settings with { MaxFps = 47 };
+            Settings_Click(SettingsButton, new RoutedEventArgs());
+            await Task.Delay(150);
+            if (currentDialog?.Content is not ScrollViewer { Content: StackPanel legacySettingsPanel } ||
+                legacySettingsPanel.Children.OfType<ComboBox>().First() is not { IsEditable: false, SelectedItem: int legacyFps } legacyFpsChoice ||
+                legacyFps != 47 || !legacyFpsChoice.Items.Cast<int>().SequenceEqual(CaptureSettings.FpsPresets.Append(47).Order()))
+                throw new InvalidOperationException("The FPS dropdown did not preserve the saved custom cap alongside the common presets.");
+            currentDialog.Hide();
+            using (var dialogClose = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                while (currentDialog is not null) await Task.Delay(25, dialogClose.Token);
+            settings = originalSettings;
+            checks.Add("Settings offer a non-editable common-FPS dropdown defaulting to 60, allow 120, preserve saved custom caps, and retain codec/orientation without a transport selector.");
             var captureTargets = CaptureSource.Enumerate();
             if (!captureTargets.Any(target => !target.IsWindow) ||
                 !captureTargets.Any(target => target.IsWindow && target.Handle == WinRT.Interop.WindowNative.GetWindowHandle(this)))
