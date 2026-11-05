@@ -22,6 +22,22 @@ public sealed class QueueAndTrackTests
     }
 
     [Fact]
+    public async Task VideoCannotConsumeTheReservedAudioBudget()
+    {
+        using var queue = new ReceiveQueue(1024, audioReserveBytes: 256);
+        var video = Media(0, size: 768);
+        queue.Add(video);
+        Assert.Equal("CONGESTION", Assert.Throws<ProtocolException>(() => queue.Add(Media(1, size: 4))).Code);
+        var audio = Media(0, track: 2, size: 256);
+        queue.Add(audio);
+        Assert.Same(audio, await queue.TakeAsync(2, default));
+        queue.Complete(audio);
+        Assert.Same(video, await queue.TakeAsync(1, default));
+        queue.Complete(video);
+        queue.Add(Media(1, size: 768));
+    }
+
+    [Fact]
     public async Task QueueIsFifoAndRestoresBudgetOnRemoval()
     {
         using var queue = new ReceiveQueue();

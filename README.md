@@ -95,8 +95,34 @@ receiving AAC/Opus audio remains supported. There is no transport selector,
 alternate transport backend or MP4 muxer. Old settings selecting an unsupported
 transport report an explicit load error; open Settings and save to replace them.
 Legacy TCP settings retain their existing sharing values.
+
+Each cast opens three TCP connections to the same OS-assigned receiver port:
+control (bidirectional), video and audio (sender to receiver). The audio connection
+stays idle when audio is disabled. Media configuration travels on its matching
+media connection; readiness, heartbeat and Stop acknowledgements stay on control.
+Independent socket readers/writers keep a blocked video transfer from directly
+blocking audio or control. All connections still share available network bandwidth.
+Timestamps, not cross-socket arrival order, synchronize audio and video.
+
+The control connection negotiates the session first. `SESSION_ACCEPT` includes
+a random 256-bit `mediaToken`. Control remains responsive while media connections
+attach, so a receiver Stop cancels setup and is acknowledged before cleanup.
+Each media connection starts with a `HELLO` using
+the accepted session ID and `{ role: "media", channel: "video" | "audio", token }`.
+The receiver acknowledges the matching channel before media starts, rejects
+unknown/duplicate attachments, and waits for both media connections. Losing any
+connection retires the whole session; stopping closes all three. The token pairs
+sockets only: it is not user authentication and traffic remains unencrypted.
+This replaces the previous single-connection layout without a legacy fallback;
+both peers must use this layout even though SCPY framing remains version 3.
+An attachment matching a session that is stopping is rejected with
+`SESSION_ENDED` and that session's ID. Only this rejection may be treated as
+normal cleanup after an acknowledged receiver Stop; malformed replies, unrelated
+rejections and connection failures remain visible errors.
+
 Discovery is IPv4; manual destinations also support IPv6.
-Android interoperability requires a compatible protocol-v3 companion, not
+Android interoperability requires a companion implementing this three-connection
+layout and protocol-v3 framing, not
 Miracast, Google Cast or an arbitrary smart TV receiver.
 
 ## Build and test
@@ -114,9 +140,9 @@ in a user-local cache. No native compiler or network-transport library is needed
 It does not install drivers or change system PATH.
 
 ```powershell
-.\tools\Publish.ps1 -Architecture arm64 -Version 0.1.5
+.\tools\Publish.ps1 -Architecture arm64 -Version 0.1.6
 .\tools\Package.ps1 -Architecture arm64 -PublishedDirectory .\artifacts\win-arm64 `
-  -OutputDirectory .\artifacts\msix-arm64 -Version 0.1.5.0
+  -OutputDirectory .\artifacts\msix-arm64 -Version 0.1.6.0
 ```
 
 Publication/package output directories must be new or empty. Packaging checks
@@ -139,8 +165,10 @@ RedrainCast.App.exe --media-self-test `
   C:\temp\redrain-media.json
 ```
 
-Media self-tests transmit labeled synthetic content over real TCP through the
-sender protocol, receiver admission, hardware decoder and WinUI video surface.
+Media self-tests transmit labeled synthetic video and silent stereo PCM over
+the three TCP connections through receiver admission, the hardware decoder,
+WinUI video surface and actual audio playback. They require at least five video
+frames and 4,800 played audio frames, and verify fullscreen entry/restoration.
 They are not a substitute for testing two physical devices and real audio.
 The color self-test uses synthetic HDR/SDR patches and diagnostic-only pixel
 readback to check GPU lookup interpolation within 2 RGB code values, NV12

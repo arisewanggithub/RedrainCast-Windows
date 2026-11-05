@@ -8,6 +8,39 @@ namespace ScrcpySend.Tests;
 
 public sealed class SessionTests
 {
+    private sealed class MediaPeers(TcpClient video, TcpClient audio) : IDisposable
+    {
+        public NetworkStream Video => video.GetStream();
+        public NetworkStream Audio => audio.GetStream();
+        public void Dispose() { video.Dispose(); audio.Dispose(); }
+    }
+
+    private static async Task<MediaPeers> AcceptMedia(TcpListener listener, NetworkStream control, long session,
+        CancellationToken token, bool audio = false)
+    {
+        var mediaToken = new string('A', 64);
+        await Wire.WriteAsync(control, Message.Control(MessageType.SessionAccept, session,
+            new { tracks = audio ? new[] { 1, 2 } : [1], mediaToken }), token);
+        var video = await listener.AcceptTcpClientAsync(token);
+        TcpClient? sound = null;
+        try
+        {
+            foreach (var channel in new[] { "video", "audio" })
+            {
+                var client = channel == "video" ? video : sound = await listener.AcceptTcpClientAsync(token);
+                var hello = await Wire.ReadAsync(client.GetStream(), token);
+                Assert.Equal(MessageType.Hello, hello.Type);
+                Assert.Equal(session, hello.Session);
+                Assert.Equal("media", StrictJson.String(hello.Json(), "role", 16));
+                Assert.Equal(channel, StrictJson.String(hello.Json(), "channel", 16));
+                Assert.Equal(mediaToken, StrictJson.String(hello.Json(), "token", 64));
+                await Wire.WriteAsync(client.GetStream(), Message.Control(MessageType.Hello, session, new { channel }), token);
+            }
+            return new(video, sound!);
+        }
+        catch { video.Dispose(); sound?.Dispose(); throw; }
+    }
+
     private sealed class Audio : IAudioSource
     {
         public bool Started, Muted, Disposed;
@@ -39,10 +72,10 @@ public sealed class SessionTests
             using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
             var stream = peer.GetStream();
             var request = await Handshake(stream, timeout.Token);
-            await Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, request.Session,
-                new { tracks = audioEnabled ? new[] { 1, 2 } : [1] }), timeout.Token);
-            for (var index = 0; index < (audioEnabled ? 2 : 1); index++)
-                Assert.Equal(MessageType.StreamConfig, (await Wire.ReadAsync(stream, timeout.Token)).Type);
+            using var media = await AcceptMedia(listener, stream, request.Session, timeout.Token, audioEnabled);
+            Assert.Equal(MessageType.StreamConfig, (await Wire.ReadAsync(media.Video, timeout.Token)).Type);
+            if (audioEnabled)
+                Assert.Equal(MessageType.StreamConfig, (await Wire.ReadAsync(media.Audio, timeout.Token)).Type);
             if (audioEnabled)
                 await Wire.WriteAsync(stream, new(MessageType.StreamReady, request.Session, 1, 1, -1, 0, """{"ok":true}"""u8.ToArray()), timeout.Token);
             stop.Cancel();
@@ -54,6 +87,193 @@ public sealed class SessionTests
             Assert.True(source.Disposed);
             if (audio != null) { Assert.False(audio.Started); Assert.True(audio.Disposed); }
         }
+    [Theory]
+    [InlineData("video", false, false)]
+    [InlineData("audio", false, false)]
+    [InlineData("video", true, false)]
+    [InlineData("audio", true, false)]
+    [InlineData("video", false, true)]
+    [InlineData("audio", false, true)]
+    [InlineData("video", true, true)]
+    [InlineData("audio", true, true)]
+    public async Task ReceiverStopDuringMediaAssociationIsAcknowledgedWithoutStartingCapture(
+        string channel, bool rejectAttachment, bool probeControl)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var source = new Source();
+        var audio = new Audio();
+        var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
+            ((IPEndPoint)listener.LocalEndpoint).Port, "Test", false),
+            new(EnableAudio: true), source, _ => { }, default, audio);
+        using var control = await listener.AcceptTcpClientAsync(timeout.Token);
+        var stream = control.GetStream();
+        var request = await Handshake(stream, timeout.Token);
+        await Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, request.Session,
+            new { tracks = new[] { 1, 2 }, mediaToken = new string('A', 64) }), timeout.Token);
+        using var video = await listener.AcceptTcpClientAsync(timeout.Token);
+        Assert.Equal(MessageType.Hello, (await Wire.ReadAsync(video.GetStream(), timeout.Token)).Type);
+        TcpClient? sound = null;
+        try
+        {
+            if (channel == "audio")
+            {
+                await Wire.WriteAsync(video.GetStream(), Message.Control(MessageType.Hello, request.Session,
+                    new { channel = "video" }), timeout.Token);
+                sound = await listener.AcceptTcpClientAsync(timeout.Token);
+                Assert.Equal(MessageType.Hello, (await Wire.ReadAsync(sound.GetStream(), timeout.Token)).Type);
+            }
+            if (probeControl)
+            {
+                await Wire.WriteAsync(stream, Message.Control(MessageType.Ping, request.Session, new { nonce = 42 }), timeout.Token);
+                Assert.Equal(MessageType.Pong, (await Wire.ReadAsync(stream, timeout.Token)).Type);
+            }
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            await Wire.WriteAsync(stream, Message.Control(MessageType.Stop, request.Session,
+                new { reason = "receiver stopped during setup" }), timeout.Token);
+            if (rejectAttachment)
+                await Wire.WriteAsync((sound ?? video).GetStream(), Message.Control(MessageType.Reject, request.Session,
+                    new { code = "SESSION_ENDED", message = "Receiver is ending this media session." }), timeout.Token);
+            Message ended;
+            do
+            {
+                ended = await Wire.ReadAsync(stream, timeout.Token);
+                Assert.True(ended.Type is MessageType.Stop or MessageType.SessionEnd);
+            } while (ended.Type == MessageType.Stop);
+            Assert.Equal(MessageType.SessionEnd, ended.Type);
+            Assert.Equal("receiver stopped during setup", StrictJson.String(ended.Json(), "reason", 1024));
+            await run.WaitAsync(TimeSpan.FromSeconds(2), timeout.Token);
+            Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2));
+            Assert.False(source.Started);
+            Assert.True(source.Disposed);
+            Assert.False(audio.Started);
+            Assert.False(audio.Muted);
+            Assert.True(audio.Disposed);
+        }
+        finally { sound?.Dispose(); }
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, true)]
+    public async Task AssociationFailureOrLocalCancelRetiresTheAcceptedSession(
+        bool reject, bool attachVideoFirst, bool endingRejection)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var stop = new CancellationTokenSource();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var source = new Source();
+        var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
+            ((IPEndPoint)listener.LocalEndpoint).Port, "Test", false),
+            new(), source, _ => { }, stop.Token);
+        using var control = await listener.AcceptTcpClientAsync(timeout.Token);
+        var stream = control.GetStream();
+        var request = await Handshake(stream, timeout.Token);
+        await Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, request.Session,
+            new { tracks = new[] { 1 }, mediaToken = new string('A', 64) }), timeout.Token);
+        using var video = await listener.AcceptTcpClientAsync(timeout.Token);
+        _ = await Wire.ReadAsync(video.GetStream(), timeout.Token);
+        TcpClient? sound = null;
+        try
+        {
+            if (attachVideoFirst)
+            {
+                await Wire.WriteAsync(video.GetStream(), Message.Control(MessageType.Hello, request.Session,
+                    new { channel = "video" }), timeout.Token);
+                sound = await listener.AcceptTcpClientAsync(timeout.Token);
+                _ = await Wire.ReadAsync(sound.GetStream(), timeout.Token);
+            }
+            if (reject)
+                await Wire.WriteAsync((sound ?? video).GetStream(), Message.Control(MessageType.Reject, request.Session,
+                    new { code = endingRejection ? "SESSION_ENDED" : "PROTOCOL", message = "Synthetic attachment rejection" }), timeout.Token);
+            else stop.Cancel();
+            Assert.Equal(MessageType.Stop, (await Wire.ReadAsync(stream, timeout.Token)).Type);
+            await Wire.WriteAsync(stream, Message.Control(MessageType.SessionEnd, request.Session,
+                new { reason = "accepted session retired" }), timeout.Token);
+            if (reject)
+            {
+                var error = await Assert.ThrowsAsync<IOException>(() => run.WaitAsync(timeout.Token));
+                Assert.Contains("Synthetic attachment rejection", error.Message);
+            }
+            else await run.WaitAsync(timeout.Token);
+            Assert.False(source.Started);
+            Assert.True(source.Disposed);
+        }
+        finally { sound?.Dispose(); }
+    }
+
+    [Theory]
+    [InlineData("video", "channel")]
+    [InlineData("audio", "channel")]
+    [InlineData("video", "session")]
+    [InlineData("audio", "session")]
+    [InlineData("video", "type")]
+    [InlineData("audio", "type")]
+    [InlineData("video", "rejection")]
+    [InlineData("audio", "rejection")]
+    [InlineData("video", "wrong-session-ended")]
+    [InlineData("audio", "wrong-session-ended")]
+    [InlineData("video", "eof")]
+    [InlineData("audio", "eof")]
+    public async Task ReceiverStopDoesNotHideGenuineAssociationFailures(string channel, string failure)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var source = new Source();
+        var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
+            ((IPEndPoint)listener.LocalEndpoint).Port, "Test", false), new(), source, _ => { }, default);
+        using var control = await listener.AcceptTcpClientAsync(timeout.Token);
+        var stream = control.GetStream();
+        var request = await Handshake(stream, timeout.Token);
+        await Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, request.Session,
+            new { tracks = new[] { 1 }, mediaToken = new string('A', 64) }), timeout.Token);
+        using var video = await listener.AcceptTcpClientAsync(timeout.Token);
+        _ = await Wire.ReadAsync(video.GetStream(), timeout.Token);
+        TcpClient? sound = null;
+        try
+        {
+            if (channel == "audio")
+            {
+                await Wire.WriteAsync(video.GetStream(), Message.Control(MessageType.Hello, request.Session,
+                    new { channel = "video" }), timeout.Token);
+                sound = await listener.AcceptTcpClientAsync(timeout.Token);
+                _ = await Wire.ReadAsync(sound.GetStream(), timeout.Token);
+            }
+            var socket = sound ?? video;
+            if (failure == "eof") socket.Client.Shutdown(SocketShutdown.Send);
+            else
+            {
+                var reply = failure switch
+                {
+                    "rejection" => Message.Control(MessageType.Reject, request.Session,
+                        new { code = "PROTOCOL", message = "Unrelated attachment rejection" }),
+                    "wrong-session-ended" => Message.Control(MessageType.Reject, request.Session + 1,
+                        new { code = "SESSION_ENDED", message = "Another session ended" }),
+                    _ => Message.Control(failure == "type" ? MessageType.Status : MessageType.Hello,
+                        failure == "session" ? request.Session + 1 : request.Session,
+                        new { channel = failure == "channel" ? "wrong" : channel })
+                };
+                await Wire.WriteAsync(socket.GetStream(), reply, timeout.Token);
+            }
+            Assert.Equal(MessageType.Stop, (await Wire.ReadAsync(stream, timeout.Token)).Type);
+            await Wire.WriteAsync(stream, Message.Control(MessageType.Stop, request.Session,
+                new { reason = "receiver stopped after malformed attachment" }), timeout.Token);
+            Assert.Equal(MessageType.SessionEnd, (await Wire.ReadAsync(stream, timeout.Token)).Type);
+            var error = await Assert.ThrowsAsync<IOException>(() => run.WaitAsync(timeout.Token));
+            Assert.NotNull(error.InnerException);
+            Assert.False(source.Started);
+            Assert.True(source.Disposed);
+        }
+        finally { sound?.Dispose(); }
+    }
+
     private sealed class LargeSource : IVideoSource
     {
         public string EncoderName => "Test hardware";
@@ -136,13 +356,13 @@ public sealed class SessionTests
         var stream = socket.GetStream();
         var request = await Handshake(stream, timeout.Token);
         Assert.False(source.Started);
-        await Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, request.Session, new { tracks = new[] { 1 } }), timeout.Token);
-        var config = await Wire.ReadAsync(stream, timeout.Token);
+        using var media = await AcceptMedia(listener, stream, request.Session, timeout.Token);
+        var config = await Wire.ReadAsync(media.Video, timeout.Token);
         Assert.Equal(MessageType.StreamConfig, config.Type);
         Assert.True(source.Started);
-        Assert.False(stream.DataAvailable);
+        Assert.False(media.Video.DataAvailable);
         await Wire.WriteAsync(stream, new(MessageType.StreamReady, request.Session, 1, 1, -1, 0, """{"ok":true}"""u8.ToArray()), timeout.Token);
-        var frame = await Wire.ReadAsync(stream, timeout.Token);
+        var frame = await Wire.ReadAsync(media.Video, timeout.Token);
         Assert.Equal(MessageType.VideoFrame, frame.Type);
         Assert.Equal(1u, frame.Flags);
         stop.Cancel();
@@ -186,8 +406,8 @@ public sealed class SessionTests
         using var socket = await listener.AcceptTcpClientAsync(timeout.Token);
         var stream = socket.GetStream();
         var request = await Handshake(stream, timeout.Token);
-        await Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, request.Session, new { tracks = new[] { 1 } }), timeout.Token);
-        Assert.Equal(MessageType.StreamConfig, (await Wire.ReadAsync(stream, timeout.Token)).Type);
+        using var media = await AcceptMedia(listener, stream, request.Session, timeout.Token);
+        Assert.Equal(MessageType.StreamConfig, (await Wire.ReadAsync(media.Video, timeout.Token)).Type);
         await Wire.WriteAsync(stream, Message.Control(MessageType.Stop, request.Session, new { reason = "receiver user" }), timeout.Token);
         var ended = await Wire.ReadAsync(stream, timeout.Token);
         Assert.Equal(MessageType.SessionEnd, ended.Type);
@@ -208,8 +428,8 @@ public sealed class SessionTests
         using var socket = await listener.AcceptTcpClientAsync(timeout.Token);
         var stream = socket.GetStream();
         var request = await Handshake(stream, timeout.Token);
-        await Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, request.Session, new { tracks = new[] { 1 } }), timeout.Token);
-        Assert.Equal(MessageType.StreamConfig, (await Wire.ReadAsync(stream, timeout.Token)).Type);
+        using var media = await AcceptMedia(listener, stream, request.Session, timeout.Token);
+        Assert.Equal(MessageType.StreamConfig, (await Wire.ReadAsync(media.Video, timeout.Token)).Type);
         await Wire.WriteAsync(stream, new(MessageType.StreamReady, request.Session, 1, 2, -1, 0, """{"ok":true}"""u8.ToArray()), timeout.Token);
         var error = await Assert.ThrowsAsync<IOException>(() => run.WaitAsync(timeout.Token));
         Assert.Contains("readiness", error.Message);
@@ -245,16 +465,18 @@ public sealed class SessionTests
         Assert.True(request.Json().GetProperty("audio").GetProperty("enabled").GetBoolean());
         Assert.Equal("raw", request.Json().GetProperty("audio").GetProperty("codec").GetString());
         Assert.False(audio.Muted);
-        await Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, request.Session, new { tracks = new[] { 1, 2 } }), timeout.Token);
-        for (var index = 0; index < 2; index++)
-            Assert.Equal(MessageType.StreamConfig, (await Wire.ReadAsync(stream, timeout.Token)).Type);
+        using var media = await AcceptMedia(listener, stream, request.Session, timeout.Token, audio: true);
+        Assert.Equal(MessageType.StreamConfig, (await Wire.ReadAsync(media.Video, timeout.Token)).Type);
+        Assert.Equal(MessageType.StreamConfig, (await Wire.ReadAsync(media.Audio, timeout.Token)).Type);
         await Wire.WriteAsync(stream, new(MessageType.StreamReady, request.Session, 1, 1, -1, 0, """{"ok":true}"""u8.ToArray()), timeout.Token);
         await Task.Delay(40, timeout.Token);
         Assert.False(audio.Muted);
-        Assert.False(stream.DataAvailable);
+        Assert.False(media.Video.DataAvailable);
+        Assert.False(media.Audio.DataAvailable);
         await Wire.WriteAsync(stream, new(MessageType.StreamReady, request.Session, 2, 1, -1, 0, """{"ok":true}"""u8.ToArray()), timeout.Token);
         var types = new HashSet<MessageType>();
-        for (var index = 0; index < 2; index++) types.Add((await Wire.ReadAsync(stream, timeout.Token)).Type);
+        types.Add((await Wire.ReadAsync(media.Video, timeout.Token)).Type);
+        types.Add((await Wire.ReadAsync(media.Audio, timeout.Token)).Type);
         Assert.Contains(MessageType.VideoFrame, types);
         Assert.Contains(MessageType.AudioPacket, types);
         Assert.True(audio.Muted);
@@ -304,16 +526,20 @@ public sealed class SessionTests
         socket.ReceiveBufferSize = 4096;
         var stream = socket.GetStream();
         var request = await Handshake(stream, timeout.Token);
-        await Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, request.Session, new { tracks = new[] { 1 } }), timeout.Token);
-        Assert.Equal(MessageType.StreamConfig, (await Wire.ReadAsync(stream, timeout.Token)).Type);
+        using var media = await AcceptMedia(listener, stream, request.Session, timeout.Token);
+        Assert.Equal(MessageType.StreamConfig, (await Wire.ReadAsync(media.Video, timeout.Token)).Type);
         await Wire.WriteAsync(stream, new(MessageType.StreamReady, request.Session, 1, 1, -1, 0, """{"ok":true}"""u8.ToArray()), timeout.Token);
         var header = new byte[Wire.HeaderSize];
-        await stream.ReadExactlyAsync(header, timeout.Token);
+        await media.Video.ReadExactlyAsync(header, timeout.Token);
         Assert.Equal(4u * 1024 * 1024, System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(8)));
         var watch = System.Diagnostics.Stopwatch.StartNew();
         if (pingBeforeStop)
             await Wire.WriteAsync(stream, Message.Control(MessageType.Ping, request.Session, new { nonce = 42 }), timeout.Token);
         await Wire.WriteAsync(stream, Message.Control(MessageType.Stop, request.Session, new { reason = "receiver user" }), timeout.Token);
+        Message response;
+        do { response = await Wire.ReadAsync(stream, timeout.Token); }
+        while (response.Type == MessageType.Pong);
+        Assert.Equal(MessageType.SessionEnd, response.Type);
         await run.WaitAsync(TimeSpan.FromSeconds(3), timeout.Token);
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(3));
         Assert.True(source.Disposed);
@@ -331,8 +557,8 @@ public sealed class SessionTests
         using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
         var stream = peer.GetStream();
         var request = await Handshake(stream, timeout.Token);
-        await Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, request.Session, new { tracks = new[] { 1 } }), timeout.Token);
-        Assert.Equal(MessageType.StreamConfig, (await Wire.ReadAsync(stream, timeout.Token)).Type);
+        using var media = await AcceptMedia(listener, stream, request.Session, timeout.Token);
+        Assert.Equal(MessageType.StreamConfig, (await Wire.ReadAsync(media.Video, timeout.Token)).Type);
         foreach (var nonce in new[] { 42, 43 })
             await Wire.WriteAsync(stream, Message.Control(MessageType.Ping, request.Session, new { nonce }), timeout.Token);
         foreach (var nonce in new[] { 42, 43 })
@@ -344,6 +570,66 @@ public sealed class SessionTests
         await Wire.WriteAsync(stream, Message.Control(MessageType.Stop, request.Session, new { reason = "receiver user" }), timeout.Token);
         Assert.Equal(MessageType.SessionEnd, (await Wire.ReadAsync(stream, timeout.Token)).Type);
         await run.WaitAsync(timeout.Token);
+        Assert.True(source.Disposed);
+    }
+
+    [Fact]
+    public async Task BackpressuredVideoDoesNotBlockAudioPongOrAcknowledgedLocalStop()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var stop = new CancellationTokenSource();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Server.ReceiveBufferSize = 4096;
+        listener.Start();
+        var source = new LargeSource();
+        var audio = new Audio();
+        var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
+            ((IPEndPoint)listener.LocalEndpoint).Port, "Test", false),
+            new(EnableAudio: true), source, _ => { }, stop.Token, audio);
+        using var control = await listener.AcceptTcpClientAsync(timeout.Token);
+        var stream = control.GetStream();
+        var request = await Handshake(stream, timeout.Token);
+        using var media = await AcceptMedia(listener, stream, request.Session, timeout.Token, audio: true);
+        Assert.Equal(MessageType.StreamConfig, (await Wire.ReadAsync(media.Video, timeout.Token)).Type);
+        Assert.Equal(MessageType.StreamConfig, (await Wire.ReadAsync(media.Audio, timeout.Token)).Type);
+        foreach (var track in new[] { 1u, 2u })
+            await Wire.WriteAsync(stream, new(MessageType.StreamReady, request.Session, track, 1, -1, 0,
+                """{"ok":true}"""u8.ToArray()), timeout.Token);
+        var header = new byte[Wire.HeaderSize];
+        await media.Video.ReadExactlyAsync(header, timeout.Token);
+        Assert.Equal(4u * 1024 * 1024, System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(8)));
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        Assert.Equal(MessageType.AudioPacket, (await Wire.ReadAsync(media.Audio, timeout.Token)).Type);
+        await Wire.WriteAsync(stream, Message.Control(MessageType.Ping, request.Session, new { nonce = 42 }), timeout.Token);
+        Assert.Equal(MessageType.Pong, (await Wire.ReadAsync(stream, timeout.Token)).Type);
+        stop.Cancel();
+        Assert.Equal(MessageType.Stop, (await Wire.ReadAsync(stream, timeout.Token)).Type);
+        await Wire.WriteAsync(stream, Message.Control(MessageType.SessionEnd, request.Session, new { reason = "user" }), timeout.Token);
+        await run.WaitAsync(TimeSpan.FromSeconds(3), timeout.Token);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(3));
+        Assert.True(source.Disposed);
+        Assert.True(audio.Disposed);
+        Assert.False(audio.Muted);
+    }
+
+    [Theory]
+    [InlineData("video")]
+    [InlineData("audio")]
+    public async Task ClosingEitherMediaConnectionRetiresTheWholeSender(string channel)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var source = new Source();
+        var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
+            ((IPEndPoint)listener.LocalEndpoint).Port, "Test", false), new(), source, _ => { }, default);
+        using var control = await listener.AcceptTcpClientAsync(timeout.Token);
+        var request = await Handshake(control.GetStream(), timeout.Token);
+        using var media = await AcceptMedia(listener, control.GetStream(), request.Session, timeout.Token);
+        Assert.Equal(MessageType.StreamConfig, (await Wire.ReadAsync(media.Video, timeout.Token)).Type);
+        (channel == "video" ? media.Video : media.Audio).Dispose();
+        var error = await Assert.ThrowsAsync<IOException>(() => run.WaitAsync(timeout.Token));
+        Assert.Contains(channel, error.Message, StringComparison.OrdinalIgnoreCase);
         Assert.True(source.Disposed);
     }
 }

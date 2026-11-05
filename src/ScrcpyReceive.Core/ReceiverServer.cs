@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace ScrcpyReceive.Core;
@@ -83,7 +84,7 @@ public sealed class ReceiverServer : IAsyncDisposable
                     if (connections.Count >= 32)
                     {
                         client.Dispose();
-                        notify(new("Connection limit", "At most 32 control connections are allowed."));
+                        notify(new("Connection limit", "At most 32 TCP connections are allowed, including control and media."));
                         continue;
                     }
                     connection = new Connection(this, client);
@@ -132,6 +133,7 @@ public sealed class ReceiverServer : IAsyncDisposable
                 if (lease is null) return false;
                 connection.SessionLease = lease;
             }
+
             active = connection;
             return true;
         }
@@ -226,7 +228,8 @@ public sealed class ReceiverServer : IAsyncDisposable
         private readonly ReceiveDiagnostics receive = new();
         private readonly ReceiverActivity activity = new();
         private readonly TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        // Reserve the remaining encoded budget for the managed/native in-progress packet.
+        private readonly TaskCompletionSource mediaAttached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Reserve the remaining encoded budget for in-progress packets on both media sockets.
         private ReceiveQueue queue = new(4 * 1024 * 1024);
         private long session;
         private long lastInput = Environment.TickCount64;
@@ -236,6 +239,10 @@ public sealed class ReceiverServer : IAsyncDisposable
         private bool accepted;
         private bool disposed;
         private int stopping;
+        private readonly string mediaToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        private readonly Connection?[] mediaChannels = new Connection?[2];
+        private uint mediaTrack;
+        private IPlayback? playbackForMedia;
         public Task Completion { get; set; } = Task.CompletedTask;
 
         public Connection(ReceiverServer owner, TcpClient client)
@@ -245,6 +252,28 @@ public sealed class ReceiverServer : IAsyncDisposable
             stream = client.GetStream();
             cancellation = CancellationTokenSource.CreateLinkedTokenSource(owner.lifetime.Token);
             playbackCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token);
+        }
+
+        private Connection AttachMedia(Packet hello)
+        {
+            var json = hello.Object();
+            var kind = JsonObject.Text(json, "channel", 16);
+            JsonObject.Require(kind is "video" or "audio", "Expected a video or audio channel.");
+            var token = JsonObject.Text(json, "token", 64);
+            lock (owner.gate)
+            {
+                var target = owner.active;
+                if (target is null || !target.accepted || hello.Session != target.session || token != target.mediaToken)
+                    throw new ProtocolException("Unknown or retired media session.");
+                if (target.cancellation.IsCancellationRequested || Volatile.Read(ref target.stopping) != 0)
+                    throw new ProtocolException("Receiver is ending this media session.", "SESSION_ENDED");
+                var track = kind == "video" ? 1u : 2u;
+                JsonObject.Require(target.mediaChannels[track - 1] is null, "Duplicate media channel.");
+                mediaTrack = track;
+                target.mediaChannels[track - 1] = this;
+                if (target.mediaChannels.All(channel => channel is not null)) target.mediaAttached.TrySetResult();
+                return target;
+            }
         }
 
         private async Task SendAsync(Packet packet, CancellationToken extraCancellation = default)
@@ -287,8 +316,16 @@ public sealed class ReceiverServer : IAsyncDisposable
                 using var setup = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token);
                 setup.CancelAfter(TimeSpan.FromSeconds(10));
                 var hello = await ReadAsync(setup.Token);
-                JsonObject.Require(hello.Type == PacketType.Hello && hello.Session == 0, "HELLO required first.");
+                JsonObject.Require(hello.Type == PacketType.Hello, "HELLO required first.");
                 var json = hello.Object();
+                if (JsonObject.Text(json, "role") == "media")
+                {
+                    session = hello.Session;
+                    var target = AttachMedia(hello);
+                    await target.ReadMediaAsync(this, setup.Token);
+                    return;
+                }
+                JsonObject.Require(hello.Session == 0, "Control HELLO requires session zero.");
                 JsonObject.Require(JsonObject.Text(json, "role") == "sender", "Sender role required.");
                 var peerName = JsonObject.Text(json, "name");
                 JsonObject.Require(peerName.Length > 0 && !peerName.Any(char.IsControl), "Invalid sender name.");
@@ -342,12 +379,14 @@ public sealed class ReceiverServer : IAsyncDisposable
                 if (request.AudioCodec is not null)
                 {
                     queue.Dispose();
-                    queue = new ReceiveQueue(4 * 1024 * 1024 - 256 * 1024);
+                    queue = new ReceiveQueue(4 * 1024 * 1024 - 256 * 1024, audioReserveBytes: 256 * 1024);
                 }
                 playback = await owner.factory.OpenAsync(request, setup.Token);
+                playbackForMedia = playback;
                 expectedTracks = request.Tracks.Length;
-                await SendAsync(Packet.Control(PacketType.SessionAccept, session, new { tracks = request.Tracks }), setup.Token);
                 accepted = true;
+                await SendAsync(Packet.Control(PacketType.SessionAccept, session,
+                    new { tracks = request.Tracks, mediaToken }), setup.Token);
                 Interlocked.Exchange(ref startup, Environment.TickCount64);
                 owner.notify(new("Initializing", $"{request.VideoCodec}, {request.AudioCodec ?? "audio off"}"));
                 var trackState = new TrackState(request);
@@ -365,20 +404,7 @@ public sealed class ReceiverServer : IAsyncDisposable
                         case PacketType.StreamConfig:
                         case PacketType.VideoFrame:
                         case PacketType.AudioPacket:
-                            var handlingAt = Environment.TickCount64;
-                            activity.Begin(ReceiverOperation.Admission,
-                                $"{packet.Type} track={packet.Track} generation={packet.Generation} bytes={packet.Payload.Length}");
-                            try
-                            {
-                                await queue.AddAsync(packet, cancellation.Token);
-                                if (Wire.IsMedia(packet.Type)) playback.Observe(packet);
-                            }
-                            finally
-                            {
-                                activity.Complete(ReceiverOperation.Admission);
-                                receive.Handled(Environment.TickCount64 - handlingAt);
-                            }
-                            break;
+                            throw new ProtocolException("Media and configuration require their dedicated connections.");
                         case PacketType.Ping:
                             await SendAsync(Packet.Control(PacketType.Pong, session, new { nonce = JsonObject.Number(packet.Object(), "nonce") }));
                             break;
@@ -435,11 +461,62 @@ public sealed class ReceiverServer : IAsyncDisposable
             {
                 cancellation.Cancel();
                 client.Dispose();
+                Connection[] channels;
+                lock (owner.gate) channels = mediaChannels.OfType<Connection>().ToArray();
+                foreach (var channel in channels) channel.Abort();
+                await Task.WhenAll(channels.Select(channel => channel.Completion));
                 if (pump is not null) await pump;
                 if (watchdog is not null) await watchdog;
                 try { if (playback is not null) await playback.DisposeAsync(); }
                 catch (Exception error) { owner.notify(new("Cleanup failed", $"{error.GetType().Name}: {error.Message}")); }
                 finally { ended.TrySetResult(); }
+            }
+        }
+
+        private async Task ReadMediaAsync(Connection channel, CancellationToken setup)
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token, channel.cancellation.Token);
+            try
+            {
+                await channel.SendAsync(Packet.Control(PacketType.Hello, session,
+                    new { channel = channel.mediaTrack == 1 ? "video" : "audio" }), setup);
+                await mediaAttached.Task.WaitAsync(linked.Token);
+                while (true)
+                {
+                    var packet = await channel.ReadAsync(linked.Token);
+                    if (Volatile.Read(ref stopping) != 0) continue;
+                    JsonObject.Require(packet.Session == session && packet.Track == channel.mediaTrack &&
+                        (packet.Type == PacketType.StreamConfig ||
+                         packet.Type == (channel.mediaTrack == 1 ? PacketType.VideoFrame : PacketType.AudioPacket)),
+                        "Packet does not belong to this media channel.");
+                    JsonObject.Require(channel.mediaTrack == 1 || expectedTracks == 2, "Audio was not enabled.");
+                    var handlingAt = Environment.TickCount64;
+                    channel.activity.Begin(ReceiverOperation.Admission,
+                        $"{packet.Type} track={packet.Track} generation={packet.Generation} bytes={packet.Payload.Length}");
+                    try
+                    {
+                        await queue.AddAsync(packet, linked.Token);
+                        if (Wire.IsMedia(packet.Type)) playbackForMedia?.Observe(packet);
+                    }
+                    finally
+                    {
+                        channel.activity.Complete(ReceiverOperation.Admission);
+                        channel.receive.Handled(Environment.TickCount64 - handlingAt);
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+            catch (Exception error)
+            {
+                if (!cancellation.IsCancellationRequested && Volatile.Read(ref stopping) == 0)
+                {
+                    var code = error is ProtocolException protocol ? protocol.Code :
+                        error is OperationCanceledException ? "TIMEOUT" :
+                        error is IOException or SocketException ? "PROTOCOL" : "INTERNAL";
+                    await FailAsync(new ProtocolException(
+                        $"{(channel.mediaTrack == 1 ? "Video" : "Audio")} connection failed: {error.Message}", code), playbackForMedia);
+                    Abort();
+                }
             }
         }
 
@@ -451,8 +528,11 @@ public sealed class ReceiverServer : IAsyncDisposable
             {
                 available = $"unavailable({error.GetType().Name})";
             }
+            Connection[] channels;
+            lock (owner.gate) channels = mediaChannels.OfType<Connection>().ToArray();
             return $"socketAvailableBytes={available}; {TcpSocketDiagnostics.Read(client.Client)}; " +
                 $"{activity.Diagnostics}; {receive.Diagnostics}; {queue.Diagnostics}" +
+                string.Concat(channels.Select(channel => $" channel={channel.mediaTrack} [{channel.activity.Diagnostics}; {channel.receive.Diagnostics}]")) +
                 (playback is null ? "" : $" {playback.Diagnostics}");
         }
 

@@ -9,6 +9,12 @@ namespace ScrcpySend.Core;
 
 public sealed class SenderSession
 {
+    private sealed class ReceiverRejectionException(string code, string message, long session) : IOException($"{code}: {message}")
+    {
+        public string Code { get; } = code;
+        public long Session { get; } = session;
+    }
+
     public async Task RunAsync(ReceiverEndpoint endpoint, CaptureSettings settings, IVideoSource source,
         Action<string> state, CancellationToken stopToken, IAudioSource? audio = null)
     {
@@ -35,16 +41,19 @@ public sealed class SenderSession
         if (settings.EnableAudio != (audio != null))
             throw new NotSupportedException("Enabled audio requires a receiver-only audio source; audio cannot silently disappear.");
         using var client = new TcpClient(endpoint.Address.AddressFamily) { NoDelay = true };
+        using var videoClient = new TcpClient(endpoint.Address.AddressFamily) { NoDelay = true };
+        using var audioClient = new TcpClient(endpoint.Address.AddressFamily) { NoDelay = true };
         using var lifetime = new CancellationTokenSource();
         using var capture = CancellationTokenSource.CreateLinkedTokenSource(stopToken, lifetime.Token);
         using var startup = CancellationTokenSource.CreateLinkedTokenSource(capture.Token);
         using var writeGate = new SemaphoreSlim(1);
         var session = RandomNumberGenerator.GetInt32(1, int.MaxValue);
         NetworkStream? stream = null;
+        NetworkStream? videoStream = null, audioStream = null;
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         long lastRead = Stopwatch.GetTimestamp();
-        Task? reader = null, heartbeat = null, audioPump = null, controlPump = null;
+        Task? reader = null, heartbeat = null, audioPump = null, controlPump = null, videoMonitor = null, audioMonitor = null;
         var controls = Channel.CreateBounded<Message>(new BoundedChannelOptions(64)
         {
             SingleReader = true, FullMode = BoundedChannelFullMode.Wait
@@ -57,21 +66,48 @@ public sealed class SenderSession
         var expectedMask = settings.EnableAudio ? 6 : 2;
         var failureCode = "CAPTURE_FAILED";
         var remoteStopping = 0;
+        var localStopping = 0;
+        var mediaAssociated = false;
+        Exception? associationFailure = null;
 
         async Task Send(Message message, CancellationToken token)
         {
+            var media = message.Type is MessageType.StreamConfig or MessageType.VideoFrame or MessageType.AudioPacket;
+            var destination = media ? message.Track == 1 ? videoStream! : audioStream! : stream!;
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
             deadline.CancelAfter(TimeSpan.FromSeconds(10));
-            await writeGate.WaitAsync(deadline.Token);
-            try { await Wire.WriteAsync(stream!, message, deadline.Token); }
+            if (!media) await writeGate.WaitAsync(deadline.Token);
+            try { await Wire.WriteAsync(destination, message, deadline.Token); }
             catch (Exception error)
             {
-                brokenWrite = true;
+                if (!media) brokenWrite = true;
                 if (error is OperationCanceledException && !token.IsCancellationRequested && !lifetime.IsCancellationRequested)
                     throw new TimeoutException("TCP writer exceeded its 10-second deadline.", error);
                 throw;
             }
-            finally { writeGate.Release(); }
+            finally { if (!media) writeGate.Release(); }
+        }
+
+        async Task<NetworkStream> ConnectMedia(TcpClient mediaClient, string channel, string token, CancellationToken cancellation)
+        {
+            await mediaClient.ConnectAsync(endpoint.Address, endpoint.Port, cancellation);
+            var mediaStream = mediaClient.GetStream();
+            await Wire.WriteAsync(mediaStream, Message.Control(MessageType.Hello, session,
+                new { role = "media", channel, token }), cancellation);
+            var reply = await Wire.ReadAsync(mediaStream, cancellation);
+            if (reply.Type == MessageType.Reject) ThrowRejected(reply);
+            if (reply.Type != MessageType.Hello || reply.Session != session ||
+                StrictJson.String(reply.Json(), "channel", 16) != channel)
+                throw new ProtocolException($"Receiver did not attach the {channel} connection.");
+            return mediaStream;
+        }
+
+        async Task WatchMedia(NetworkStream mediaStream, string channel)
+        {
+            var buffer = new byte[1];
+            var count = await mediaStream.ReadAsync(buffer, capture.Token);
+            throw new IOException(count == 0 ? $"Receiver closed the {channel} connection." :
+                $"Unexpected data on the receiver's {channel} connection.");
         }
 
         async Task ReadControls()
@@ -137,12 +173,11 @@ public sealed class SenderSession
                             }
                         }
                         ended.TrySetResult();
-                        lifetime.Cancel();
-                        client.Close();
+                        // Let the owner retire media writes before closing their sockets.
                         return;
                     case MessageType.SessionEnd:
                         _ = StrictJson.String(json, "reason", 1024);
-                        if (!stopToken.IsCancellationRequested) throw new ProtocolException("Unexpected SESSION_END.");
+                        if (Volatile.Read(ref localStopping) == 0) throw new ProtocolException("Unexpected SESSION_END.");
                         ended.TrySetResult();
                         return;
                     default:
@@ -208,7 +243,7 @@ public sealed class SenderSession
         try
         {
             state("Connecting");
-            using (var setup = CancellationTokenSource.CreateLinkedTokenSource(stopToken))
+            using (var setup = CancellationTokenSource.CreateLinkedTokenSource(capture.Token))
             {
                 setup.CancelAfter(TimeSpan.FromSeconds(10));
                 await client.ConnectAsync(endpoint.Address, endpoint.Port, setup.Token);
@@ -234,12 +269,20 @@ public sealed class SenderSession
                     !tracks.EnumerateArray().All(item => item.ValueKind == JsonValueKind.Number) ||
                     !tracks.EnumerateArray().Select(item => item.GetInt32()).Order().SequenceEqual(settings.EnableAudio ? [1, 2] : [1]))
                     throw new ProtocolException("Receiver did not accept exactly the requested TCP tracks.");
+                var mediaToken = StrictJson.String(json, "mediaToken", 64);
+                if (mediaToken.Length != 64 || !mediaToken.All(Uri.IsHexDigit))
+                    throw new ProtocolException("Invalid media connection token.");
                 accepted = true;
                 Interlocked.Exchange(ref lastRead, Stopwatch.GetTimestamp());
+                controlPump = Monitor(WriteControls(), "INTERNAL");
+                reader = Monitor(ReadControls());
+                heartbeat = Monitor(Heartbeat());
+                videoStream = await ConnectMedia(videoClient, "video", mediaToken, setup.Token);
+                audioStream = await ConnectMedia(audioClient, "audio", mediaToken, setup.Token);
+                mediaAssociated = true;
             }
-            controlPump = Monitor(WriteControls(), "INTERNAL");
-            reader = Monitor(ReadControls());
-            heartbeat = Monitor(Heartbeat());
+            videoMonitor = Monitor(WatchMedia(videoStream!, "video"));
+            audioMonitor = Monitor(WatchMedia(audioStream!, "audio"), "AUDIO_FAILED");
             capture.Token.ThrowIfCancellationRequested();
             state("Initializing capture");
             startup.CancelAfter(TimeSpan.FromSeconds(10));
@@ -286,6 +329,8 @@ public sealed class SenderSession
         }
         catch (Exception error)
         {
+            if (accepted && !mediaAssociated && error is IOException or SocketException)
+                associationFailure = error;
             Interlocked.CompareExchange(ref terminal, error, null);
         }
         finally
@@ -300,7 +345,7 @@ public sealed class SenderSession
                 try
                 {
                     using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-                    if (terminal != null)
+                    if (terminal != null && associationFailure is null)
                     {
                         await Send(Message.Control(MessageType.Error, session,
                             new { code = failureCode, message = terminal.Message[..Math.Min(terminal.Message.Length, 2048)], fatal = true }),
@@ -308,7 +353,9 @@ public sealed class SenderSession
                     }
                     else
                     {
-                        await Send(Message.Control(MessageType.Stop, session, new { reason = "user" }), deadline.Token);
+                        Interlocked.Exchange(ref localStopping, 1);
+                        await Send(Message.Control(MessageType.Stop, session,
+                            new { reason = associationFailure is null ? "user" : "Media association failed" }), deadline.Token);
                         await ended.Task.WaitAsync(deadline.Token);
                     }
                 }
@@ -319,11 +366,20 @@ public sealed class SenderSession
             }
             lifetime.Cancel();
             client.Close();
+            videoClient.Close();
+            audioClient.Close();
             if (reader != null) await reader;
             if (heartbeat != null) await heartbeat;
             if (audioPump != null) await audioPump;
             if (controlPump != null) await controlPump;
+            if (videoMonitor != null) await videoMonitor;
+            if (audioMonitor != null) await audioMonitor;
         }
+        // Only an explicit rejection of this ending session can race a normal receiver Stop.
+        if (terminal is ReceiverRejectionException { Code: "SESSION_ENDED" } rejection && rejection.Session == session &&
+            ReferenceEquals(terminal, associationFailure) && Volatile.Read(ref remoteStopping) != 0 &&
+            ended.Task.IsCompletedSuccessfully)
+            terminal = null;
         if (terminal != null) throw new IOException(terminal.Message, terminal);
     }
 
@@ -340,6 +396,7 @@ public sealed class SenderSession
     private static void ThrowRejected(Message message)
     {
         var json = message.Json();
-        throw new IOException($"{StrictJson.String(json, "code", 80)}: {StrictJson.String(json, "message", 2048)}");
+        throw new ReceiverRejectionException(StrictJson.String(json, "code", 80),
+            StrictJson.String(json, "message", 2048), message.Session);
     }
 }

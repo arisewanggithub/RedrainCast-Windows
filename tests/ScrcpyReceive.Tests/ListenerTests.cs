@@ -12,9 +12,20 @@ public sealed class ListenerTests
     private static ReceiverServer Server(IPlaybackFactory? factory = null) =>
         new("Test receiver", factory ?? new UnavailablePlaybackFactory(), _ => { }, 0, IPAddress.Loopback);
 
-    private static async Task<TcpClient> ConnectAsync(ReceiverServer server)
+    private sealed class TestClient : TcpClient
     {
-        var client = new TcpClient { NoDelay = true };
+        public TcpClient Video { get; } = new() { NoDelay = true };
+        public TcpClient Audio { get; } = new() { NoDelay = true };
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) { Video.Dispose(); Audio.Dispose(); }
+            base.Dispose(disposing);
+        }
+    }
+
+    private static async Task<TestClient> ConnectAsync(ReceiverServer server)
+    {
+        var client = new TestClient { NoDelay = true };
         await client.ConnectAsync(IPAddress.Loopback, server.Port);
         return client;
     }
@@ -22,11 +33,26 @@ public sealed class ListenerTests
     private static async Task<Packet> ReadAsync(TcpClient client)
     {
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        return await Wire.ReadAsync(client.GetStream(), cancellation.Token);
+        var packet = await Wire.ReadAsync(client.GetStream(), cancellation.Token);
+        if (packet.Type == PacketType.SessionAccept && client is TestClient peer)
+        {
+            var endpoint = (IPEndPoint)client.Client.RemoteEndPoint!;
+            var token = JsonObject.Text(packet.Object(), "mediaToken", 64);
+            foreach (var (socket, channel) in new[] { (peer.Video, "video"), (peer.Audio, "audio") })
+            {
+                await socket.ConnectAsync(endpoint.Address, endpoint.Port, cancellation.Token);
+                await Wire.WriteAsync(socket.GetStream(), Packet.Control(PacketType.Hello, packet.Session,
+                    new { role = "media", channel, token }), cancellation.Token);
+                Assert.Equal(PacketType.Hello, (await Wire.ReadAsync(socket.GetStream(), cancellation.Token)).Type);
+            }
+        }
+        return packet;
     }
 
     private static Task SendAsync(TcpClient client, Packet packet) =>
-        Wire.WriteAsync(client.GetStream(), packet).AsTask();
+        Wire.WriteAsync(client is TestClient peer && packet.Type is
+            (PacketType.StreamConfig or PacketType.VideoFrame or PacketType.AudioPacket)
+                ? (packet.Track == 1 ? peer.Video : peer.Audio).GetStream() : client.GetStream(), packet).AsTask();
 
     private static async Task HelloAsync(TcpClient client)
     {
@@ -505,6 +531,139 @@ public sealed class ListenerTests
         try { await Task.Delay(250); }
         finally { release.TrySetResult(); }
         Assert.Equal(PacketType.SessionEnd, (await ReadAsync(client)).Type);
+    }
+
+    [Theory]
+    [InlineData("video")]
+    [InlineData("audio")]
+    public async Task ClosingEitherMediaChannelRetiresPlaybackAndReleasesTheSession(string channel)
+    {
+        var factory = new TestFactory();
+        await using var server = Server(factory);
+        server.Start(false);
+        using var peer = await ConnectAsync(server);
+        await HelloAsync(peer);
+        await RequestAsync(peer);
+        Assert.Equal(PacketType.SessionAccept, (await ReadAsync(peer)).Type);
+        (channel == "video" ? peer.Video : peer.Audio).Dispose();
+        var error = await ReadAsync(peer);
+        Assert.Equal(PacketType.Error, error.Type);
+        Assert.Contains(channel, JsonObject.Text(error.Object(), "message", 2048), StringComparison.OrdinalIgnoreCase);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        while (server.IsBusy) await Task.Delay(10, timeout.Token);
+        Assert.True(factory.Playback.Disposed);
+    }
+
+    [Theory]
+    [InlineData("token")]
+    [InlineData("session")]
+    [InlineData("duplicate")]
+    public async Task InvalidOrDuplicateMediaAttachmentDoesNotEvictTheActiveCast(string fault)
+    {
+        await using var server = Server(new TestFactory());
+        server.Start(false);
+        using var peer = await ConnectAsync(server);
+        await HelloAsync(peer);
+        await RequestAsync(peer);
+        var accepted = await ReadAsync(peer);
+        using var rogue = new TcpClient();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await rogue.ConnectAsync(IPAddress.Loopback, server.Port, timeout.Token);
+        await Wire.WriteAsync(rogue.GetStream(), Packet.Control(PacketType.Hello, fault == "session" ? 2 : 1,
+            new { role = "media", channel = "video", token = fault == "token" ? new string('0', 64) :
+                JsonObject.Text(accepted.Object(), "mediaToken", 64) }), timeout.Token);
+        Assert.Equal(PacketType.Reject, (await Wire.ReadAsync(rogue.GetStream(), timeout.Token)).Type);
+        Assert.True(server.IsBusy);
+        await SendAsync(peer, Packet.Control(PacketType.Ping, 1, new { nonce = 42 }));
+        Assert.Equal(PacketType.Pong, (await ReadAsync(peer)).Type);
+        await SendAsync(peer, Packet.Control(PacketType.Stop, 1, new { reason = "done" }));
+        Assert.Equal(PacketType.SessionEnd, (await ReadAsync(peer)).Type);
+    }
+
+    [Theory]
+    [InlineData("matching", "SESSION_ENDED")]
+    [InlineData("token", "PROTOCOL")]
+    [InlineData("session", "PROTOCOL")]
+    public async Task EndingSessionRejectionRequiresTheMatchingSessionAndToken(string attachment, string expectedCode)
+    {
+        await using var server = Server(new TestFactory());
+        server.Start(false);
+        using var peer = await ConnectAsync(server);
+        await HelloAsync(peer);
+        await RequestAsync(peer);
+        var accepted = await ReadAsync(peer);
+        var disconnect = server.DisconnectAsync();
+        Assert.Equal(PacketType.Stop, (await ReadAsync(peer)).Type);
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var media = new TcpClient();
+            await media.ConnectAsync(IPAddress.Loopback, server.Port, timeout.Token);
+            var requestedSession = attachment == "session" ? 2 : 1;
+            await Wire.WriteAsync(media.GetStream(), Packet.Control(PacketType.Hello, requestedSession,
+                new { role = "media", channel = "video", token = attachment == "token" ? new string('0', 64) :
+                    JsonObject.Text(accepted.Object(), "mediaToken", 64) }), timeout.Token);
+            var reply = await Wire.ReadAsync(media.GetStream(), timeout.Token);
+            Assert.Equal(PacketType.Reject, reply.Type);
+            Assert.Equal(requestedSession, reply.Session);
+            Assert.Equal(expectedCode, JsonObject.Text(reply.Object(), "code"));
+        }
+        finally
+        {
+            await SendAsync(peer, Packet.Control(PacketType.SessionEnd, 1, new { reason = "receiver stopped" }));
+            await disconnect.WaitAsync(TimeSpan.FromSeconds(3));
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task MediaOnTheWrongConnectionFailsExplicitly(bool control)
+    {
+        await using var server = Server(new TestFactory());
+        server.Start(false);
+        using var peer = await ConnectAsync(server);
+        await HelloAsync(peer);
+        await RequestAsync(peer, audio: true);
+        _ = await ReadAsync(peer);
+        await Wire.WriteAsync(control ? peer.GetStream() : peer.Audio.GetStream(), QueueAndTrackTests.Configuration());
+        var error = await ReadAsync(peer);
+        Assert.Equal(PacketType.Error, error.Type);
+        Assert.Equal("PROTOCOL", JsonObject.Text(error.Object(), "code"));
+    }
+
+    [Fact]
+    public async Task PartialVideoPacketDoesNotBlockAudioOrControl()
+    {
+        var factory = new TestFactory();
+        var audioPresented = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        factory.Playback.OnPresent = (packet, _) =>
+        {
+            if (packet.Track == 2) audioPresented.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
+        await using var server = Server(factory);
+        server.Start(false);
+        using var peer = await ConnectAsync(server);
+        await HelloAsync(peer);
+        await RequestAsync(peer, audio: true);
+        _ = await ReadAsync(peer);
+        foreach (var track in new[] { 1u, 2u })
+        {
+            await SendAsync(peer, QueueAndTrackTests.Configuration(track));
+            Assert.Equal(PacketType.StreamReady, (await ReadAsync(peer)).Type);
+        }
+        using var serialized = new MemoryStream();
+        await Wire.WriteAsync(serialized, QueueAndTrackTests.Media(0));
+        await peer.Video.GetStream().WriteAsync(serialized.ToArray().AsMemory(0, Wire.HeaderSize));
+        var watch = Stopwatch.StartNew();
+        await SendAsync(peer, QueueAndTrackTests.Media(0, track: 2));
+        await audioPresented.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await SendAsync(peer, Packet.Control(PacketType.Ping, 1, new { nonce = 42 }));
+        Assert.Equal(PacketType.Pong, (await ReadAsync(peer)).Type);
+        await SendAsync(peer, Packet.Control(PacketType.Stop, 1, new { reason = "done" }));
+        Assert.Equal(PacketType.SessionEnd, (await ReadAsync(peer)).Type);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2));
     }
 
     private sealed class TestPlayback : IPlayback, IVideoPlaybackProgress

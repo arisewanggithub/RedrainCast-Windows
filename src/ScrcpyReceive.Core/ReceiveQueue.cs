@@ -14,6 +14,8 @@ public sealed class ReceiveQueue : IDisposable
     private int controlBytes;
     private int controls;
     private readonly int maximumMediaBytes;
+    private readonly int audioReserveBytes;
+    private int videoBytes;
     private TaskCompletionSource space = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly long[] waitTotalUs = new long[2], waitMaximumUs = new long[2], mediaTaken = new long[2];
     public string Diagnostics
@@ -28,10 +30,13 @@ public sealed class ReceiveQueue : IDisposable
         }
     }
 
-    public ReceiveQueue(int maximumMediaBytes = MaximumBytes)
+    public ReceiveQueue(int maximumMediaBytes = MaximumBytes, int audioReserveBytes = 0)
     {
         if (maximumMediaBytes is <= 0 or > MaximumBytes) throw new ArgumentOutOfRangeException(nameof(maximumMediaBytes));
+        if (audioReserveBytes < 0 || audioReserveBytes >= maximumMediaBytes)
+            throw new ArgumentOutOfRangeException(nameof(audioReserveBytes));
         this.maximumMediaBytes = maximumMediaBytes;
+        this.audioReserveBytes = audioReserveBytes;
     }
 
     public void Add(Packet packet)
@@ -46,6 +51,8 @@ public sealed class ReceiveQueue : IDisposable
             {
                 JsonObject.Require(packet.Payload.Length <= maximumMediaBytes - mediaBytes,
                     $"Receiver media exceeds its {maximumMediaBytes}-byte queue budget.", "CONGESTION");
+                JsonObject.Require(packet.Track != 1 || packet.Payload.Length <= maximumMediaBytes - audioReserveBytes - videoBytes,
+                    "Receiver video exceeds its queue budget reserved for audio.", "CONGESTION");
                 var minimum = packet.PtsUs;
                 var maximum = packet.PtsUs;
                 foreach (var queued in packets.SelectMany(items => items).Select(entry => entry.Packet))
@@ -57,6 +64,7 @@ public sealed class ReceiveQueue : IDisposable
                 JsonObject.Require(maximum - minimum <= MaximumSpanUs,
                     $"Receiver track {packet.Track} queue exceeds 500 ms: min={minimum}, max={maximum}, bytes={mediaBytes}, entries={packets.Sum(items => items.Count)}.", "CONGESTION");
                 mediaBytes += packet.Payload.Length;
+                if (packet.Track == 1) videoBytes += packet.Payload.Length;
             }
             else
             {
@@ -131,7 +139,11 @@ public sealed class ReceiveQueue : IDisposable
             if (packet.Track is not (1 or 2) || !ReferenceEquals(inFlight[packet.Track - 1], packet))
                 throw new InvalidOperationException("Completing an unowned track packet.");
             inFlight[packet.Track - 1] = null;
-            if (Wire.IsMedia(packet.Type)) mediaBytes -= packet.Payload.Length;
+            if (Wire.IsMedia(packet.Type))
+            {
+                mediaBytes -= packet.Payload.Length;
+                if (packet.Track == 1) videoBytes -= packet.Payload.Length;
+            }
             else { controls--; controlBytes -= packet.Payload.Length; }
             SpaceChanged();
         }

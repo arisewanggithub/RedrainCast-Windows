@@ -14,6 +14,7 @@ public sealed partial class MainWindow
     {
         string? failure = null;
         long presented = 0;
+        long playedAudio = 0;
         var hardwareSurfaces = 0;
         var videoOnly = false;
         var enteredFullscreen = false;
@@ -27,15 +28,17 @@ public sealed partial class MainWindow
         {
             if (receiver is null) throw new InvalidOperationException("Listener did not start.");
             await using var frames = new SyntheticSource(fixtureFile);
+            var audio = new SyntheticAudio(frames.FirstPtsUs);
             var endpoint = new ReceiverEndpoint(IPAddress.Loopback, receiver.Port, "Self-test", false);
             sender = Task.Run(() => new SenderSession().RunAsync(endpoint,
-                new CaptureSettings(MaxFps: 30, VideoCodec: frames.Codec), frames, Diagnostic, stop.Token));
-            while (video.PresentedFrames < 5)
+                new CaptureSettings(MaxFps: 30, VideoCodec: frames.Codec, EnableAudio: true), frames, Diagnostic, stop.Token, audio));
+            while (video.PresentedFrames < 5 || video.PlayedAudioFrames < 4800)
             {
                 if (sender.IsCompleted) await sender;
                 await Task.Delay(25, stop.Token);
             }
             presented = video.PresentedFrames;
+            playedAudio = video.PlayedAudioFrames;
             hardwareSurfaces = video.HardwareSurfaceCount;
             videoOnly = HomePage.Visibility == Visibility.Collapsed && roles.Role == CastRole.Receiving;
             enteredFullscreen = AppWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen;
@@ -76,7 +79,7 @@ public sealed partial class MainWindow
         catch (Exception error) { failure = $"{failure}\nCleanup: {error}"; }
         await File.WriteAllTextAsync(reportFile, JsonSerializer.Serialize(new
         {
-            passed = failure is null, failure, presentedFrames = presented, hardwareSurfaces,
+            passed = failure is null, failure, presentedFrames = presented, playedAudioFrames = playedAudio, hardwareSurfaces,
             receivingShowsVideoOnly = videoOnly, restoredReadyHome = ReadinessTitle.Text == "READY",
             enteredFullscreen, restoredWindow = AppWindow.Presenter.Kind == originalPresenter.Kind &&
                 AppWindow.Position == originalPosition && AppWindow.Size == originalSize,
@@ -91,6 +94,7 @@ public sealed partial class MainWindow
         public string EncoderName => "Synthetic fixture (not captured content)";
         public int Width { get; }
         public int Height { get; }
+        public long FirstPtsUs => frames[0].PtsUs;
 
         public SyntheticSource(string path)
         {
@@ -123,6 +127,24 @@ public sealed partial class MainWindow
             }
         }
 
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class SyntheticAudio(long firstPtsUs) : IAudioSource
+    {
+        public object Configuration => new { codec = "raw", sampleRate = 48000, channels = 2,
+            csd = Array.Empty<string>(), sampleFormat = "s16le" };
+        public void BeginTransmission() { }
+        public async IAsyncEnumerable<AudioPacket> ReadPacketsAsync([EnumeratorCancellation] CancellationToken token)
+        {
+            long index = 0;
+            while (true)
+            {
+                token.ThrowIfCancellationRequested();
+                yield return new(new byte[480 * 4], firstPtsUs + index++ * 10_000);
+                await Task.Delay(10, token);
+            }
+        }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

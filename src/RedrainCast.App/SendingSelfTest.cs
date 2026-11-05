@@ -45,30 +45,76 @@ public sealed partial class MainWindow
                         throw new InvalidOperationException("Cancelled negotiation unexpectedly started media.");
                     return;
                 }
+                var mediaToken = new string('A', 64);
                 await Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, request.Session,
-                    new { tracks = new[] { 1 } }), timeout.Token);
-                while (true)
+                    new { tracks = new[] { 1 }, mediaToken }), timeout.Token);
+                using var videoPeer = await AttachAsync("video");
+                using var audioPeer = await AttachAsync("audio");
+                using var mediaStop = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
+                using var controlWriter = new SemaphoreSlim(1);
+                var videoPump = ReadVideoAsync();
+                try
                 {
-                    var message = await Wire.ReadAsync(stream, timeout.Token);
-                    if (message.Type != MessageType.VideoFrame) Diagnostic($"Inline peer control: {message.Type}");
-                    switch (message.Type)
+                    while (true)
                     {
-                        case MessageType.StreamConfig:
-                            await Wire.WriteAsync(stream, new(MessageType.StreamReady, request.Session, 1, 1, -1, 0,
-                                """{"ok":true}"""u8.ToArray()), timeout.Token);
-                            break;
-                        case MessageType.VideoFrame:
-                            break;
-                        case MessageType.Ping:
-                            await Wire.WriteAsync(stream, Message.Control(MessageType.Pong, request.Session,
-                                new { nonce = StrictJson.Integer(message.Json(), "nonce") }), timeout.Token);
-                            break;
-                        case MessageType.Stop:
-                            await Wire.WriteAsync(stream, Message.Control(MessageType.SessionEnd, request.Session,
-                                new { reason = "user" }), timeout.Token);
-                            return;
-                        default:
-                            throw new InvalidOperationException($"Unexpected inline UI test packet: {message.Type}.");
+                        var message = await Wire.ReadAsync(stream, timeout.Token);
+                        Diagnostic($"Inline peer control: {message.Type}");
+                        switch (message.Type)
+                        {
+                            case MessageType.Ping:
+                                await WriteControlAsync(Message.Control(MessageType.Pong, request.Session,
+                                    new { nonce = StrictJson.Integer(message.Json(), "nonce") }));
+                                break;
+                            case MessageType.Stop:
+                                await WriteControlAsync(Message.Control(MessageType.SessionEnd, request.Session,
+                                    new { reason = "user" }));
+                                return;
+                            default:
+                                throw new InvalidOperationException($"Unexpected inline UI test control: {message.Type}.");
+                        }
+                    }
+                }
+                finally
+                {
+                    mediaStop.Cancel();
+                    try { await videoPump; }
+                    catch (OperationCanceledException) when (mediaStop.IsCancellationRequested) { }
+                }
+
+                async Task<TcpClient> AttachAsync(string channel)
+                {
+                    var socket = await listener.AcceptTcpClientAsync(timeout.Token);
+                    try
+                    {
+                        var hello = await Wire.ReadAsync(socket.GetStream(), timeout.Token);
+                        if (hello.Type != MessageType.Hello || hello.Session != request.Session ||
+                            StrictJson.String(hello.Json(), "channel", 16) != channel ||
+                            StrictJson.String(hello.Json(), "token", 64) != mediaToken)
+                            throw new InvalidOperationException("Invalid inline test media attachment.");
+                        await Wire.WriteAsync(socket.GetStream(), Message.Control(MessageType.Hello, request.Session,
+                            new { channel }), timeout.Token);
+                        return socket;
+                    }
+                    catch { socket.Dispose(); throw; }
+                }
+
+                async Task WriteControlAsync(Message message)
+                {
+                    await controlWriter.WaitAsync(timeout.Token);
+                    try { await Wire.WriteAsync(stream, message, timeout.Token); }
+                    finally { controlWriter.Release(); }
+                }
+
+                async Task ReadVideoAsync()
+                {
+                    while (true)
+                    {
+                        var message = await Wire.ReadAsync(videoPeer.GetStream(), mediaStop.Token);
+                        if (message.Type == MessageType.StreamConfig)
+                            await WriteControlAsync(new(MessageType.StreamReady, request.Session, 1, 1, -1, 0,
+                                """{"ok":true}"""u8.ToArray()));
+                        else if (message.Type != MessageType.VideoFrame)
+                            throw new InvalidOperationException($"Unexpected inline test video packet: {message.Type}.");
                     }
                 }
             }, timeout.Token);
