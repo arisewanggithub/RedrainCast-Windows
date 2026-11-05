@@ -18,6 +18,18 @@ The sender uses Windows hardware encoding and raw PCM over custom TCP.
 The receiver alone uses FFmpeg avcodec, avutil and swresample libraries
 for hardware decoding and audio conversion.
 
+HDR color tables are numeric BT.2390/perceptual-gamut transform outputs generated
+with an independent FFmpeg/libplacebo reference tool. The generator and manifest
+record the tool version, executable hash, parameters and table hashes.
+No libplacebo source code, FFmpeg reference executable, libx265 encoder or
+Vulkan library is redistributed with the application for this path.
+Reference projects and method documentation:
+https://libplacebo.org/options/
+https://code.videolan.org/videolan/libplacebo
+https://www.itu.int/pub/R-REP-BT.2390
+The reference tool's licenses apply to that separate developer tool;
+the application uses its own Direct3D shaders to apply the numeric tables.
+
 This is an independent application, not an official scrcpy application.
 No source or binary from scrcpy or the Android sender/receiver is included.
 Protocol behavior was inspected to implement

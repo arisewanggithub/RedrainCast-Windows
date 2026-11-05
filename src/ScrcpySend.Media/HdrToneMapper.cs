@@ -11,37 +11,48 @@ internal sealed class HdrToneMapper : IDisposable
 {
     private const string Shader = """
         Texture2D<float4> Input : register(t0);
-        cbuffer Color : register(b0) { float InverseWhite; float Peak; float2 Padding; };
+        Texture3D<float4> Low : register(t1);
+        Texture3D<float4> High : register(t2);
+        cbuffer Color : register(b0) { float Weight; float Scale; float Offset; float Padding; };
         float4 VS(uint id : SV_VertexID) : SV_Position
         {
             float2 uv = float2((id << 1) & 2, id & 2);
             return float4(uv * float2(2, -2) + float2(-1, 1), 0, 1);
         }
-        float Encode709(float value)
-        {
-            value = saturate(value);
-            return value < 0.018 ? 4.5 * value : 1.099 * pow(value, 0.45) - 0.099;
+        float PQ(float nits) {
+            float p = pow(saturate(nits / 10000), 2610.0 / 16384);
+            return pow((3424.0/4096 + 2413.0/128*p)/(1+2392.0/128*p),2523.0/32);
+        }
+        float3 SampleTable(Texture3D<float4> table, float3 pq) {
+            float3 position = saturate(pq) * Scale;
+            int3 p = min((int3)position, (int)Scale-1);
+            float3 f = position - p;
+            int3 a, b; float3 w;
+            if (f.x >= f.y) {
+                if (f.y >= f.z) { a=int3(1,0,0); b=int3(1,1,0); w=f; }
+                else if (f.x >= f.z) { a=int3(1,0,0); b=int3(1,0,1); w=f.xzy; }
+                else { a=int3(0,0,1); b=int3(1,0,1); w=f.zxy; }
+            } else {
+                if (f.x >= f.z) { a=int3(0,1,0); b=int3(1,1,0); w=f.yxz; }
+                else if (f.y >= f.z) { a=int3(0,1,0); b=int3(0,1,1); w=f.yzx; }
+                else { a=int3(0,0,1); b=int3(0,1,1); w=f.zyx; }
+            }
+            return table.Load(int4(p,0)).rgb*(1-w.x) + table.Load(int4(p+a,0)).rgb*(w.x-w.y)
+                + table.Load(int4(p+b,0)).rgb*(w.y-w.z) + table.Load(int4(p+1,0)).rgb*w.z;
         }
         float4 PS(float4 position : SV_Position) : SV_Target
         {
-            float3 rgb = Input.Load(int3(position.xy, 0)).rgb * InverseWhite;
-            float luminance = dot(rgb, float3(0.2126, 0.7152, 0.0722));
-            if (luminance <= 0) return float4(0, 0, 0, 1);
-            float delta = max(0, luminance - 0.75);
-            float mapped = luminance <= 0.75 ? luminance :
-                0.75 + delta / (1 + (4 - 1 / (Peak - 0.75)) * delta);
-            mapped = saturate(mapped);
-            rgb *= mapped / luminance;
-            float minimum = min(rgb.r, min(rgb.g, rgb.b));
-            if (minimum < 0) rgb = mapped + (rgb - mapped) * (mapped / (mapped - minimum));
-            float maximum = max(rgb.r, max(rgb.g, rgb.b));
-            if (maximum > 1) rgb = mapped + (rgb - mapped) * ((1 - mapped) / (maximum - mapped));
-            return float4(Encode709(rgb.r), Encode709(rgb.g), Encode709(rgb.b), 1);
+            float3 rgb = Input.Load(int3(position.xy, 0)).rgb;
+            float3 wide = float3(dot(rgb,float3(.627404,.329283,.0433136)),
+                                dot(rgb,float3(.069097,.919540,.0113612)),
+                                dot(rgb,float3(.0163916,.0880132,.895595)));
+            float3 pq = float3(PQ(wide.r*80),PQ(wide.g*80),PQ(wide.b*80));
+            return float4(lerp(SampleTable(Low,pq),SampleTable(High,pq),Weight),1);
         }
         """;
     private static readonly Lazy<ReadOnlyMemory<byte>> VertexCode = new(() => Compiler.Compile(Shader, "VS", "HdrToneMapper", "vs_5_0"));
     private static readonly Lazy<ReadOnlyMemory<byte>> PixelCode = new(() => Compiler.Compile(Shader, "PS", "HdrToneMapper", "ps_5_0"));
-    private static readonly ID3D11ShaderResourceView[] NoSource = new ID3D11ShaderResourceView[1];
+    private static readonly ID3D11ShaderResourceView[] NoSource = new ID3D11ShaderResourceView[3];
     private readonly ID3D11Device device;
     private readonly ID3D11DeviceContext context;
     private readonly ID3D11VertexShader vertex;
@@ -50,7 +61,11 @@ internal sealed class HdrToneMapper : IDisposable
     private readonly ID3D11RasterizerState rasterizer;
     private readonly ID3D11Texture2D output;
     private readonly ID3D11RenderTargetView target;
+    private readonly HdrContentPeak luminance;
+    private readonly ID3D11Texture3D?[] tables = new ID3D11Texture3D?[ToneMapTables.Peaks.Count];
+    private readonly ID3D11ShaderResourceView?[] views = new ID3D11ShaderResourceView?[ToneMapTables.Peaks.Count];
     private readonly int width, height;
+    public float PeakNits { get; private set; }
 
     public HdrToneMapper(ID3D11Device device, int width, int height)
     {
@@ -67,10 +82,11 @@ internal sealed class HdrToneMapper : IDisposable
             output = device.CreateTexture2D(new Texture2DDescription(Format.B8G8R8A8_UNorm, (uint)width, (uint)height,
                 1, 1, BindFlags.RenderTarget | BindFlags.ShaderResource));
             target = device.CreateRenderTargetView(output);
+            luminance = new(device);
         }
         catch
         {
-            target?.Dispose(); output?.Dispose(); rasterizer?.Dispose(); constants?.Dispose();
+            luminance?.Dispose(); target?.Dispose(); output?.Dispose(); rasterizer?.Dispose(); constants?.Dispose();
             pixel?.Dispose(); vertex?.Dispose(); context.Dispose();
             throw;
         }
@@ -82,7 +98,9 @@ internal sealed class HdrToneMapper : IDisposable
         if (!color.Hdr || input.Description.Format != Format.R16G16B16A16_Float)
             throw new ArgumentException("HDR tone mapping requires linear floating-point scRGB capture.");
         using var resource = device.CreateShaderResourceView(input);
-        var values = new Vector4(1 / color.WhiteScale, color.PeakScale, 0, 0);
+        PeakNits = luminance.Measure(input, resource);
+        var selection = ToneMapTables.Select(PeakNits);
+        var values = new Vector4(selection.Weight, ToneMapTables.Size - 1, 0, 0);
         context.UpdateSubresource(in values, constants);
         context.IASetInputLayout(null);
         context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
@@ -90,6 +108,8 @@ internal sealed class HdrToneMapper : IDisposable
         context.PSSetShader(pixel);
         context.PSSetConstantBuffer(0, constants);
         context.PSSetShaderResource(0, resource);
+        context.PSSetShaderResource(1, Table(selection.Low));
+        context.PSSetShaderResource(2, Table(selection.High));
         context.RSSetState(rasterizer);
         context.RSSetViewport(0, 0, width, height);
         context.OMSetBlendState(null);
@@ -97,15 +117,37 @@ internal sealed class HdrToneMapper : IDisposable
         try { context.Draw(3, 0); }
         finally
         {
-            context.PSSetShaderResources(0, 1, NoSource);
+            context.PSSetShaderResources(0, 3, NoSource);
             context.OMSetRenderTargets(ReadOnlySpan<ID3D11RenderTargetView>.Empty);
         }
         return output;
     }
 
+    private unsafe ID3D11ShaderResourceView Table(int index)
+    {
+        if (views[index] is { } cached) return cached;
+        var data = ToneMapTables.Data(index).Span;
+        fixed (Half* pointer = data)
+        {
+            var texture = device.CreateTexture3D(new Texture3DDescription(Format.R16G16B16A16_Float,
+                ToneMapTables.Size, ToneMapTables.Size, ToneMapTables.Size, 1, BindFlags.ShaderResource),
+                new SubresourceData((nint)pointer, ToneMapTables.Size * 8, ToneMapTables.Size * ToneMapTables.Size * 8));
+            try
+            {
+                var view = device.CreateShaderResourceView(texture);
+                tables[index] = texture;
+                views[index] = view;
+                return view;
+            }
+            catch { texture.Dispose(); throw; }
+        }
+    }
+
     public void Dispose()
     {
-        target.Dispose(); output.Dispose(); rasterizer.Dispose(); constants.Dispose();
+        foreach (var view in views) view?.Dispose();
+        foreach (var table in tables) table?.Dispose();
+        luminance.Dispose(); target.Dispose(); output.Dispose(); rasterizer.Dispose(); constants.Dispose();
         pixel.Dispose(); vertex.Dispose(); context.Dispose();
     }
 }

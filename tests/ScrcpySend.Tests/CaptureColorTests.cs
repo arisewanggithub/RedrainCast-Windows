@@ -13,25 +13,23 @@ public sealed class CaptureColorTests
         var previous = -1f;
         foreach (var level in new[] { 0, 0.01f, 0.18f, 0.5f, 0.75f, 1, 1.5f, 2, 3, 4, color.PeakScale })
         {
-            var mapped = color.MapHdrToSdr(new Vector3(level * color.WhiteScale));
+            var mapped = ToneMapTables.Sample(new Vector3(level * color.WhiteScale), 1000);
             Assert.InRange(mapped.X, 0, 1);
-            Assert.True(mapped.X > previous);
-            Assert.Equal(mapped.X, mapped.Y, 5);
-            Assert.Equal(mapped.X, mapped.Z, 5);
+            Assert.True(mapped.X >= previous);
+            Assert.InRange(Math.Abs(mapped.X - mapped.Y), 0, 0.015f);
+            Assert.InRange(Math.Abs(mapped.X - mapped.Z), 0, 0.015f);
             previous = mapped.X;
         }
-        Assert.Equal(0, color.MapHdrToSdr(Vector3.Zero).X);
-        Assert.Equal(1, color.MapHdrToSdr(new Vector3(color.PeakNits / 80)).X, 5);
+        Assert.InRange(ToneMapTables.Sample(Vector3.Zero, 1000).X, 0, 0.005f);
+        Assert.True(ToneMapTables.Sample(new Vector3(4 * color.WhiteScale), 1000).X >
+            ToneMapTables.Sample(new Vector3(color.WhiteScale), 1000).X + 0.03f);
     }
 
     [Fact]
-    public void WindowsSdrWhiteLevelIsNormalizedBeforeMapping()
+    public void PqUsesAbsoluteNitsInsteadOfTheWindowsSdrBrightnessSetting()
     {
-        var first = new CaptureColor(true, 180, 1080);
-        var second = new CaptureColor(true, 360, 2160);
-        var rgb = new Vector3(0.18f, 0.3f, 0.5f);
-        Assert.Equal(first.MapHdrToSdr(rgb * first.WhiteScale), second.MapHdrToSdr(rgb * second.WhiteScale));
-        Assert.Equal(CaptureColor.Encode709(0.18f), first.MapHdrToSdr(new Vector3(0.18f * first.WhiteScale)).X, 5);
+        foreach (var nits in new[] { 0.1f, 1, 80, 100, 203, 1000, 4000, 10000 })
+            Assert.InRange(Math.Abs(HdrLuminance.FromPq(HdrLuminance.ToPq(nits)) - nits), 0, Math.Max(0.01f, nits * 0.001f));
     }
 
     [Theory]
@@ -41,7 +39,7 @@ public sealed class CaptureColorTests
     [InlineData(20, 20, 20)]
     public void WideGamutHighlightsStayWithinSdrGamut(float r, float g, float b)
     {
-        var mapped = new CaptureColor(true, 180, 1000).MapHdrToSdr(new(r, g, b));
+        var mapped = ToneMapTables.Sample(new(r, g, b), 1000);
         Assert.InRange(mapped.X, 0, 1);
         Assert.InRange(mapped.Y, 0, 1);
         Assert.InRange(mapped.Z, 0, 1);
@@ -61,6 +59,5 @@ public sealed class CaptureColorTests
     {
         Assert.False(CaptureColor.Sdr.Hdr);
         Assert.Equal(1, CaptureColor.Sdr.WhiteScale);
-        Assert.Throws<InvalidOperationException>(() => CaptureColor.Sdr.MapHdrToSdr(Vector3.One));
     }
 }

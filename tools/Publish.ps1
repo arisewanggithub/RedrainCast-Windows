@@ -1,7 +1,7 @@
 param(
     [ValidateSet('arm64', 'x64')][string]$Architecture = 'arm64',
     [string]$OutputDirectory,
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.1.3'
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.1.4'
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -41,7 +41,9 @@ if (Test-Path -LiteralPath (Join-Path $OutputDirectory "native\win-$otherArchite
 foreach ($name in @('README.md', 'PRIVACY.md', 'THIRD_PARTY_NOTICES.txt')) {
     Copy-Item -LiteralPath (Join-Path $root $name) -Destination $OutputDirectory
 }
-Copy-Item -LiteralPath (Join-Path $root 'licenses') -Destination $OutputDirectory -Recurse
+$licenseDirectory = Join-Path $OutputDirectory 'licenses'
+New-Item -ItemType Directory -Path $licenseDirectory -Force | Out-Null
+Get-ChildItem -LiteralPath (Join-Path $root 'licenses') -Force | Copy-Item -Destination $licenseDirectory -Recurse -Force
 $assets = Get-Content -LiteralPath (Join-Path $root 'src\RedrainCast.App\obj\project.assets.json') -Raw | ConvertFrom-Json
 $packageRoots = @($assets.packageFolders.PSObject.Properties.Name)
 $packagePaths = @($assets.libraries.PSObject.Properties | Where-Object { $_.Value.type -eq 'package' } |

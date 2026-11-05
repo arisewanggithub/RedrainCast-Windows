@@ -50,12 +50,25 @@ guarantee mute restoration.
 
 ### HDR displays
 
-Windows HDR can stay enabled. HDR sources use floating-point scRGB capture,
-then a GPU shader normalizes the source display's Windows SDR white level,
-compresses highlights with a smooth shoulder and fits wide-gamut colors into
-SDR before NV12 conversion. All codecs explicitly signal BT.709 primaries,
-transfer, matrix and limited range. This sends SDR video, not HDR passthrough.
-SDR sources retain the existing BGRA8 conversion path.
+Windows HDR can stay enabled. HDR sources use floating-point scRGB capture
+(80 nits per linear 1.0), followed by reference-generated BT.2390 tone mapping
+and perceptual gamut conversion on Direct3D. A GPU histogram measures the
+content's peak rather than assuming the monitor's peak is the video peak.
+The 99.995th percentile rejects isolated extreme pixels; small changes are
+smoothed while scene cuts react immediately. Eight 65-cubed transform banks
+cover 100-10,000 nits, with tetrahedral color interpolation and smooth
+interpolation between peak banks.
+
+The old fixed shoulder and blanket division by Windows' SDR-white setting
+are removed. SDR sources retain their existing BGRA8 conversion path.
+All codecs signal BT.709 primaries, transfer, matrix and limited range.
+This sends SDR video, not HDR passthrough.
+
+Video pixels stay on the GPU. Every fourth frame, the GPU copies only a
+256-bin luminance histogram (1 KiB of aggregate metadata) for asynchronous
+CPU analysis. The initial histogram is awaited to avoid an incorrectly exposed
+first frame. Subsequent reads are nonblocking; no video pixels are read back
+or processed on the CPU in production.
 
 The display/window selector is target-aware instead of using the opaque system
 picker: it retains the selected monitor/window identity so HDR settings are read
@@ -90,9 +103,9 @@ in a user-local cache. No native compiler or network-transport library is needed
 It does not install drivers or change system PATH.
 
 ```powershell
-.\tools\Publish.ps1 -Architecture arm64 -Version 0.1.3
+.\tools\Publish.ps1 -Architecture arm64 -Version 0.1.4
 .\tools\Package.ps1 -Architecture arm64 -PublishedDirectory .\artifacts\win-arm64 `
-  -OutputDirectory .\artifacts\msix-arm64 -Version 0.1.3.0
+  -OutputDirectory .\artifacts\msix-arm64 -Version 0.1.4.0
 ```
 
 Publication/package output directories must be new or empty. Packaging checks
@@ -118,11 +131,30 @@ RedrainCast.App.exe --media-self-test `
 Media self-tests transmit labeled synthetic content over real TCP through the
 sender protocol, receiver admission, hardware decoder and WinUI video surface.
 They are not a substitute for testing two physical devices and real audio.
-The color self-test uses synthetic HDR/SDR patches and diagnostic-only GPU
-readback to check RGB within 2 code values, NV12 luma/chroma within 3 code values and
-distinct HDR highlights above SDR white. It also checks each available hardware
-encoder and verifies the encoded color metadata through hardware decoding.
-No CPU readback or software video processing is used in the production path.
+The color self-test uses synthetic HDR/SDR patches and diagnostic-only pixel
+readback to check GPU lookup interpolation within 2 RGB code values, NV12
+luma/chroma within 3 code values, and distinct HDR highlights above SDR white.
+Independent non-vertex libplacebo swatches, not the old custom formula, provide
+unit-test references. It also checks each available hardware encoder and verifies
+encoded color metadata through hardware decoding. Real HDR frame comparisons
+are a separate visual acceptance check, not inferred from these numeric tests.
+
+### Regenerating color tables
+
+Normal builds use the checked-in numeric tables; no FFmpeg executable,
+Vulkan runtime or libplacebo library is needed by the app. Regeneration is a
+developer-only operation requiring FFmpeg with libplacebo, 12-bit libx265 and a
+working Vulkan reference device:
+
+```powershell
+.\tools\GenerateToneMaps.ps1 -FfmpegPath C:\tools\ffmpeg.exe -WorkDirectory C:\temp\tone-map-generation
+```
+
+The generator uses lossless 4:4:4 HDR reference transport, explicit per-bank
+HDR10 peak metadata, BT.2390 knee offset 1.0, perceptual gamut mapping and no
+spatial contrast recovery. It also regenerates independent test swatches.
+The manifest records the reference executable hash, version, layout and table
+hashes. It is not run by normal builds or CI.
 
 ## Source provenance
 

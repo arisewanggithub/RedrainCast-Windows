@@ -1,0 +1,30 @@
+{
+    "input":  "PQ BT.2020 RGB, absolute luminance",
+    "generation":  "Lossless 4:4:4 12-bit HDR reference transport; GPU peak measurement disabled; explicit HDR10 peak per bank.",
+    "method":  "libplacebo BT.2390, knee offset 1.0, perceptual gamut mapping",
+    "size":  65,
+    "peaks":  [
+                  100,
+                  200,
+                  400,
+                  800,
+                  1600,
+                  3200,
+                  6400,
+                  10000
+              ],
+    "output":  "BT.709 SDR display-referred RGB",
+    "sha256":  {
+                   "400":  "6570752c5289541b168532e6473f7b1a3ccc23dddffc7db456f64dc520870634",
+                   "800":  "2ca0e543cfc0177ce2051f7b452d7efcb349d8b1c42e6db54a52a2ee6db96477",
+                   "6400":  "831ec6f4e82f3287e9c2d237ed383311912424bfd376a19e56c8ab69146a9fcc",
+                   "10000":  "a2f0fa356233c8d4582b90771bed1ae8ebbc908898d3d70fc83591b681014f44",
+                   "200":  "d8ba5333bf37890eab12eb37f441e89cc8d003b2dd1e8aee9f76bb6165d7f13b",
+                   "3200":  "b0b3842dd13226a76e53b8550e8f024b351814d4f3d6b3996ec930a323b87b26",
+                   "100":  "951c8e92f3ee9752a5644dcd8243c6c8cc00bcc014e7d605bf64de50f5472111",
+                   "1600":  "b8dccf1a044a29ecc35f7ff8bf25915cc9edf3056af6d2db76a12345017eee0d"
+               },
+    "referenceExecutableSha256":  "0e0a87f6b95c17e9de2f6e0fa34a5ca659211bdeb897dbb3407baa032ddfaaad",
+    "layout":  "R varies fastest, then G, then B; little-endian RGBA float16",
+    "reference":  "ffmpeg version N-128406-g1fe6854fd9-20261104 Copyright (c) 2000-2026 the FFmpeg developers"
+}

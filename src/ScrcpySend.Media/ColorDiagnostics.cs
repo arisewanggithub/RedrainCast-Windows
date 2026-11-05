@@ -11,6 +11,36 @@ public sealed record ColorProbeReport(CaptureColor DisplayColor, CaptureColor Te
 
 public static class ColorDiagnostics
 {
+    public static unsafe (byte[] Bgra, float PeakNits) RenderFrame(byte[] rgba16f, int width, int height)
+    {
+        if (width <= 0 || height <= 0 || rgba16f.Length != checked(width * height * 8))
+            throw new ArgumentException("Expected a complete RGBA float16 frame.");
+        using var device = WindowsVideoSource.CreateHardwareDevice();
+        using var context = device.ImmediateContext.QueryInterface<ID3D11DeviceContext>();
+        fixed (byte* pointer = rgba16f)
+        {
+            using var input = device.CreateTexture2D(new Texture2DDescription(Format.R16G16B16A16_Float,
+                (uint)width, (uint)height, 1, 1, BindFlags.ShaderResource), new SubresourceData((nint)pointer, (uint)width * 8));
+            using var mapper = new HdrToneMapper(device, width, height);
+            var output = mapper.Convert(input, new(true));
+            var description = output.Description;
+            description.BindFlags = BindFlags.None;
+            description.Usage = ResourceUsage.Staging;
+            description.CPUAccessFlags = CpuAccessFlags.Read;
+            using var staging = device.CreateTexture2D(description);
+            context.CopyResource(staging, output);
+            var mapped = context.Map(staging, 0, MapMode.Read);
+            try
+            {
+                var result = new byte[width * height * 4];
+                for (var y = 0; y < height; y++)
+                    Marshal.Copy(mapped.DataPointer + checked((int)mapped.RowPitch * y), result, y * width * 4, width * 4);
+                return (result, mapper.PeakNits);
+            }
+            finally { context.Unmap(staging, 0); }
+        }
+    }
+
     public static unsafe ColorProbeReport Run()
     {
         var displayColor = WindowsVideoSource.SelectDefaultDisplay().ReadColor();
@@ -43,7 +73,7 @@ public static class ColorDiagnostics
             var rgbError = 0;
             for (var index = 0; index < patches.Length; index++)
             {
-                var expected = color.MapHdrToSdr(patches[index]);
+                var expected = ToneMapTables.Sample(patches[index], mapper.PeakNits);
                 rgbError = Math.Max(rgbError, Math.Abs(rgb[index * 4] - (int)MathF.Round(expected.Z * 255)));
                 rgbError = Math.Max(rgbError, Math.Abs(rgb[index * 4 + 1] - (int)MathF.Round(expected.Y * 255)));
                 rgbError = Math.Max(rgbError, Math.Abs(rgb[index * 4 + 2] - (int)MathF.Round(expected.X * 255)));
@@ -53,7 +83,7 @@ public static class ColorDiagnostics
             var adjustedRgb = ReadPatches(device, context, mapper.Convert(input, adjusted), patches.Length, patchWidth, 4);
             for (var index = 0; index < patches.Length; index++)
             {
-                var expected = adjusted.MapHdrToSdr(patches[index]);
+                var expected = ToneMapTables.Sample(patches[index], mapper.PeakNits);
                 rgbError = Math.Max(rgbError, Math.Abs(adjustedRgb[index * 4] - (int)MathF.Round(expected.Z * 255)));
                 rgbError = Math.Max(rgbError, Math.Abs(adjustedRgb[index * 4 + 1] - (int)MathF.Round(expected.Y * 255)));
                 rgbError = Math.Max(rgbError, Math.Abs(adjustedRgb[index * 4 + 2] - (int)MathF.Round(expected.X * 255)));
@@ -67,7 +97,7 @@ public static class ColorDiagnostics
             var chromaError = 0;
             for (var index = 0; index < patches.Length; index++)
             {
-                var expected = color.MapHdrToSdr(patches[index]);
+                var expected = ToneMapTables.Sample(patches[index], mapper.PeakNits);
                 var luma = Vector3.Dot(expected, new(0.2126f, 0.7152f, 0.0722f));
                 hdrError = Math.Max(hdrError, Math.Abs(hdrY[index] - (int)MathF.Round(16 + 219 * luma)));
                 chromaError = Math.Max(chromaError, Math.Abs(chroma[index * 2] - (int)MathF.Round(128 + 224 * (expected.Z - luma) / 1.8556f)));

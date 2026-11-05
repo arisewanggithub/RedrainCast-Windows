@@ -9,7 +9,7 @@ namespace RedrainCast.App;
 
 public sealed partial class MainWindow
 {
-    internal async Task RunColorSelfTestAsync(string reportFile)
+    internal static async Task RunColorSelfTestAsync(string reportFile)
     {
         string? failure = null;
         ColorProbeReport? measurements = null;
@@ -45,7 +45,7 @@ public sealed partial class MainWindow
         await File.WriteAllTextAsync(reportFile, JsonSerializer.Serialize(new
         {
             passed = failure is null, failure, measurements, encoders,
-            syntheticOnly = true, cpuReadbackForDiagnosticsOnly = true, windowsHdrSettingChanged = false
+            syntheticOnly = true, videoPixelReadbackForDiagnosticsOnly = true, windowsHdrSettingChanged = false
         }, new JsonSerializerOptions { WriteIndented = true }));
     }
 }

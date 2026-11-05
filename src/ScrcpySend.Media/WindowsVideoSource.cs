@@ -112,7 +112,7 @@ public sealed class WindowsVideoSource : IVideoSource
             token.ThrowIfCancellationRequested();
             var size = item.Size;
             var color = source.ReadColor();
-            diagnostic?.Invoke($"Capture color: {(color.Hdr ? "HDR scRGB -> SDR BT.709" : "SDR direct")}; white={color.SdrWhiteNits:F1} nits, peak={color.PeakNits:F1} nits.");
+            diagnostic?.Invoke($"Capture color: {(color.Hdr ? "HDR scRGB -> content-adaptive BT.2390 SDR" : "SDR direct")}; display white={color.SdrWhiteNits:F1} nits, display peak={color.PeakNits:F1} nits. HDR content peak is measured separately on the GPU.");
             var pixelFormat = color.Hdr ? DirectXPixelFormat.R16G16B16A16Float : DirectXPixelFormat.B8G8R8A8UIntNormalized;
             using var pool = Direct3D11CaptureFramePool.CreateFreeThreaded(captureDevice,
                 pixelFormat, 2, size);

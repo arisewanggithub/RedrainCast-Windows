@@ -32,7 +32,8 @@ foreach ($file in @('RedrainCast.App.exe', 'coreclr.dll', 'Microsoft.UI.Xaml.dll
     } finally { $reader.Dispose() }
 }
 foreach ($file in @('RedrainCast.App.pri', 'PRIVACY.md', 'THIRD_PARTY_NOTICES.txt',
-    'licenses\ScrcpyReceive-Windows-LICENSE.txt', "native\win-$Architecture\FFmpeg-LICENSE.txt")) {
+    'licenses\ScrcpyReceive-Windows-LICENSE.txt', 'licenses\tone-map-provenance.json',
+    "native\win-$Architecture\FFmpeg-LICENSE.txt")) {
     if (-not (Test-Path -LiteralPath (Join-Path $published $file))) { throw "Missing resource or notice: $file" }
 }
 if (@(Get-ChildItem -LiteralPath $published -Recurse -File -Filter '*.pdb').Count -ne 0) {
