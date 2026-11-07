@@ -318,12 +318,20 @@ public sealed class SessionTests
         public int Width => 640;
         public int Height => 480;
         public bool Disposed;
+        public Func<Task>? BeforeStop { get; init; }
         public async IAsyncEnumerable<EncodedVideo> ReadFramesAsync([EnumeratorCancellation] CancellationToken token)
         {
             var data = new byte[4 * 1024 * 1024];
             new byte[] { 0, 0, 0, 1, 0x67, 1, 0, 0, 0, 1, 0x68, 1, 0, 0, 0, 1, 0x65, 1 }.CopyTo(data, 0);
-            yield return new(data, 1000, []);
-            await Task.Delay(Timeout.Infinite, token);
+            try
+            {
+                yield return new(data, 1000, []);
+                await Task.Delay(Timeout.Infinite, token);
+            }
+            finally
+            {
+                if (BeforeStop is not null) await BeforeStop();
+            }
         }
         public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
     }
@@ -822,15 +830,25 @@ public sealed class SessionTests
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         using var stop = new CancellationTokenSource();
+        var captureStopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowStop = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Server.ReceiveBufferSize = 4096;
         listener.Start();
-        var source = new LargeSource();
+        var source = new LargeSource
+        {
+            BeforeStop = async () =>
+            {
+                captureStopped.TrySetResult();
+                await allowStop.Task.WaitAsync(timeout.Token);
+            }
+        };
         var audio = backpressureAudio ? new ContinuousAudio() : null;
         var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
             ((IPEndPoint)listener.LocalEndpoint).Port, "Test", false),
             new(EnableAudio: backpressureAudio), source, _ => { }, stop.Token, audio);
         Task? drain = null;
+        Task? acknowledgement = null;
         using var control = await listener.AcceptTcpClientAsync(timeout.Token);
         var stream = control.GetStream();
         var request = await Handshake(stream, timeout.Token);
@@ -848,13 +866,22 @@ public sealed class SessionTests
             await pending.ReadExactlyAsync(header, timeout.Token);
             Assert.True(System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(8)) > 0);
             stop.Cancel();
-            drain = DrainToEof(pending, timeout.Token);
+            await captureStopped.Task.WaitAsync(timeout.Token);
+            var draining = DrainToEof(pending, timeout.Token);
+            drain = draining;
             // Withhold control admission: a strict peer must not see media EOF/truncation first.
+            // Hold capture teardown so this check cannot consume the Stop acknowledgement deadline.
             Assert.NotSame(drain, await Task.WhenAny(drain, Task.Delay(300, timeout.Token)));
-            Assert.Equal(MessageType.Stop, (await Wire.ReadAsync(stream, timeout.Token)).Type);
-            Assert.NotSame(drain, await Task.WhenAny(drain, Task.Delay(100, timeout.Token)));
-            await Wire.WriteAsync(stream, Message.Control(MessageType.SessionEnd, request.Session,
-                new { reason = "user" }), timeout.Token);
+            // The peer acknowledges on its own scheduler, not after the test continuation resumes.
+            acknowledgement = Task.Run(async () =>
+            {
+                Assert.Equal(MessageType.Stop, (await Wire.ReadAsync(stream, timeout.Token)).Type);
+                Assert.NotSame(draining, await Task.WhenAny(draining, Task.Delay(100, timeout.Token)));
+                await Wire.WriteAsync(stream, Message.Control(MessageType.SessionEnd, request.Session,
+                    new { reason = "user" }), timeout.Token);
+            }, timeout.Token);
+            allowStop.TrySetResult();
+            await acknowledgement;
             await run.WaitAsync(TimeSpan.FromSeconds(2), timeout.Token);
             await drain.WaitAsync(timeout.Token);
             Assert.True(source.Disposed);
@@ -862,12 +889,14 @@ public sealed class SessionTests
         }
         finally
         {
+            allowStop.TrySetResult();
             stop.Cancel();
             timeout.Cancel();
             media.Dispose();
             control.Dispose();
             await Record.ExceptionAsync(() => run.WaitAsync(TimeSpan.FromSeconds(3)));
             if (drain != null) await Record.ExceptionAsync(() => drain);
+            if (acknowledgement != null) await Record.ExceptionAsync(() => acknowledgement);
         }
     }
 

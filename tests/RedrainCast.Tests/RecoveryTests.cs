@@ -338,7 +338,12 @@ public sealed class RecoveryTests
         var states = new ConcurrentQueue<string>();
         await using var server = new ReceiverServer("Missing PCM fake", factory, _ => { }, 0, IPAddress.Loopback);
         server.Start(false);
-        await using var source = new GeneratedSource();
+        // Missing PCM must leave the audio gate unresolved, not provoke independent video pressure.
+        // Keep real-time key requests live; dependent pictures are irrelevant until audio completes.
+        await using var source = new GeneratedSource
+        {
+            CanEmitDependentFrames = () => states.Contains("Streaming")
+        };
         var clock = Stopwatch.StartNew();
         var cast = new SenderSession().RunAsync(new(IPAddress.Loopback, server.Port, "Test", false),
             new(MaxSize: source.Width, EnableAudio: true), source, states.Enqueue, default,
@@ -348,6 +353,7 @@ public sealed class RecoveryTests
         Assert.Equal(1, factory.Opens);
         Assert.DoesNotContain(states, s => s.StartsWith("Recovering video generation", StringComparison.Ordinal));
         Assert.DoesNotContain("Streaming", states);
+        Assert.Single(states, s => s.StartsWith("Recovery decoded KEY: generation=1,", StringComparison.Ordinal));
     }
 
     [Theory]
