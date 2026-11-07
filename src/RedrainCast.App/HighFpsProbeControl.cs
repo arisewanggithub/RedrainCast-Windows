@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
-using ScrcpyReceive.Core;
+using RedrainCast.Receive.Core;
 
 namespace RedrainCast.App;
 
@@ -68,7 +68,7 @@ internal sealed class HighFpsProbeControl : IAsyncDisposable
                         // Serialize with STOP: a queued heartbeat must never write after local termination.
                         if (Volatile.Read(ref stopping) == 0)
                         {
-                            await Wire.WriteAsync(stream, Packet.Control(PacketType.Pong, session, new { nonce }), lifetime.Token);
+                            await Wire.WriteAsync(stream, Packet.Control(PacketType.Pong, session, RedrainCast.Protocol.JsonData.Object(("nonce", nonce))), lifetime.Token);
                             journal.Enqueue($"TX Pong session={session}");
                         }
                         else journal.Enqueue($"Ping retired after Stop session={session}");

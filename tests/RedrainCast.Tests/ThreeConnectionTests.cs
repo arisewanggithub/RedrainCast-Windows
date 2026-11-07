@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Runtime.CompilerServices;
-using ScrcpyReceive.Core;
-using ScrcpySend.Core;
+using RedrainCast.Receive.Core;
+using RedrainCast.Send.Core;
 using Xunit;
 
 namespace RedrainCast.Tests;
@@ -75,8 +75,9 @@ public sealed class ThreeConnectionTests
     {
         public bool Muted { get; private set; }
         public bool Disposed { get; private set; }
-        public object Configuration => new { codec = "raw", sampleRate = 48000, channels = 2,
-            csd = Array.Empty<string>(), sampleFormat = "s16le" };
+        public System.Text.Json.Nodes.JsonNode Configuration => RedrainCast.Protocol.JsonData.Object(
+            ("codec", "raw"), ("sampleRate", 48000), ("channels", 2),
+            ("csd", RedrainCast.Protocol.JsonData.Value(Array.Empty<string>())), ("sampleFormat", "s16le"));
         public void BeginTransmission() => Muted = true;
         public async IAsyncEnumerable<AudioPacket> ReadPacketsAsync([EnumeratorCancellation] CancellationToken token)
         {

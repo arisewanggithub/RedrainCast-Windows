@@ -15,7 +15,7 @@
     <Description>Isolated RedrainCast hardware capture worker.</Description>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\ScrcpySend.Media\ScrcpySend.Media.csproj"/>
+    <ProjectReference Include="..\RedrainCast.Send.Media\RedrainCast.Send.Media.csproj"/>
   </ItemGroup>
   <Target Name="GetCaptureWorkerFiles" DependsOnTargets="Build" Returns="@(_CaptureWorkerRuntimeFiles)">
     <Error Condition="'$(TargetDir)' == '' Or !Exists('$(TargetDir)RedrainCast.CaptureWorker.exe')"

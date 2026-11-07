@@ -26,8 +26,8 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.5"/>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654"/>
     <ProjectReference Include="..\RedrainCast.Core\RedrainCast.Core.csproj"/>
-    <ProjectReference Include="..\ScrcpyReceive.Media\ScrcpyReceive.Media.csproj"/>
-    <ProjectReference Include="..\ScrcpySend.Media\ScrcpySend.Media.csproj"/>
+    <ProjectReference Include="..\RedrainCast.Receive.Media\RedrainCast.Receive.Media.csproj"/>
+    <ProjectReference Include="..\RedrainCast.Send.Media\RedrainCast.Send.Media.csproj"/>
     <ProjectReference Include="..\RedrainCast.CaptureWorker\RedrainCast.CaptureWorker.csproj" ReferenceOutputAssembly="false"/>
   </ItemGroup>
   <Target Name="CopyCaptureWorkerForDevelopment" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">

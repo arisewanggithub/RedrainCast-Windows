@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
@@ -6,8 +7,8 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
-using ScrcpySend.Core;
-using ScrcpySend.Media;
+using RedrainCast.Send.Core;
+using RedrainCast.Send.Media;
 using Windows.UI;
 using RedrainCast.Core;
 using RedrainCast.Protocol;
@@ -40,13 +41,13 @@ public sealed partial class MainWindow
             throw new ArgumentException("Static startup requires isolated loopback, silent PCM and the bounded default duration.");
         var requiredFrames = staticSource ? 1 : 60;
         string? failure = null;
-        object? measurements = null;
+        JsonNode? measurements = null;
         Window? probe = null;
         DispatcherTimer? animation = null;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(durationSeconds == 0 ? 60 : durationSeconds + 75));
         directory = Path.GetFullPath(directory);
         Directory.CreateDirectory(directory);
-        var samples = new List<object>();
+        var samples = new List<JsonNode>();
         var clock = Stopwatch.StartNew();
         long baselinePrivate = 0, peakPrivate = 0;
         var nextSample = TimeSpan.Zero;
@@ -67,7 +68,7 @@ public sealed partial class MainWindow
                     await StartReceiverAsync(0, address);
                 }
                 var server = receiver ?? throw new InvalidOperationException("Peer test receiver is not listening.");
-                await WriteAsync("endpoint", new { port = server.Port, instanceId, address = address.ToString() });
+                await WriteAsync("endpoint", JsonData.Object(("port", server.Port), ("instanceId", instanceId), ("address", address.ToString())));
                 while (video.PresentedFrames < 1)
                 {
                     if (Problem.IsOpen) throw new IOException(Problem.Message);
@@ -90,12 +91,12 @@ public sealed partial class MainWindow
                 clock.Restart();
                 await SampleAsync();
                 var playback = Snapshot();
-                await WriteAsync("playback", playback);
+                await WriteAsync("playback", ReportJson.Value(playback)!);
                 var expectedSession = server.RecoveryState?.Session ??
                     throw new IOException("Peer stability requires an owned recovery session.");
                 var progress = new PeerStabilityProgress(expectedSession, silentPcm);
-                var recoveryTransitions = new List<object>();
-                ScrcpyReceive.Core.ReceiverRecoveryState? previousState = null;
+                var recoveryTransitions = new List<JsonNode>();
+                RedrainCast.Receive.Core.ReceiverRecoveryState? previousState = null;
                 long previousEpoch = -1;
                 bool? previousAttached = null;
                 while (clock.Elapsed < TimeSpan.FromSeconds(durationSeconds))
@@ -103,11 +104,11 @@ public sealed partial class MainWindow
                     var state = server.RecoveryState;
                     if (state != previousState || previousEpoch != video.PlaybackEpoch || previousAttached != video.IsAttached)
                     {
-                        recoveryTransitions.Add(new { elapsedSeconds = clock.Elapsed.TotalSeconds, state,
-                            epoch = video.PlaybackEpoch, attached = video.IsAttached,
-                            role = roles.Role.ToString(), problemOpen = Problem.IsOpen, problem = Problem.Message });
+                        recoveryTransitions.Add(JsonData.Object(("elapsedSeconds", clock.Elapsed.TotalSeconds), ("state", ReportJson.Value(state)),
+                            ("epoch", video.PlaybackEpoch), ("attached", video.IsAttached),
+                            ("role", roles.Role.ToString()), ("problemOpen", Problem.IsOpen), ("problem", Problem.Message)));
                         previousState = state; previousEpoch = video.PlaybackEpoch; previousAttached = video.IsAttached;
-                        await WriteAsync("receiver-transitions", recoveryTransitions);
+                        await WriteAsync("receiver-transitions", JsonData.Value(recoveryTransitions));
                     }
                     try
                     {
@@ -128,7 +129,7 @@ public sealed partial class MainWindow
                 }
                 await SampleAsync();
                 playback = Snapshot();
-                if (durationSeconds > 0) await WriteAsync("sustained", playback);
+                if (durationSeconds > 0) await WriteAsync("sustained", ReportJson.Value(playback)!);
                 var stopping = Stopwatch.StartNew();
                 if (receiverStops) await server.DisconnectAsync().WaitAsync(TimeSpan.FromSeconds(5), timeout.Token);
                 else stopping.Stop();
@@ -143,16 +144,16 @@ public sealed partial class MainWindow
                     await Task.Delay(25, restored.Token);
                 if (silentPcm && playback.playedAudioFrames < 4800)
                     throw new IOException("Retained pre-stop playback measurements lack real WASAPI source content.");
-                measurements = new { playback.decoded, playback.presented, playback.hardwareSurfaces,
-                    playback.automaticFullscreenVerified, playback.playedAudioFrames,
-                    playback.firstSourceAudioPtsUs, playback.maximumAvSkewUs, playback.maximumSteadySkewUs,
-                    playback.avMeasurements, playback.skippedFrames, playback.audioSilenceFrames,
-                    playback.audioDroppedFrames, playback.playbackDiagnostics, playback.elapsedSeconds,
-                    playbackMetricsPhase = "before-stop",
-                    avWithin250ms = silentPcm ? playback.avMeasurements > 0 &&
-                        playback.maximumSteadySkewUs <= 250_000 : (bool?)null,
-                    ready = true, homeVisible = true, idle = true, detached = true,
-                    receiverStopMilliseconds = receiverStops ? stopping.Elapsed.TotalMilliseconds : (double?)null };
+                measurements = JsonData.Object(("decoded", playback.decoded), ("presented", playback.presented), ("hardwareSurfaces", playback.hardwareSurfaces),
+                    ("automaticFullscreenVerified", playback.automaticFullscreenVerified), ("playedAudioFrames", playback.playedAudioFrames),
+                    ("firstSourceAudioPtsUs", playback.firstSourceAudioPtsUs), ("maximumAvSkewUs", playback.maximumAvSkewUs), ("maximumSteadySkewUs", playback.maximumSteadySkewUs),
+                    ("avMeasurements", playback.avMeasurements), ("skippedFrames", playback.skippedFrames), ("audioSilenceFrames", playback.audioSilenceFrames),
+                    ("audioDroppedFrames", playback.audioDroppedFrames), ("playbackDiagnostics", playback.playbackDiagnostics), ("elapsedSeconds", playback.elapsedSeconds),
+                    ("playbackMetricsPhase", "before-stop"),
+                    ("avWithin250ms", silentPcm ? playback.avMeasurements > 0 &&
+                        playback.maximumSteadySkewUs <= 250_000 : (bool?)null),
+                    ("ready", true), ("homeVisible", true), ("idle", true), ("detached", true),
+                    ("receiverStopMilliseconds", receiverStops ? stopping.Elapsed.TotalMilliseconds : (double?)null));
             }
             else if (role == "sender")
             {
@@ -225,11 +226,11 @@ public sealed partial class MainWindow
                     !diagnostics.Any(line => line.Contains("GPU surface pool stopped:", StringComparison.Ordinal) &&
                         line.Contains("inUse=0,", StringComparison.Ordinal)) || stopping.Elapsed > TimeSpan.FromSeconds(5))
                     throw new IOException("Peer sender did not release its tracked surfaces and capture child within five seconds.");
-                measurements = new { childExited = true, surfacesReturned = true, unchangedWindowSurvived = !receiverStops,
-                    stopMilliseconds = stopping.Elapsed.TotalMilliseconds, sender = ended, ready = true, idle = true,
-                    ownSourceWindowVisibleVerified = true, ownSourcePidVerified = true,
-                    sourceWindowHandle = ownedWindow.ToInt64(), syntheticAudioFactory = silentPcm,
-                    staticBeforeCapture = staticSource, animationTicks = ticks };
+                measurements = JsonData.Object(("childExited", true), ("surfacesReturned", true), ("unchangedWindowSurvived", !receiverStops),
+                    ("stopMilliseconds", stopping.Elapsed.TotalMilliseconds), ("sender", ended), ("ready", true), ("idle", true),
+                    ("ownSourceWindowVisibleVerified", true), ("ownSourcePidVerified", true),
+                    ("sourceWindowHandle", ownedWindow.ToInt64()), ("syntheticAudioFactory", silentPcm),
+                    ("staticBeforeCapture", staticSource), ("animationTicks", ticks));
             }
             else throw new ArgumentException("Peer test role must be sender or receiver.");
         }
@@ -251,7 +252,7 @@ public sealed partial class MainWindow
                 if (timing is not null)
                 {
                     timingSnapshot = timing.Stop();
-                    await WriteAsync(role + "-timeline", timingSnapshot);
+                    await WriteAsync(role + "-timeline", ReportJson.Value(timingSnapshot)!);
                     timelineValidationErrors = MediaTiming.CheckPeerTrace(timingSnapshot, role == "sender");
                     if (timelineValidationErrors.Length > 0)
                         failure ??= "Process timing trace incomplete: " + string.Join(" ", timelineValidationErrors);
@@ -259,18 +260,15 @@ public sealed partial class MainWindow
             }
             catch (Exception error) { failure ??= $"Peer timing/receiver cleanup failed: {error}"; }
         }
-        await WriteAsync(role, new { passed = failure is null, failure, role, receiverStops, measurements,
-            pid = Environment.ProcessId, loopbackOnly = IPAddress.IsLoopback(address), receiverAddress = address.ToString(),
-            syntheticOwnedWindowOnly = true,
-            audioEnabled = silentPcm, generatedSilentPcmOnly = silentPcm, durationSeconds, sampleSeconds,
-            staticSource, requiredFrames,
-            resourceSamples = samples.Count, baselinePrivateBytes = baselinePrivate == 0 ? (long?)null : baselinePrivate,
-            peakPrivateBytes = peakPrivate,
-            timelineEnabled = timeline, timelineComplete = timingSnapshot is null ? (bool?)null :
-                timingSnapshot.Complete && timelineValidationErrors is { Length: 0 },
-            timelineValidationErrors,
-            timelineDropped = timingSnapshot?.Dropped,
-            opticalLatencyMeasured = false, perceivedAudioQualityMeasured = false, diagnostics });
+        await WriteAsync(role, JsonData.Object(("passed", failure is null), ("failure", failure), ("role", role), ("receiverStops", receiverStops), ("measurements", measurements),
+            ("pid", Environment.ProcessId), ("loopbackOnly", IPAddress.IsLoopback(address)), ("receiverAddress", address.ToString()),
+            ("syntheticOwnedWindowOnly", true), ("audioEnabled", silentPcm), ("generatedSilentPcmOnly", silentPcm), ("durationSeconds", durationSeconds), ("sampleSeconds", sampleSeconds),
+            ("staticSource", staticSource), ("requiredFrames", requiredFrames),
+            ("resourceSamples", samples.Count), ("baselinePrivateBytes", baselinePrivate == 0 ? (long?)null : baselinePrivate),
+            ("peakPrivateBytes", peakPrivate), ("timelineEnabled", timeline), ("timelineComplete", timingSnapshot is null ? (bool?)null :
+                timingSnapshot.Complete && timelineValidationErrors is { Length: 0 }),
+            ("timelineValidationErrors", JsonData.Value(timelineValidationErrors)), ("timelineDropped", timingSnapshot?.Dropped),
+            ("opticalLatencyMeasured", false), ("perceivedAudioQualityMeasured", false), ("diagnostics", JsonData.Value(diagnostics))));
 
         PeerPlaybackSnapshot Snapshot() => new(video.DecodedFrames, video.PresentedFrames, video.HardwareSurfaceCount,
             true, video.PlayedAudioFrames, video.FirstRecoverySourceAudioPtsUs, video.MaximumAvSkewUs,
@@ -287,16 +285,16 @@ public sealed partial class MainWindow
             if (memory > 2L * 1024 * 1024 * 1024) throw new IOException("Peer app exceeded its 2 GiB private-memory guard.");
             peakPrivate = Math.Max(peakPrivate, memory);
             if (clock.Elapsed.TotalSeconds >= 15 && baselinePrivate == 0) baselinePrivate = memory;
-            samples.Add(new { elapsedSeconds = clock.Elapsed.TotalSeconds, utc = DateTime.UtcNow,
-                pid = Environment.ProcessId, privateBytes = memory, workingSetBytes = process.WorkingSet64,
-                growthFromWarmupBytes = baselinePrivate == 0 ? (long?)null : memory - baselinePrivate,
-                role = roles.Role.ToString(), playback = role == "receiver" ? Snapshot() : null,
-                receiverDiagnostics = role == "receiver" ? receiver?.Diagnostics : null,
-                scheduling = ScrcpyReceive.Core.ReceiveDiagnostics.ThreadPoolStatus(),
-                processCpuMilliseconds = process.TotalProcessorTime.TotalMilliseconds,
-                gpuBytes = (long?)null, gpuUnavailableReason = "External harness queries PID-scoped GPU counters; managed process metrics do not expose GPU allocations." });
+            samples.Add(JsonData.Object(("elapsedSeconds", clock.Elapsed.TotalSeconds), ("utc", DateTime.UtcNow),
+                ("pid", Environment.ProcessId), ("privateBytes", memory), ("workingSetBytes", process.WorkingSet64),
+                ("growthFromWarmupBytes", baselinePrivate == 0 ? (long?)null : memory - baselinePrivate),
+                ("role", roles.Role.ToString()), ("playback", ReportJson.Value(role == "receiver" ? Snapshot() : null)),
+                ("receiverDiagnostics", role == "receiver" ? receiver?.Diagnostics : null),
+                ("scheduling", RedrainCast.Receive.Core.ReceiveDiagnostics.ThreadPoolStatus()),
+                ("processCpuMilliseconds", process.TotalProcessorTime.TotalMilliseconds),
+                ("gpuBytes", (long?)null), ("gpuUnavailableReason", "External harness queries PID-scoped GPU counters; managed process metrics do not expose GPU allocations.")));
             nextSample = clock.Elapsed + TimeSpan.FromSeconds(sampleSeconds);
-            await WriteAsync(role + "-samples", samples);
+            await WriteAsync(role + "-samples", JsonData.Value(samples));
         }
 
         string FileName(string name) => Path.Combine(directory, name + ".json");
@@ -320,10 +318,10 @@ public sealed partial class MainWindow
                 }
             }
         }
-        async Task WriteAsync(string name, object value)
+        async Task WriteAsync(string name, JsonNode value)
         {
             var file = FileName(name);
-            await File.WriteAllTextAsync(file + ".tmp", JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true }));
+            await File.WriteAllTextAsync(file + ".tmp", JsonData.Text(value, indented: true));
             File.Move(file + ".tmp", file, true);
         }
         async Task WaitForFileAsync(string name)
@@ -332,11 +330,12 @@ public sealed partial class MainWindow
         }
     }
 
-    private sealed record PeerPlaybackSnapshot(long decoded, long presented, int hardwareSurfaces,
+}
+
+internal sealed record PeerPlaybackSnapshot(long decoded, long presented, int hardwareSurfaces,
         bool automaticFullscreenVerified, long playedAudioFrames, long? firstSourceAudioPtsUs,
         long maximumAvSkewUs, long maximumSteadySkewUs, int avMeasurements, long skippedFrames,
         long audioSilenceFrames, long audioDroppedFrames, string playbackDiagnostics, double elapsedSeconds,
-        long playbackEpoch, ScrcpyReceive.Core.ReceiverRecoveryState? recoveryState,
-        ScrcpyReceive.Core.AvTimingSample? avTiming, long? avTimingAgeMilliseconds,
-        ScrcpyReceive.Core.AvTimingSample? maximumAvTiming);
-}
+        long playbackEpoch, RedrainCast.Receive.Core.ReceiverRecoveryState? recoveryState,
+        RedrainCast.Receive.Core.AvTimingSample? avTiming, long? avTimingAgeMilliseconds,
+        RedrainCast.Receive.Core.AvTimingSample? maximumAvTiming);

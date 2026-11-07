@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+using RedrainCast.Protocol;
 using System.Text.Json;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
@@ -40,7 +42,7 @@ public sealed partial class MainWindow
 
     internal async Task RunLayoutSelfTestAsync(string reportFile, DiagnosticLog? journal)
     {
-        var measurements = new List<object>();
+        var measurements = new List<JsonNode>();
         string? failure = null;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
         var pickerStarted = false;
@@ -52,19 +54,17 @@ public sealed partial class MainWindow
         }
         catch (Exception error) { failure = error.ToString(); }
         journal?.Write($"Layout-only self-test completed: passed={failure is null}; cases={measurements.Count}; failure={failure}");
-        File.WriteAllText(reportFile, JsonSerializer.Serialize(new
-        {
-            passed = failure is null, failure, pid = Environment.ProcessId, version = AppVersion.Current().Label,
-            layoutOnly = true, syntheticError = true, loopbackOnly = true,
-            captureStarted = false, nativeItemProofStarted = pickerStarted,
-            captureScope = "none; owned synthetic window capture-item metadata only; no real picker or compatibility chooser",
-            encoderStarted = false, audioStarted = false, settingsWritten = false,
-            inputCoverage = "Native ChangeView and Tab key down/up, gated before each key to this exact foreground HWND/PID; no picker UI, wheel, touch or physical keyboard.",
-            measurements
-        }, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(reportFile, JsonData.Text(JsonData.Object(
+            ("passed", failure is null), ("failure", failure), ("pid", Environment.ProcessId), ("version", AppVersion.Current().Label),
+            ("layoutOnly", true), ("syntheticError", true), ("loopbackOnly", true),
+            ("captureStarted", false), ("nativeItemProofStarted", pickerStarted),
+            ("captureScope", "none; owned synthetic window capture-item metadata only; no real picker or compatibility chooser"),
+            ("encoderStarted", false), ("audioStarted", false), ("settingsWritten", false),
+            ("inputCoverage", "Native ChangeView and Tab key down/up, gated before each key to this exact foreground HWND/PID; no picker UI, wheel, touch or physical keyboard."),
+            ("measurements", JsonData.Value(measurements))), indented: true));
     }
 
-    private async Task CheckHomeLayoutAsync(List<object> measurements, DiagnosticLog? journal, CancellationToken token)
+    private async Task CheckHomeLayoutAsync(List<JsonNode> measurements, DiagnosticLog? journal, CancellationToken token)
     {
         if (!isolated || source is not null || receiver is null || roles.Role != CastRole.Idle || video.IsAttached)
             throw new InvalidOperationException("Layout checks require an isolated, idle loopback receiver without capture or playback.");
@@ -139,19 +139,17 @@ public sealed partial class MainWindow
                 var tabOffset = HomeScroll.VerticalOffset;
                 await ScrollAsync(0);
                 RequireVisible(SettingsButton);
-                measurements.Add(new
-                {
-                    requestedWidth = width, requestedHeight = height, clientWidth = actual.Width, clientHeight = actual.Height,
-                    xamlWidth = WindowRoot.ActualWidth, xamlHeight = WindowRoot.ActualHeight, scale,
-                    errorOpen, detailLines = errorOpen ? 32 : 0, stacked = Grid.GetRow(ReceiveCard) == 1,
-                    viewportHeight = HomeScroll.ViewportHeight, extentHeight = HomeScroll.ExtentHeight,
-                    scrollableHeight = HomeScroll.ScrollableHeight, topOffset, bottomOffset, tabOffset, focusMoves,
-                    bannerHeight = errorOpen ? Problem.ActualHeight : 0, bannerAtTop, bannerEndReachable = errorOpen,
-                    footerReachable = true, versionReachable = true,
-                    footerAtBottom = new { footerAtBottom.Top, footerAtBottom.Bottom },
-                    versionAtBottom = new { versionAtBottom.Top, versionAtBottom.Bottom },
-                    tabBringIntoView = true, topReturnReachable = true
-                });
+                measurements.Add(JsonData.Object(
+                    ("requestedWidth", width), ("requestedHeight", height), ("clientWidth", actual.Width), ("clientHeight", actual.Height),
+                    ("xamlWidth", WindowRoot.ActualWidth), ("xamlHeight", WindowRoot.ActualHeight), ("scale", scale),
+                    ("errorOpen", errorOpen), ("detailLines", errorOpen ? 32 : 0), ("stacked", Grid.GetRow(ReceiveCard) == 1),
+                    ("viewportHeight", HomeScroll.ViewportHeight), ("extentHeight", HomeScroll.ExtentHeight),
+                    ("scrollableHeight", HomeScroll.ScrollableHeight), ("topOffset", topOffset), ("bottomOffset", bottomOffset), ("tabOffset", tabOffset), ("focusMoves", focusMoves),
+                    ("bannerHeight", errorOpen ? Problem.ActualHeight : 0), ("bannerAtTop", bannerAtTop), ("bannerEndReachable", errorOpen),
+                    ("footerReachable", true), ("versionReachable", true),
+                    ("footerAtBottom", JsonData.Object(("Top", footerAtBottom.Top), ("Bottom", footerAtBottom.Bottom))),
+                    ("versionAtBottom", JsonData.Object(("Top", versionAtBottom.Top), ("Bottom", versionAtBottom.Bottom))),
+                    ("tabBringIntoView", true), ("topReturnReachable", true)));
             }
         }
         finally

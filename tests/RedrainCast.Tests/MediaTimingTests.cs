@@ -1,5 +1,5 @@
 using RedrainCast.Protocol;
-using ScrcpyReceive.Core;
+using RedrainCast.Receive.Core;
 using Xunit;
 
 namespace RedrainCast.Tests;

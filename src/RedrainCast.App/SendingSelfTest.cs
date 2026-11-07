@@ -1,11 +1,12 @@
+using RedrainCast.Protocol;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using RedrainCast.Core;
-using ScrcpySend.Core;
-using ScrcpySend.Media;
+using RedrainCast.Send.Core;
+using RedrainCast.Send.Media;
 
 namespace RedrainCast.App;
 
@@ -76,7 +77,7 @@ public sealed partial class MainWindow
                 if ((await Wire.ReadAsync(stream, timeout.Token)).Type != MessageType.Hello)
                     throw new InvalidOperationException("Inline UI test expected sender HELLO.");
                 await Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0,
-                    new { role = "receiver", versions = new[] { 3 }, name = "Inline UI test" }), timeout.Token);
+                    JsonData.Object(("role", "receiver"), ("versions", JsonData.Value(new[] { 3 })), ("name", "Inline UI test"))), timeout.Token);
                 var request = await Wire.ReadAsync(stream, timeout.Token);
                 if (request.Type != MessageType.SessionRequest)
                     throw new InvalidOperationException("Inline UI test expected SESSION_REQUEST.");
@@ -89,7 +90,7 @@ public sealed partial class MainWindow
                 }
                 var mediaToken = new string('A', 64);
                 await Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, request.Session,
-                    new { tracks = new[] { 1 }, mediaToken }), timeout.Token);
+                    JsonData.Object(("tracks", JsonData.Value(new[] { 1 })), ("mediaToken", mediaToken))), timeout.Token);
                 using var videoPeer = await AttachAsync("video");
                 using var audioPeer = await AttachAsync("audio");
                 using var mediaStop = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
@@ -112,7 +113,7 @@ public sealed partial class MainWindow
                         {
                             case MessageType.Ping:
                                 await WriteControlAsync(Message.Control(MessageType.Pong, request.Session,
-                                    new { nonce = StrictJson.Integer(message.Json(), "nonce") }));
+                                    JsonData.Object(("nonce", StrictJson.Integer(message.Json(), "nonce")))));
                                 break;
                             case MessageType.Stop:
                                 var reason = StrictJson.String(message.Json(), "reason", 1024);
@@ -121,7 +122,7 @@ public sealed partial class MainWindow
                                 if (!videoEof || encodedFrames == 0 || encodedBytes == 0)
                                     throw new InvalidOperationException("Inline UI test Stop requires prior encoded frames and frame-boundary media EOF.");
                                 await WriteControlAsync(Message.Control(MessageType.SessionEnd, request.Session,
-                                    new { reason }));
+                                    JsonData.Object(("reason", reason))));
                                 Diagnostic($"Inline peer terminal: stop=true; sessionMatched=true; mediaEofBeforeSessionEnd=true; " +
                                     $"sessionEndWritten=true; encodedFrames={encodedFrames}; encodedBytes={encodedBytes}.");
                                 return;
@@ -148,7 +149,7 @@ public sealed partial class MainWindow
                             StrictJson.String(hello.Json(), "token", 64) != mediaToken)
                             throw new InvalidOperationException("Invalid inline test media attachment.");
                         await Wire.WriteAsync(socket.GetStream(), Message.Control(MessageType.Hello, request.Session,
-                            new { channel }), timeout.Token);
+                            JsonData.Object(("channel", channel))), timeout.Token);
                         return socket;
                     }
                     catch { socket.Dispose(); throw; }

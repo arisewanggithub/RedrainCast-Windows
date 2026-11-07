@@ -19,9 +19,17 @@ were saved and the Age ratings section marked Complete: Microsoft/IARC 12+,
 ESRB Teen, PEGI Parental Guidance and USK 16+ in Germany. Exact-package
 physical-device acceptance still requires owner checks. On 2026-11-07, the
 owner changed this initial submission to **publish as soon as certification
-passes**, replacing the earlier manual hold. Certification has not been
-submitted; the separately guarded REST update pipeline retains its Manual
-publication mode.
+passes**, replacing the earlier manual hold. At the owner's explicit request,
+Submission 1 was submitted for certification on 2026-11-07. Partner Center
+reported **In certification**, with Submission complete, Pre-processing in
+progress, and Certification and Publishing not yet started. Automatic
+publication after certification passes remains enabled. The existing uploaded
+self-contained, untrimmed ARM64/x64 0.1.20.0 packages were preserved; newer local
+naming/JSON candidates were not uploaded. Public setup/test instructions were
+saved and verified in Additional Testing Information; internal acceptance
+diagnostics were not submitted. This does not establish certification approval,
+publication or physical-device acceptance. The separately guarded REST update
+pipeline retains its Manual publication mode.
 
 ## Localized listing drafts
 

@@ -54,6 +54,9 @@ public sealed class ShippingBoundaryTests
     [InlineData("debug.pdb")]
     [InlineData("Start-Recording.cmd")]
     [InlineData("avcodec-62.dll")]
+    [InlineData("ScrcpySend.Core.dll")]
+    [InlineData("capture-worker\\ScrcpySend.Media.dll")]
+    [InlineData("ScrcpyReceive.Core.deps.json")]
     public void ShippingGuardRejectsContaminatedDirectory(string relativePath) =>
         CheckGuard(relativePath, accepted: false);
 
@@ -61,10 +64,19 @@ public sealed class ShippingBoundaryTests
     public void ShippingGuardAcceptsCleanDirectoryWithoutFlightMarker() =>
         CheckGuard("avcodec-61.dll", accepted: true);
 
+    [Fact]
+    public void ShippingGuardRetainsGenuineLegacyLicenseNotice() =>
+        CheckGuard("licenses\\ScrcpyReceive-Windows-LICENSE.txt", accepted: true);
+
+    [Fact]
+    public void ShippingGuardRejectsObsoleteProjectDependency() =>
+        CheckGuard("RedrainCast.App.deps.json", accepted: false,
+            contents: """{"libraries":{"ScrcpySend.Core/0.1.20":{}}}""");
+
     [Theory]
     [InlineData("RedrainCast.App.dll", "RecordingLaunch")]
-    [InlineData("ScrcpyReceive.Core.dll", "ReceivedRecording")]
-    [InlineData("ScrcpySend.Media.dll", "VerifyEmptyOutputModel")]
+    [InlineData("RedrainCast.Receive.Core.dll", "ReceivedRecording")]
+    [InlineData("RedrainCast.Send.Media.dll", "VerifyEmptyOutputModel")]
     public void ShippingGuardRejectsRemovedCodeEvenWithoutAnExternalHelper(string assembly, string member) =>
         CheckGuard(assembly, accepted: false, contents: member + '\0');
 
@@ -107,10 +119,10 @@ public sealed class ShippingBoundaryTests
         CheckTypes("RedrainCast.App.dll",
             ["RecordingLaunch", "CaptureCadenceGate", "DiagnosticsLaunch"],
             ["HighFpsProbeControl", "RecoveryPcmSource"]);
-        CheckTypes("ScrcpyReceive.Core.dll", ["ReceivedRecording", "ReceivedRecordingOptions", "RecordingArchive"], []);
-        CheckTypes("ScrcpySend.Core.dll", ["CaptureCadenceAnalysis"], ["EncoderSampleAccounting"]);
-        CheckTypes("ScrcpySend.Media.dll", ["FfmpegVideoSource"], ["WorkerVideoSource", "ProcessVideoSource"]);
-        CheckTypes("ScrcpyReceive.Media.dll", ["OutputThreadProbe"], ["VideoPlayback", "AudioPlayback"]);
+        CheckTypes("RedrainCast.Receive.Core.dll", ["ReceivedRecording", "ReceivedRecordingOptions", "RecordingArchive"], []);
+        CheckTypes("RedrainCast.Send.Core.dll", ["CaptureCadenceAnalysis"], ["EncoderSampleAccounting"]);
+        CheckTypes("RedrainCast.Send.Media.dll", ["FfmpegVideoSource"], ["WorkerVideoSource", "ProcessVideoSource"]);
+        CheckTypes("RedrainCast.Receive.Media.dll", ["OutputThreadProbe"], ["VideoPlayback", "AudioPlayback"]);
         CheckTypes("RedrainCast.Protocol.dll", ["ThreadTiming", "IThreadTimingSource"], ["MediaTiming"]);
 
         void CheckTypes(string file, string[] absent, string[] retained)

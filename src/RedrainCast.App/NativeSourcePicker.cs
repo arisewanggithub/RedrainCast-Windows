@@ -1,4 +1,4 @@
-using ScrcpySend.Media;
+using RedrainCast.Send.Media;
 using Windows.Graphics.Capture;
 
 namespace RedrainCast.App;

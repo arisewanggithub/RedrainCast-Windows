@@ -2,7 +2,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
-using ScrcpyReceive.Core;
+using RedrainCast.Receive.Core;
 using Windows.Graphics;
 
 namespace RedrainCast.App;

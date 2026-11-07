@@ -3,7 +3,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
-using ScrcpySend.Media;
+using RedrainCast.Send.Media;
 using RedrainCast.Core;
 using Windows.Foundation;
 

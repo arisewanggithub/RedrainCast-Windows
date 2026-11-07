@@ -1,10 +1,10 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
-using ScrcpyReceive.Core;
-using ScrcpySend.Core;
+using RedrainCast.Receive.Core;
+using RedrainCast.Send.Core;
 using Xunit;
-using ReceiveWire = ScrcpyReceive.Core.Wire;
+using ReceiveWire = RedrainCast.Receive.Core.Wire;
 
 namespace RedrainCast.Tests;
 
@@ -30,7 +30,7 @@ public sealed class DynamicReceiverTests
         {
             protocol = "screencopy", version = 3, name = "Invalid", port = 50432, state = "available", instanceId = identity
         });
-        Assert.Throws<ScrcpySend.Core.ProtocolException>(() =>
+        Assert.Throws<RedrainCast.Send.Core.ProtocolException>(() =>
             new DiscoveryTable().Observe(packet, IPAddress.Loopback, DateTimeOffset.UtcNow));
     }
 
@@ -81,10 +81,10 @@ public sealed class DynamicReceiverTests
         var table = new DiscoveryTable();
         var now = DateTimeOffset.UtcNow;
         var id = Guid.NewGuid().ToString("N");
-        table.Observe(ScrcpyReceive.Core.Discovery.Advertisement("First", 51000, false, id), IPAddress.Loopback, now);
-        table.Observe(ScrcpyReceive.Core.Discovery.Advertisement("First", 51000, false, id), IPAddress.Parse("192.0.2.1"), now);
-        table.Observe(ScrcpyReceive.Core.Discovery.Advertisement("Second", 52000, false, Guid.NewGuid().ToString("N")), IPAddress.Loopback, now);
-        table.Observe(ScrcpyReceive.Core.Discovery.Advertisement("First", 53000, false, id), IPAddress.Loopback, now);
+        table.Observe(RedrainCast.Receive.Core.Discovery.Advertisement("First", 51000, false, id), IPAddress.Loopback, now);
+        table.Observe(RedrainCast.Receive.Core.Discovery.Advertisement("First", 51000, false, id), IPAddress.Parse("192.0.2.1"), now);
+        table.Observe(RedrainCast.Receive.Core.Discovery.Advertisement("Second", 52000, false, Guid.NewGuid().ToString("N")), IPAddress.Loopback, now);
+        table.Observe(RedrainCast.Receive.Core.Discovery.Advertisement("First", 53000, false, id), IPAddress.Loopback, now);
         var endpoints = table.Snapshot(now);
         Assert.Equal(3, endpoints.Count);
         Assert.Contains(endpoints, endpoint => endpoint.Address.Equals(IPAddress.Parse("192.0.2.1")) && endpoint.Port == 51000);

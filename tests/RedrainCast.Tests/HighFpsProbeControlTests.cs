@@ -4,7 +4,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading.Channels;
 using RedrainCast.App;
-using ScrcpyReceive.Core;
+using RedrainCast.Receive.Core;
 using Xunit;
 
 namespace RedrainCast.Tests;
@@ -82,7 +82,7 @@ public sealed class HighFpsProbeControlTests
                 new { role = "sender", versions = new[] { 3 }, name = "Synthetic probe" }), limit.Token);
             await control.ReadAsync(PacketType.Hello, limit.Token);
             await control.SendAsync(Packet.Control(PacketType.SessionRequest, fps,
-                new ScrcpySend.Core.CaptureSettings(MaxFps: fps, EnableAudio: false).Request("Explicit fake")), limit.Token);
+                new RedrainCast.Send.Core.CaptureSettings(MaxFps: fps, EnableAudio: false).Request("Explicit fake")), limit.Token);
             var accepted = await control.ReadAsync(PacketType.SessionAccept, limit.Token);
             var mediaToken = JsonObject.Text(accepted.Object(), "mediaToken", 64);
             foreach (var (socket, channel) in new[] { (video, "video"), (audio, "audio") })

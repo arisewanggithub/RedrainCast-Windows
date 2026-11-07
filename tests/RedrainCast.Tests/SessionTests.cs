@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Xml.Linq;
 using RedrainCast.Core;
-using ScrcpyReceive.Core;
+using RedrainCast.Receive.Core;
 using Xunit;
 
 namespace RedrainCast.Tests;
@@ -109,7 +109,7 @@ public sealed class SessionTests
             new { role = "sender", versions = new[] { 3 }, name = "Other" }), deadline.Token);
         _ = await Wire.ReadAsync(stream, deadline.Token);
         await Wire.WriteAsync(stream, Packet.Control(PacketType.SessionRequest, 1,
-            new ScrcpySend.Core.CaptureSettings().Request("Test encoder")), deadline.Token);
+            new RedrainCast.Send.Core.CaptureSettings().Request("Test encoder")), deadline.Token);
         Assert.Equal(PacketType.Reject, (await Wire.ReadAsync(stream, deadline.Token)).Type);
         while (roles.Role != CastRole.Idle) await Task.Delay(10, deadline.Token);
         using var sending = roles.TryAcquire(CastRole.Sending);

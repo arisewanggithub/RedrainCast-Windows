@@ -2,8 +2,8 @@ using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using ScrcpyReceive.Core;
-using ScrcpyReceive.Media;
+using RedrainCast.Receive.Core;
+using RedrainCast.Receive.Media;
 
 namespace RedrainCast.App;
 
@@ -23,7 +23,7 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
     internal bool CollectPresentationSamples { get; set; }
     internal PresentationDiagnosticSnapshot PresentationSnapshot() =>
         (active ?? throw new InvalidOperationException("No diagnostic presenter is attached.")).PresentationSnapshot();
-    internal void CheckDiagnosticGpuBudget() => ScrcpySend.Media.MediaDiagnostics.CheckGpuBudget(
+    internal void CheckDiagnosticGpuBudget() => RedrainCast.Send.Media.MediaDiagnostics.CheckGpuBudget(
         (active ?? throw new InvalidOperationException("No diagnostic video device is attached.")).Device);
     public long RedrawnFrames => active?.RedrawnFrames ?? 0;
     public long PlayedAudioFrames => playback?.PlayedAudioFrames ?? 0;

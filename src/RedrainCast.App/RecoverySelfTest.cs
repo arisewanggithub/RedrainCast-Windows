@@ -1,3 +1,4 @@
+using RedrainCast.Protocol;
 using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
@@ -6,10 +7,10 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using RedrainCast.Core;
-using ScrcpyReceive.Core;
-using ScrcpySend.Core;
-using ScrcpySend.Media;
-using ScrcpyReceive.Media;
+using RedrainCast.Receive.Core;
+using RedrainCast.Send.Core;
+using RedrainCast.Send.Media;
+using RedrainCast.Receive.Media;
 using Windows.UI;
 
 namespace RedrainCast.App;
@@ -53,7 +54,7 @@ public sealed partial class MainWindow
                 var format = new AudioFormat("opus", 2, Convert.FromBase64String("T3B1c0hlYWQBAjgBgLsAAAAAAA=="), 312, 0, 0);
                 using var initial = new AudioDecoder(format);
                 using var restarted = new AudioDecoder(format with { PreSkip = 0 });
-                var packet = new ScrcpyReceive.Core.Packet(PacketType.AudioPacket, 1, 2, 1, 0, 0, [248, 255, 254]);
+                var packet = new RedrainCast.Receive.Core.Packet(PacketType.AudioPacket, 1, 2, 1, 0, 0, [248, 255, 254]);
                 if (initial.Decode(packet).Data.Length / 4 != 648 || restarted.Decode(packet).Data.Length / 4 != 960)
                     throw new IOException("Native Opus midstream reconstruction reapplied initial pre-skip or changed packet duration.");
                 opusPreSkipVerified = true;
@@ -138,17 +139,15 @@ public sealed partial class MainWindow
             timer.Stop(); probe.Close();
             await StopReceiverAsync(); await StartReceiverAsync();
         }
-        await File.WriteAllTextAsync(reportFile, JsonSerializer.Serialize(new
-        {
-            passed = failure is null && restored, failure, configurations = factory.Configurations,
-            presented, played, states, childExited = source?.ChildExited, source = source?.Statistics,
-            syntheticOwnedWindowOnly = true, audio = "generated silent stereo PCM, real WASAPI output",
-            hardwareCodec = "h264", opusPreSkipVerified, maximumDecodedKeyProofAgeUs,
-            preparedWithoutCaptureVerified, duplicatePrepareVerified, sourceReuseRejected,
-            preparationMilliseconds, diagnosticLogPath,
-            delayedDecodedKeyProofVerified = maximumDecodedKeyProofAgeUs >= 300_000,
-            physicalDevicesTested = false, diagnostics
-        }, new JsonSerializerOptions { WriteIndented = true }));
+        await File.WriteAllTextAsync(reportFile, JsonData.Text(JsonData.Object(
+            ("passed", failure is null && restored), ("failure", failure), ("configurations", factory.Configurations),
+            ("presented", presented), ("played", played), ("states", JsonData.Value(states)), ("childExited", source?.ChildExited), ("source", source?.Statistics),
+            ("syntheticOwnedWindowOnly", true), ("audio", "generated silent stereo PCM, real WASAPI output"),
+            ("hardwareCodec", "h264"), ("opusPreSkipVerified", opusPreSkipVerified), ("maximumDecodedKeyProofAgeUs", maximumDecodedKeyProofAgeUs),
+            ("preparedWithoutCaptureVerified", preparedWithoutCaptureVerified), ("duplicatePrepareVerified", duplicatePrepareVerified), ("sourceReuseRejected", sourceReuseRejected),
+            ("preparationMilliseconds", preparationMilliseconds), ("diagnosticLogPath", diagnosticLogPath),
+            ("delayedDecodedKeyProofVerified", maximumDecodedKeyProofAgeUs >= 300_000), ("physicalDevicesTested", false), ("diagnostics", JsonData.Value(diagnostics))),
+            indented: true));
         bool RecoveredStreaming()
         {
             lock (states) return states.Any(state => state.StartsWith("Recovery COMPLETE: generation=2,", StringComparison.Ordinal)) &&
@@ -183,13 +182,13 @@ public sealed partial class MainWindow
         public string Diagnostics => inner.Diagnostics;
         public void CheckHealth() => inner.CheckHealth();
         public void SetRecoveryKey(long pts) => inner.SetRecoveryKey(pts);
-        public async ValueTask ConfigureRecoveryAsync(ScrcpyReceive.Core.Packet video, ScrcpyReceive.Core.Packet? audio, bool midstream, CancellationToken token)
+        public async ValueTask ConfigureRecoveryAsync(RedrainCast.Receive.Core.Packet video, RedrainCast.Receive.Core.Packet? audio, bool midstream, CancellationToken token)
         {
             first = Interlocked.Increment(ref owner.Configurations) == 1;
             await inner.ConfigureRecoveryAsync(video, audio, midstream, token);
         }
-        public ValueTask ConfigureAsync(ScrcpyReceive.Core.Packet packet, CancellationToken token) => inner.ConfigureAsync(packet, token);
-        public async ValueTask PresentAsync(ScrcpyReceive.Core.Packet packet, CancellationToken token)
+        public ValueTask ConfigureAsync(RedrainCast.Receive.Core.Packet packet, CancellationToken token) => inner.ConfigureAsync(packet, token);
+        public async ValueTask PresentAsync(RedrainCast.Receive.Core.Packet packet, CancellationToken token)
         {
             if (packet.Track == 1)
             {

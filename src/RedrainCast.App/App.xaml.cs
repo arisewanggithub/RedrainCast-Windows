@@ -17,7 +17,7 @@ public partial class App : Application
         if (workerIndex >= 0)
         {
             Console.Error.WriteLine($"Capture worker bootstrap: pid={Environment.ProcessId}; entering capture worker.");
-            await ScrcpySend.Media.CaptureWorker.RunAsync(arguments[(workerIndex + 1)..]);
+            await RedrainCast.Send.Media.CaptureWorker.RunAsync(arguments[(workerIndex + 1)..]);
             Exit();
             return;
         }

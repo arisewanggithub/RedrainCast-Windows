@@ -57,6 +57,28 @@ without implying endorsement.
 
 ## First-release acceptance
 
+### Trimming feasibility
+
+Self-contained trimmed MSIX is a valid Store format, but no trimmed candidate
+is accepted for the current dependency set. The measured untrimmed naming-cleanup
+packages were 174,263,615 bytes (ARM64) and 183,929,284 bytes (x64).
+Reflection-based JSON was replaced with trim-safe payloads and source-generated
+settings/report metadata; contract and reflection-disabled tests passed.
+
+Actual native ARM64 ILLink runs still failed with 35 WinRT `IL2081` diagnostics,
+SharpGen `IL2067`/`IL2072`, and, when retaining required built-in audio COM
+support, `ComActivator` `IL2026`. Full and partial trim experiments did not
+suppress warnings or remove runtime/native dependencies. Resolving these
+requires supported dependency or COM-interop work before measuring a successful
+trimmed package. Normal publishing and the Store workflow remain untrimmed.
+
+The JSON groundwork's untrimmed publications/packages passed validation on both
+architectures, with 1,171 portable tests and 61 offline Store checks. Native
+layout passed six cases, but a later fresh media gate had no visible foreground
+owner (`HWND/PID = 0`) and blocked all media launches. This is not a trimmed
+acceptance or a successful media/synchronization check. Existing uploaded Store
+packages were not replaced.
+
 Use the current normal publication, not historical recording or experimental
 FFmpeg bundles. Their one-off sources and launchers have been removed; reusable
 local regression self-tests remain. Package guards reject recording-export

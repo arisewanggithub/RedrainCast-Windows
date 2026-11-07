@@ -1,10 +1,11 @@
+using System.Text.Json.Nodes;
 using System.Text.Json;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using RedrainCast.Protocol;
-using ScrcpyReceive.Core;
+using RedrainCast.Receive.Core;
 using Windows.Foundation;
 using Windows.UI.Text;
 
@@ -14,7 +15,7 @@ public sealed partial class MainWindow
 {
     internal async Task RunPlaybackStatisticsSelfTestAsync(string reportFile)
     {
-        var checks = new List<object>();
+        var checks = new List<JsonNode>();
         string? failure = null;
         using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(40));
         try
@@ -28,7 +29,7 @@ public sealed partial class MainWindow
             while (WindowRoot.XamlRoot is null || WindowRoot.ActualHeight <= 0) await Task.Delay(50, limit.Token);
             if (PlaybackStatsOverlay.Visibility != Visibility.Collapsed || statisticsTimer.IsEnabled)
                 throw new InvalidOperationException("Statistics are not default-off.");
-            checks.Add(new { phase = "default-off", visible = false, timer = false });
+            checks.Add(JsonData.Object(("phase", "default-off"), ("visible", false), ("timer", false)));
             HomePage.Visibility = Visibility.Collapsed;
             var request = new CastRequest("h265", "raw", 240, "auto", new ReceiverOptions(true), 8_000_000);
             var playback = new PlaybackStatistics(long.MaxValue, uint.MaxValue, long.MaxValue, long.MaxValue - 1, long.MaxValue - 2,
@@ -44,13 +45,13 @@ public sealed partial class MainWindow
             void CheckLayout(string phase)
             {
                 PlaybackStatsOverlay.UpdateLayout();
-                var cellChecks = new List<object>();
+                var cellChecks = new List<JsonNode>();
                 foreach (var text in statisticsLabels.Concat(statisticsValues.Values))
                 {
                     if (text.Visibility == Visibility.Collapsed)
                     {
-                        cellChecks.Add(new { text = text.Text, visible = false, clipped = false,
-                            reason = "Compact clock note merged without dropping its semantics." });
+                        cellChecks.Add(JsonData.Object(("text", text.Text), ("visible", false), ("clipped", false),
+                            ("reason", "Compact clock note merged without dropping its semantics.")));
                         continue;
                     }
                     var end = text.ContentEnd.GetCharacterRect(LogicalDirection.Backward);
@@ -74,23 +75,21 @@ public sealed partial class MainWindow
                         origin.X + end.Right > PlaybackStatsOverlay.ActualWidth + 1 ||
                         origin.Y + end.Bottom > PlaybackStatsOverlay.ActualHeight + 1 ||
                         origin.X + end.Right > parentOrigin.X + parent.ActualWidth + 1;
-                    cellChecks.Add(new
-                    {
-                        id, text = text.Text, visible = true, x = origin.X, y = origin.Y, width = text.ActualWidth,
-                        height = text.ActualHeight, desiredWidth = natural.DesiredSize.Width,
-                        assignedWidth = slot.Width, assignedHeight = slot.Height,
-                        desiredHeight = natural.DesiredSize.Height, endRight = end.Right, endBottom = end.Bottom,
-                        fontSizeDip = text.FontSize, textTrimmed = text.IsTextTrimmed, clipped,
-                        alignment = text.TextAlignment.ToString()
-                    });
+                    cellChecks.Add(JsonData.Object(
+                        ("id", id), ("text", text.Text), ("visible", true), ("x", origin.X), ("y", origin.Y), ("width", text.ActualWidth),
+                        ("height", text.ActualHeight), ("desiredWidth", natural.DesiredSize.Width),
+                        ("assignedWidth", slot.Width), ("assignedHeight", slot.Height),
+                        ("desiredHeight", natural.DesiredSize.Height), ("endRight", end.Right), ("endBottom", end.Bottom),
+                        ("fontSizeDip", text.FontSize), ("textTrimmed", text.IsTextTrimmed), ("clipped", clipped),
+                        ("alignment", text.TextAlignment.ToString())));
                     if (clipped || text.FontSize < 14 || text.IsHitTestVisible || text.IsTextSelectionEnabled)
                     {
-                        checks.Add(new { phase, cells = cellChecks });
+                        checks.Add(JsonData.Object(("phase", phase), ("cells", JsonData.Value(cellChecks))));
                         throw new InvalidOperationException($"Statistics cell clipped or intercepted input: {id ?? text.Text}; " +
                             $"desired {natural.DesiredSize}, actual {text.ActualWidth}×{text.ActualHeight}, at {origin}.");
                     }
                 }
-                var totalChecks = new List<object>();
+                var totalChecks = new List<JsonNode>();
                 double? firstColumnWidth = null;
                 for (var i = 0; i < statisticsTotalLabels.Count; i++)
                 {
@@ -113,26 +112,24 @@ public sealed partial class MainWindow
                         Math.Abs(firstColumnWidth.Value - labelSlot.Width) <= 1 &&
                         value.TextAlignment == TextAlignment.Left &&
                         (gapToNextLabel is null || gapToNextLabel >= (CompactStatistics ? 4 : 12) - 1);
-                    totalChecks.Add(new { id, label = label.Text, value = value.Text, labelX = labelOrigin.X,
-                        labelY = labelOrigin.Y, labelHeight = labelSlot.Height, valueX = valueOrigin.X,
-                        valueY = valueOrigin.Y, columnWidth = labelSlot.Width, valueColumnWidth = valueSlot.Width,
-                        nextLabelX, gapToNextLabel, fontSizeDip = value.FontSize, valid });
+                    totalChecks.Add(JsonData.Object(("id", id), ("label", label.Text), ("value", value.Text), ("labelX", labelOrigin.X),
+                        ("labelY", labelOrigin.Y), ("labelHeight", labelSlot.Height), ("valueX", valueOrigin.X),
+                        ("valueY", valueOrigin.Y), ("columnWidth", labelSlot.Width), ("valueColumnWidth", valueSlot.Width),
+                        ("nextLabelX", nextLabelX), ("gapToNextLabel", gapToNextLabel), ("fontSizeDip", value.FontSize), ("valid", valid)));
                     if (!valid)
                     {
-                        checks.Add(new { phase, cells = cellChecks, totals = totalChecks });
+                        checks.Add(JsonData.Object(("phase", phase), ("cells", JsonData.Value(cellChecks)), ("totals", JsonData.Value(totalChecks))));
                         throw new InvalidOperationException($"Total label/value arrangement or equal-column separation failed: {id}.");
                     }
                 }
-                checks.Add(new
-                {
-                    phase, scale = WindowRoot.XamlRoot.RasterizationScale,
-                    actualClientWidthDip = WindowRoot.ActualWidth, actualClientHeightDip = WindowRoot.ActualHeight,
-                    overlayWidth = PlaybackStatsOverlay.ActualWidth, overlayHeight = PlaybackStatsOverlay.ActualHeight,
-                    normalFontSizeDip = CompactStatistics ? 14 : 16, timer = statisticsTimer.IsEnabled,
-                    intervalMs = statisticsTimer.Interval.TotalMilliseconds, snapshotsCollected = samples,
-                    interceptsInput = PlaybackStatsOverlay.IsHitTestVisible, cells = cellChecks, totals = totalChecks,
-                    compactClockNoteMerged = CompactStatistics
-                });
+                checks.Add(JsonData.Object(
+                    ("phase", phase), ("scale", WindowRoot.XamlRoot.RasterizationScale),
+                    ("actualClientWidthDip", WindowRoot.ActualWidth), ("actualClientHeightDip", WindowRoot.ActualHeight),
+                    ("overlayWidth", PlaybackStatsOverlay.ActualWidth), ("overlayHeight", PlaybackStatsOverlay.ActualHeight),
+                    ("normalFontSizeDip", CompactStatistics ? 14 : 16), ("timer", statisticsTimer.IsEnabled),
+                    ("intervalMs", statisticsTimer.Interval.TotalMilliseconds), ("snapshotsCollected", samples),
+                    ("interceptsInput", PlaybackStatsOverlay.IsHitTestVisible), ("cells", JsonData.Value(cellChecks)), ("totals", JsonData.Value(totalChecks)),
+                    ("compactClockNoteMerged", CompactStatistics)));
                 if (PlaybackStatsOverlay.ActualWidth > WindowRoot.ActualWidth - 24 + 1 ||
                     PlaybackStatsOverlay.ActualHeight > WindowRoot.ActualHeight - 24 + 1 ||
                     !statisticsValues.ContainsKey("occluded") || Value("occluded") == "" ||
@@ -186,7 +183,7 @@ public sealed partial class MainWindow
             if (statisticsTimer.IsEnabled || PlaybackStatsOverlay.Visibility != Visibility.Collapsed ||
                 statisticsValues.Values.Any(c => c.Text != "") || statisticsDisplay is not null || samples != stoppedSamples)
                 throw new InvalidOperationException("Stop did not clear all cells, timer and sampling.");
-            checks.Add(new { phase = "simulated-stop", visible = false, timer = false, cleared = true });
+            checks.Add(JsonData.Object(("phase", "simulated-stop"), ("visible", false), ("timer", false), ("cleared", true)));
             var localizationScale = WindowRoot.XamlRoot.RasterizationScale;
             AppWindow.ResizeClient(new((int)(1100 * localizationScale), (int)(760 * localizationScale)));
             await Task.Delay(150, limit.Token);
@@ -199,12 +196,11 @@ public sealed partial class MainWindow
             ClearStatistics();
             AppWindow.SetPresenter(AppWindowPresenterKind.Default);
         }
-        File.WriteAllText(reportFile, JsonSerializer.Serialize(new
-        {
-            passed = failure is null, failure, pid = Environment.ProcessId, version = AppVersion.Current().Label,
-            typedSyntheticSnapshots = true, nativeXaml = true, loopbackListenerOnly = true,
-            captureStarted = false, audioStarted = false, encoderStarted = false, nativeDecoderStarted = false,
-            userSettingsWritten = false, inputInjected = false, userAppsTouched = false, checks
-        }, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(reportFile, JsonData.Text(JsonData.Object(
+            ("passed", failure is null), ("failure", failure), ("pid", Environment.ProcessId), ("version", AppVersion.Current().Label),
+            ("typedSyntheticSnapshots", true), ("nativeXaml", true), ("loopbackListenerOnly", true),
+            ("captureStarted", false), ("audioStarted", false), ("encoderStarted", false), ("nativeDecoderStarted", false),
+            ("userSettingsWritten", false), ("inputInjected", false), ("userAppsTouched", false), ("checks", JsonData.Value(checks))),
+            indented: true));
     }
 }

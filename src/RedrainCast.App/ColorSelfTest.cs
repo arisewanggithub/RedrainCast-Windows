@@ -1,7 +1,8 @@
+using RedrainCast.Protocol;
 using System.Text.Json;
-using ScrcpySend.Media;
-using ScrcpyReceive.Core;
-using ScrcpyReceive.Media;
+using RedrainCast.Send.Media;
+using RedrainCast.Receive.Core;
+using RedrainCast.Receive.Media;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 
@@ -53,10 +54,10 @@ public sealed partial class MainWindow
             }
         }
         catch (Exception error) { failure = error.ToString(); }
-        await File.WriteAllTextAsync(reportFile, JsonSerializer.Serialize(new
-        {
-            passed = failure is null, failure, measurements, rotation, encoders, includeDisplayColorProbe,
-            syntheticOnly = true, videoPixelReadbackForDiagnosticsOnly = true, windowsHdrSettingChanged = false
-        }, new JsonSerializerOptions { WriteIndented = true }));
+        await File.WriteAllTextAsync(reportFile, JsonData.Text(JsonData.Object(
+            ("passed", failure is null), ("failure", failure), ("measurements", ReportJson.Value(measurements)),
+            ("rotation", rotation), ("encoders", JsonData.Value(encoders)), ("includeDisplayColorProbe", includeDisplayColorProbe),
+            ("syntheticOnly", true), ("videoPixelReadbackForDiagnosticsOnly", true), ("windowsHdrSettingChanged", false)),
+            indented: true));
     }
 }

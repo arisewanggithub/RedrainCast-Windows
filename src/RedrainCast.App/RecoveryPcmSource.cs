@@ -1,13 +1,16 @@
+using System.Text.Json.Nodes;
+using RedrainCast.Protocol;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using ScrcpySend.Core;
+using RedrainCast.Send.Core;
 
 namespace RedrainCast.App;
 
 internal sealed class RecoveryPcmSource(TimeProvider? timeProvider = null) : IAudioSource
 {
     private readonly TimeProvider time = timeProvider ?? TimeProvider.System;
-    public object Configuration => new { codec = "raw", sampleRate = 48000, channels = 2, csd = Array.Empty<string>(), sampleFormat = "s16le" };
+    public JsonNode Configuration => JsonData.Object(("codec", "raw"), ("sampleRate", 48000), ("channels", 2),
+        ("csd", JsonData.Value(Array.Empty<string>())), ("sampleFormat", "s16le"));
     public void BeginTransmission() { }
 
     public async IAsyncEnumerable<AudioPacket> ReadPacketsAsync([EnumeratorCancellation] CancellationToken token)

@@ -1,4 +1,4 @@
-using ScrcpySend.Media;
+using RedrainCast.Send.Media;
 
 Console.Error.WriteLine($"Capture worker bootstrap: pid={Environment.ProcessId}; dedicated worker entry (no WinUI).");
 if (args.Length == 0 || args[0] != "--capture-worker")

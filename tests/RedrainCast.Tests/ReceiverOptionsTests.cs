@@ -6,10 +6,10 @@ using System.Text;
 using System.Text.Json;
 using RedrainCast.Core;
 using RedrainCast.Protocol;
-using ScrcpyReceive.Core;
-using ScrcpySend.Core;
+using RedrainCast.Receive.Core;
+using RedrainCast.Send.Core;
 using Xunit;
-using Wire = ScrcpyReceive.Core.Wire;
+using Wire = RedrainCast.Receive.Core.Wire;
 
 namespace RedrainCast.Tests;
 

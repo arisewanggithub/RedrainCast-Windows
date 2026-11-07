@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+using RedrainCast.Protocol;
 using System.Runtime.InteropServices;
 using System.Xml.Linq;
 using Microsoft.UI.Xaml;
@@ -5,8 +7,8 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using RedrainCast.Core;
-using ScrcpyReceive.Core;
-using ScrcpySend.Core;
+using RedrainCast.Receive.Core;
+using RedrainCast.Send.Core;
 
 namespace RedrainCast.App;
 
@@ -15,7 +17,7 @@ public sealed partial class MainWindow
     [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
     private static partial nint LocalizationSendMessage(nint window, uint message, nuint wParam, nint lParam);
 
-    private async Task CheckProductionPreferredLanguagesAsync(List<object> checks, CancellationToken token)
+    private async Task CheckProductionPreferredLanguagesAsync(List<JsonNode> checks, CancellationToken token)
     {
         var actualLanguages = AppStrings.ReadPreferredLanguages();
         var resolved = AppLanguages.Resolve(actualLanguages);
@@ -23,7 +25,7 @@ public sealed partial class MainWindow
             strings.Culture.Name != resolved) await Task.Delay(20, token);
         WindowRoot.UpdateLayout();
 
-        object VisibleProductionState(IReadOnlyList<string> languages)
+        JsonNode VisibleProductionState(IReadOnlyList<string> languages)
         {
             var expected = AppLanguages.Resolve(languages);
             var manual = strings.ResolveCandidate("ManualConnect");
@@ -33,23 +35,19 @@ public sealed partial class MainWindow
                 ReadinessTitle.Text != ready.Value || AutomationProperties.GetName(SettingsButton) != settingsName.Value ||
                 AppLanguages.Resolve([manual.Language]) != expected || AppLanguages.Resolve([ready.Language]) != expected)
                 throw new InvalidOperationException("Production preferred-language reader did not drive the visible Home UI and MRT context.");
-            return new
-            {
-                preferredLanguages = languages.ToArray(), resolvedLanguage = expected,
-                appCulture = strings.Culture.Name,
-                threadUiCulture = System.Globalization.CultureInfo.CurrentUICulture.Name,
-                threadCulture = System.Globalization.CultureInfo.CurrentCulture.Name,
-                manualConnect = ManualConnect.Content?.ToString(), readiness = ReadinessTitle.Text,
-                settingsAutomationName = AutomationProperties.GetName(SettingsButton),
-                mrtLanguageQualifier = manual.Language
-            };
+            return JsonData.Object(
+                ("preferredLanguages", JsonData.Value(languages.ToArray())), ("resolvedLanguage", expected),
+                ("appCulture", strings.Culture.Name),
+                ("threadUiCulture", System.Globalization.CultureInfo.CurrentUICulture.Name),
+                ("threadCulture", System.Globalization.CultureInfo.CurrentCulture.Name),
+                ("manualConnect", ManualConnect.Content?.ToString()), ("readiness", ReadinessTitle.Text),
+                ("settingsAutomationName", AutomationProperties.GetName(SettingsButton)),
+                ("mrtLanguageQualifier", manual.Language));
         }
 
-        checks.Add(new
-        {
-            phase = "production-preferred-languages-startup", defaultProductionReader = true,
-            syntheticLanguages = false, observed = VisibleProductionState(actualLanguages)
-        });
+        checks.Add(JsonData.Object(
+            ("phase", "production-preferred-languages-startup"), ("defaultProductionReader", true),
+            ("syntheticLanguages", false), ("observed", VisibleProductionState(actualLanguages))));
 
         // Instrument the real reader, without replacing its result, to prove fresh same-process reads on notifications.
         var reads = new List<IReadOnlyList<string>>();
@@ -68,12 +66,10 @@ public sealed partial class MainWindow
             while (reads.Count <= before) await Task.Delay(20, token);
             if (failures.Count != 0) throw new AggregateException("Production preference reconciliation failed.", failures);
             WindowRoot.UpdateLayout();
-            checks.Add(new
-            {
-                phase, productionApi = "Windows.System.UserProfile.GlobalizationPreferences.Languages",
-                syntheticLanguages = false, readsBefore = before, readsAfter = reads.Count,
-                observed = VisibleProductionState(reads[^1]), osProfileChanged = false
-            });
+            checks.Add(JsonData.Object(
+                ("phase", phase), ("productionApi", "Windows.System.UserProfile.GlobalizationPreferences.Languages"),
+                ("syntheticLanguages", false), ("readsBefore", before), ("readsAfter", reads.Count),
+                ("observed", VisibleProductionState(reads[^1])), ("osProfileChanged", false)));
         }
         var before = reads.Count;
         LocalizationSendMessage(handle, 0x001A, 0, 0);
@@ -94,7 +90,7 @@ public sealed partial class MainWindow
         await RecordFreshReadAsync("production-preferences-activation-visibility", before);
     }
 
-    private async Task CheckLocalizationAsync(List<object> checks, CancellationToken token)
+    private async Task CheckLocalizationAsync(List<JsonNode> checks, CancellationToken token)
     {
         if (!isolated || source is not null || video.IsAttached || roles.Role != CastRole.Idle)
             throw new InvalidOperationException("Localization proof requires an isolated, idle synthetic window without capture.");
@@ -158,8 +154,8 @@ public sealed partial class MainWindow
             }
             if (root is FrameworkElement frame) frame.UpdateLayout();
             Visit(root);
-            checks.Add(new { phase = "localized-text-bounds", language, context, measured,
-                issues = layoutFailures.Skip(firstFailure).ToArray(), cumulativeFailures = layoutFailures.Count });
+            checks.Add(JsonData.Object(("phase", "localized-text-bounds"), ("language", language), ("context", context), ("measured", measured),
+                ("issues", JsonData.Value(layoutFailures.Skip(firstFailure).ToArray())), ("cumulativeFailures", layoutFailures.Count)));
         }
         void BeforeRefresh(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
         {
@@ -243,9 +239,9 @@ public sealed partial class MainWindow
                     manual.Title?.ToString() != L("ConnectReceiver") ||
                     manual.PrimaryButtonText != L("Send") || manual.CloseButtonText != L("Cancel"))
                     throw new InvalidOperationException($"Open manual dialog lost text/selection or labels for {language}.");
-                checks.Add(new { phase = "localization-manual-dialog", language, compiledKeys = EnglishCatalog.Strings.Count,
-                    nativeNotification = "owned HWND WM_SETTINGCHANGE/intl", inputRetained = true,
-                    selectionRetained = true, syntheticCastIdentityRetained = true, rtl = strings.IsRightToLeft });
+                checks.Add(JsonData.Object(("phase", "localization-manual-dialog"), ("language", language), ("compiledKeys", EnglishCatalog.Strings.Count),
+                    ("nativeNotification", "owned HWND WM_SETTINGCHANGE/intl"), ("inputRetained", true),
+                    ("selectionRetained", true), ("syntheticCastIdentityRetained", true), ("rtl", strings.IsRightToLeft)));
                 CheckTextBounds(manual, language, "manual-dialog");
                 CheckTextBounds(PlaybackStatsPanel, language, "statistics-wide");
             }
@@ -282,8 +278,8 @@ public sealed partial class MainWindow
                     System.Globalization.CultureInfo.GetCultureInfo("fr"), "h265", true);
                 if (parsed.Settings?.VideoBitrate != 1_500_000)
                     throw new InvalidOperationException("The retained French edit context did not preserve the fractional bitrate.");
-                checks.Add(new { phase = "localization-settings-dialog", language, editCulture = "fr",
-                    unsavedValuesRetained = true, settingsWritten = false });
+                checks.Add(JsonData.Object(("phase", "localization-settings-dialog"), ("language", language), ("editCulture", "fr"),
+                    ("unsavedValuesRetained", true), ("settingsWritten", false)));
                 CheckTextBounds(settingsDialog, language, "settings-dialog");
             }
             settingsDialog.Hide();
@@ -306,9 +302,9 @@ public sealed partial class MainWindow
             AppWindow.Show();
             Activate();
             while (strings.Culture.Name != "ar") await Task.Delay(20, token);
-            checks.Add(new { phase = "localization-continuity-and-fallback", continuityChecks,
-                preferredOrder = true, unsupportedEnglishFallback = true, chineseRegionFallback = true,
-                activationVisibilityReconciled = true, baselineAndPeakPreserved = true });
+            checks.Add(JsonData.Object(("phase", "localization-continuity-and-fallback"), ("continuityChecks", continuityChecks),
+                ("preferredOrder", true), ("unsupportedEnglishFallback", true), ("chineseRegionFallback", true),
+                ("activationVisibilityReconciled", true), ("baselineAndPeakPreserved", true)));
             if (layoutFailures.Count != 0)
                 throw new InvalidOperationException("Localized text clipping:\n" + string.Join("\n", layoutFailures));
         }

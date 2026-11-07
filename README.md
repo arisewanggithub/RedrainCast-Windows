@@ -946,6 +946,14 @@ dotnet build .\src\RedrainCast.App\RedrainCast.App.csproj -c Release -p:Platform
 ```
 
 For x64, prepare `-Architecture x64` and build with `-p:Platform=x64 -r win-x64`.
+The send libraries and tests use `RedrainCast.Send.Core`,
+`RedrainCast.Send.Media` and `RedrainCast.Send.Tests`; the receive equivalents
+use `RedrainCast.Receive.*`. Project folders, namespaces and assembly outputs
+follow those names. Shipping checks reject obsolete Scrcpy project binaries
+and dependency entries while retaining genuine upstream license notices.
+This naming cleanup does not change protocol identifiers or existing settings
+and diagnostic locations.
+
 The development build also builds and copies the self-contained capture worker.
 Its runtime configuration remains self-contained in both development and
 publication, avoiding a framework-dependent configuration mixed with previously
@@ -970,6 +978,20 @@ listing-enabled upload can include all 22 translations and 44 screenshots
 after confirmation of the exact reviewed commit. Package-only uploads preserve
 listings. Both modes retain the supported self-contained, untrimmed MSIX format;
 single-file executables are not used for Store distribution.
+
+Store submission can use trimmed self-contained MSIX, but no trimmed RedrainCast
+candidate is accepted with the current dependency set. Native ARM64 full and
+partial trim experiments exposed unresolved WinRT/SharpGen linker diagnostics
+and built-in COM requirements for audio, even after moving JSON serialization
+to trim-safe metadata. Normal publication and the Store workflow therefore
+remain untrimmed; no failing trimmed publish option is exposed.
+
+Do not suppress linker warnings, remove native media/WinUI dependencies, or
+disable audio COM support to make a smaller build pass. Any future candidate
+needs package, localization, worker, synthetic hardware media and lifecycle
+checks before Store submission; a smaller successful build alone is not
+release acceptance.
+
 The repository release version in `Directory.Build.props` supplies the default
 publication version; packaging infers it from the published app instead of an
 independently hard-coded default. An explicit `Publish.ps1 -Version` is still
@@ -998,10 +1020,10 @@ RedrainCast.App.exe --self-test C:\temp\redrain-ui.json
 RedrainCast.App.exe --color-self-test C:\temp\redrain-color.json
 RedrainCast.App.exe --encoder-self-test C:\temp\redrain-encoder.json
 RedrainCast.App.exe --media-self-test `
-  E:\gitpersonal\RedrainCast-Windows\tests\ScrcpyReceive.Tests\fixtures\synthetic-h264.json `
+  E:\gitpersonal\RedrainCast-Windows\tests\RedrainCast.Receive.Tests\fixtures\synthetic-h264.json `
   C:\temp\redrain-media.json
 RedrainCast.App.exe --occlusion-self-test `
-  E:\gitpersonal\RedrainCast-Windows\tests\ScrcpyReceive.Tests\fixtures\synthetic-h264.json `
+  E:\gitpersonal\RedrainCast-Windows\tests\RedrainCast.Receive.Tests\fixtures\synthetic-h264.json `
   C:\temp\redrain-occlusion.json
 ```
 
@@ -1053,7 +1075,8 @@ hashes. It is not run by normal builds or CI.
 ## Source provenance
 
 This is an independent repository. Neither existing Windows app is modified.
-The internal engine project names are preserved to keep the imports traceable:
+The original engine provenance is retained below; active project and output
+names use `RedrainCast.Send.*` and `RedrainCast.Receive.*`:
 
 - [ScrcpyReceive-Windows](https://github.com/arisewanggithub/ScrcpyReceive-Windows),
   revision `e148c3e26d0ed7998c249a87fc111b284287d548`.

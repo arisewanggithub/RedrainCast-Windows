@@ -1,7 +1,10 @@
 # RedrainCast — certification test notes
 
-Draft for the Partner Center certification-notes field. Copy only the section
-below after the submission owner resolves the internal checklist.
+Template for Partner Center's Additional Testing Information. On 2026-11-07,
+public setup/test instructions adapted from the PASTE section were saved and
+verified before the owner-authorized first certification submission. Internal
+checklist entries were not submitted; physical-device acceptance remains
+unconfirmed. Copy only the PASTE section for future submissions.
 
 ## PASTE: certification notes
 
@@ -51,8 +54,9 @@ worker child process when sending. The standard app does not record media.
 ## INTERNAL — DO NOT PASTE
 
 - **Not release acceptance or proof of Store publication.** Reviewed-source
-  portable regression results: 1,134 tests passed after deterministic CI-fixture
-  synchronization. The separate Store guard suite passed 61 offline checks on
+  portable regression results: 1,171 tests passed after trim-safe JSON groundwork,
+  project/output naming cleanup and deterministic CI-fixture synchronization.
+  The separate Store guard suite passed 61 offline checks on
   Windows PowerShell 5.1, including read-only preflight and alignment with the
   actual package-language export. These checks do not establish
   native x64 playback or human capture acceptance.
@@ -70,6 +74,15 @@ worker child process when sending. The standard app does not record media.
   Both were uploaded and saved in the owner-authorized initial Partner Center
   draft, Submission 1 (`1152921505702342229`). The portal marked Packages
   Complete; this is not installed-package or certification acceptance.
+- **Post-cleanup candidates, local only.** Projects, namespaces and outputs now
+  use `RedrainCast.Send.*` and `RedrainCast.Receive.*`. New self-contained,
+  untrimmed 0.1.20.0 packages passed both architecture publication/package
+  validations under
+  `artifacts\redraincast-naming-validation-20261107\package-arm64` and
+  `artifacts\redraincast-naming-validation-20261107\package-x64`.
+  App and worker runtime configs include .NET 10.0.14, with bundled runtimes
+  rather than framework-dependent entries. These candidates have **not**
+  replaced the packages in the existing Store draft.
 - Owner-authorized Free pricing and all worldwide markets were saved and
   verified in the draft on 2026-11-07. All 240 supported market rows showed
   zero retail prices; this does not constitute publication.
@@ -81,7 +94,9 @@ worker child process when sending. The standard app does not record media.
   user blocking, or invitation-only controls. The first IARC rating ID remains
   pending publication. These ratings do not replace physical-device acceptance.
   The owner subsequently selected automatic publication after certification
-  for this initial submission. No certification was submitted.
+  for this initial submission. The owner-authorized Partner Center submission
+  was completed on 2026-11-07 and reported In certification; this does not
+  establish certification approval, publication or physical-device acceptance.
 - **NOT ACCEPTED — human physical-device checks required:** install/launch
   under the intended Store identity; update/settings preservation where
   applicable; consented firewall flow, discovery and manual connection;
@@ -101,8 +116,10 @@ worker child process when sending. The standard app does not record media.
   Home: https://redraincast.redrain.ccwu.cc/.
   Support: https://redraincast.redrain.ccwu.cc/support/.
   These URLs were saved and read back in this product's initial draft
-  properties on 2026-11-07. The submission remains unpublished; no Store API
-  workflow, certification submission or final publication was executed.
+  properties on 2026-11-07. The owner-authorized initial certification submission
+  was completed through Partner Center, not the Store API workflow. The
+  submission remains unpublished; no Store API upload or certification request
+  has been executed, and final publication is not yet confirmed.
 - Follow the existing [screenshot plan](README.md#screenshot-plan); no app
   screenshots were captured here. Review [listing preparation](README.md),
   [release acceptance](../../STORE.md), [product behavior](../../README.md)

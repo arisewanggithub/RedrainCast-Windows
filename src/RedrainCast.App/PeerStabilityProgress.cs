@@ -1,4 +1,4 @@
-using ScrcpyReceive.Core;
+using RedrainCast.Receive.Core;
 
 namespace RedrainCast.App;
 

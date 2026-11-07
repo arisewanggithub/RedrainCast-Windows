@@ -3,7 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using ScrcpySend.Core;
+using RedrainCast.Send.Core;
 using Xunit;
 
 namespace RedrainCast.Tests;

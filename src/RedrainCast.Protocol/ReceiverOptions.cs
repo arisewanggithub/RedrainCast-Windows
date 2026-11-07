@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace RedrainCast.Protocol;
 
@@ -14,7 +15,8 @@ public sealed record ReceiverOptionCapabilities(bool PlaybackStats = false)
     public static ReceiverOptionCapabilities Implemented { get; } = new(true);
     public ReceiverOptionCapabilities Intersect(ReceiverOptionCapabilities other) => new(PlaybackStats && other.PlaybackStats);
     public ReceiverOptions Select(bool playbackStats) => new(PlaybackStats && playbackStats);
-    public object WireValue => new { version = ReceiverOptionProtocol.Version, supported = PlaybackStats ? new[] { "playbackStats" } : [] };
+    public JsonObject WireValue => JsonData.Object(("version", ReceiverOptionProtocol.Version),
+        ("supported", JsonData.Value(PlaybackStats ? new[] { "playbackStats" } : [])));
 }
 
 public static class ReceiverOptionProtocol
@@ -82,5 +84,6 @@ public static class ReceiverOptionProtocol
         return new(version == Version && negotiated.PlaybackStats && enabled);
     }
 
-    public static object WireValue(ReceiverOptions options) => new { version = Version, playbackStats = options.PlaybackStats };
+    public static JsonObject WireValue(ReceiverOptions options) =>
+        JsonData.Object(("version", Version), ("playbackStats", options.PlaybackStats));
 }

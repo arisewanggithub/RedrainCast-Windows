@@ -1,6 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using ScrcpyReceive.Core;
+using RedrainCast.Receive.Core;
 
 namespace RedrainCast.App;
 

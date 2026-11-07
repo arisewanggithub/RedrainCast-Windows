@@ -2,8 +2,8 @@ using System.Globalization;
 using System.Text;
 using System.Xml.Linq;
 using RedrainCast.Core;
-using ScrcpyReceive.Core;
-using ScrcpySend.Core;
+using RedrainCast.Receive.Core;
+using RedrainCast.Send.Core;
 using Xunit;
 
 namespace RedrainCast.Tests;

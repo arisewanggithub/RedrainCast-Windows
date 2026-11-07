@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+using JsonObject = RedrainCast.Receive.Core.JsonObject;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -6,9 +8,9 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using RedrainCast.Core;
 using RedrainCast.Protocol;
-using ScrcpyReceive.Core;
-using ScrcpySend.Media;
-using ReceiverWire = ScrcpyReceive.Core.Wire;
+using RedrainCast.Receive.Core;
+using RedrainCast.Send.Media;
+using ReceiverWire = RedrainCast.Receive.Core.Wire;
 
 namespace RedrainCast.App;
 
@@ -19,9 +21,9 @@ public sealed partial class MainWindow
         if (!isolated) throw new InvalidOperationException("High-FPS probing requires an isolated receiver.");
         string? failure = null;
         var phase = "starting";
-        var measurements = new List<object>();
-        var presentationEvidence = new List<object>();
-        var controlJournals = new List<object>();
+        var measurements = new List<JsonNode>();
+        var presentationEvidence = new List<JsonNode>();
+        var controlJournals = new List<JsonNode>();
         var recordedPresentations = 0;
         var droppedPresentationSamples = 0;
         var originalPresenter = AppWindow.Presenter as OverlappedPresenter;
@@ -35,7 +37,7 @@ public sealed partial class MainWindow
             Activate();
             // One independently decodable, generated 640x360 H.264 picture. No capture or audio source.
             var picture = await Task.Run(() => MediaDiagnostics.EncodeColorProbeAsync("h264", deadline.Token, checkGpuBudget: true), deadline.Token);
-            if (!ScrcpySend.Core.VideoBitstream.IsKeyFrame("h264", picture.Data, picture.Configuration))
+            if (!RedrainCast.Send.Core.VideoBitstream.IsKeyFrame("h264", picture.Data, picture.Configuration))
                 throw new IOException("Synthetic fixture did not begin with a random-access H.264 picture.");
             foreach (var fps in new[] { 90, 120 })
             {
@@ -50,20 +52,15 @@ public sealed partial class MainWindow
                 try
                 {
                     await protocol.SendAsync(Packet.Control(PacketType.Hello, 0,
-                        new
-                        {
-                            role = "sender",
-                            versions = new[] { 3 },
-                            name = "Synthetic high-FPS receiver probe",
-                            streamRecovery = true,
-                            streamRecoveryVersion = 1
-                        }), deadline.Token);
+                        JsonData.Object(("role", "sender"), ("versions", JsonData.Value(new[] { 3 })),
+                            ("name", "Synthetic high-FPS receiver probe"), ("streamRecovery", true),
+                            ("streamRecoveryVersion", 1))), deadline.Token);
                     var hello = await ReadControlAsync(PacketType.Hello);
                     if (!hello.Object().GetProperty("streamRecovery").GetBoolean())
                         throw new IOException("Native recovery support was not negotiated.");
                     phase = $"{fps} session request";
                     await protocol.SendAsync(Packet.Control(PacketType.SessionRequest, session,
-                        new ScrcpySend.Core.CaptureSettings(MaxSize: 640, MaxFps: fps, EnableAudio: false)
+                        new RedrainCast.Send.Core.CaptureSettings(MaxSize: 640, MaxFps: fps, EnableAudio: false)
                             .Request("Generated H.264 key picture")), deadline.Token);
                     var accepted = await ReadControlAsync(PacketType.SessionAccept);
                     var token = JsonObject.Text(accepted.Object(), "mediaToken", 64);
@@ -71,7 +68,7 @@ public sealed partial class MainWindow
                     {
                         await socket.ConnectAsync(IPAddress.Loopback, server.Port, deadline.Token);
                         await ReceiverWire.WriteAsync(socket.GetStream(), Packet.Control(PacketType.Hello, session,
-                            new { role = "media", channel, token }), deadline.Token);
+                            JsonData.Object(("role", "media"), ("channel", channel), ("token", token))), deadline.Token);
                         if ((await ReceiverWire.ReadAsync(socket.GetStream(), deadline.Token)).Type != PacketType.Hello)
                             throw new IOException("Synthetic media socket attachment failed.");
                     }
@@ -84,13 +81,8 @@ public sealed partial class MainWindow
                         sentPts.Clear();
                         currentGeneration = generation;
                         await ReceiverWire.WriteAsync(videoPeer.GetStream(), new(PacketType.StreamConfig, session, 1, generation, -1, 0,
-                            JsonSerializer.SerializeToUtf8Bytes(new
-                            {
-                                codec = "h264",
-                                width = 640,
-                                height = 360,
-                                csd = new[] { Convert.ToBase64String(picture.Configuration) }
-                            })), deadline.Token);
+                            JsonData.Bytes(JsonData.Object(("codec", "h264"), ("width", 640), ("height", 360),
+                                ("csd", JsonData.Value(new[] { Convert.ToBase64String(picture.Configuration) }))))), deadline.Token);
                         await ReadControlAsync(PacketType.StreamReady);
                         if (video.RequestedFramesPerSecond != fps || video.ProcessorInputFramesPerSecond != fps ||
                             video.ProcessorOutputFramesPerSecond != fps || video.PlaybackEpoch != epoch + generation - 1)
@@ -141,44 +133,26 @@ public sealed partial class MainWindow
                         droppedPresentationSamples += snapshot.Dropped;
                         var sourceSeconds = (sentPts.Max() - first) / 1_000_000.0;
                         var presentationSeconds = Stopwatch.GetElapsedTime(samples[0].Qpc, samples[^1].Qpc).TotalSeconds;
-                        presentationEvidence.Add(new { fps, generation, sourcePtsUs = sentPts.Order().ToArray(), samples, snapshot.Dropped });
-                        measurements.Add(new
-                        {
-                            fps,
-                            generation,
-                            video.PlaybackEpoch,
-                            processorInputFps = video.ProcessorInputFramesPerSecond,
-                            processorOutputFps = video.ProcessorOutputFramesPerSecond,
-                            denominator = 1,
-                            configurationCorrect = true,
-                            video.ProcessorConfigurations,
-                            seconds,
-                            pumpSeconds,
-                            emitted,
-                            sourceWindowSeconds = sourceSeconds,
-                            presentationWindowSeconds = presentationSeconds,
-                            sourceFps = (emitted - 1) / sourceSeconds,
-                            decoded = video.DecodedFrames,
-                            decodedFps = video.DecodedFrames / seconds,
-                            presented = video.PresentedFrames,
-                            presentedFps = (samples.Length - 1) / presentationSeconds,
-                            skipped = video.SkippedFrames,
-                            notPresentedAtSample = video.DecodedFrames - video.PresentedFrames,
-                            lastPresentedPtsUs = video.LastPresentedPtsUs,
-                            video.HardwareSurfaceCount,
-                            video.DecoderDiagnostics,
-                            video.PresentationDiagnostics,
-                            video.PlaybackDiagnostics,
-                            ptsUntouched,
-                            monotonic,
-                            recordedPresentations = samples.Length,
-                            presentationSamplesDropped = snapshot.Dropped,
-                            throughputCertified = false
-                        });
+                        presentationEvidence.Add(JsonData.Object(("fps", fps), ("generation", generation),
+                            ("sourcePtsUs", JsonData.Value(sentPts.Order().ToArray())), ("samples", ReportJson.Value(samples)), ("Dropped", snapshot.Dropped)));
+                        measurements.Add(JsonData.Object(
+                            ("fps", fps), ("generation", generation), ("PlaybackEpoch", video.PlaybackEpoch),
+                            ("processorInputFps", video.ProcessorInputFramesPerSecond),
+                            ("processorOutputFps", video.ProcessorOutputFramesPerSecond),
+                            ("denominator", 1), ("configurationCorrect", true), ("ProcessorConfigurations", video.ProcessorConfigurations),
+                            ("seconds", seconds), ("pumpSeconds", pumpSeconds), ("emitted", emitted),
+                            ("sourceWindowSeconds", sourceSeconds), ("presentationWindowSeconds", presentationSeconds),
+                            ("sourceFps", (emitted - 1) / sourceSeconds), ("decoded", video.DecodedFrames), ("decodedFps", video.DecodedFrames / seconds),
+                            ("presented", video.PresentedFrames), ("presentedFps", (samples.Length - 1) / presentationSeconds),
+                            ("skipped", video.SkippedFrames), ("notPresentedAtSample", video.DecodedFrames - video.PresentedFrames),
+                            ("lastPresentedPtsUs", video.LastPresentedPtsUs), ("HardwareSurfaceCount", video.HardwareSurfaceCount),
+                            ("DecoderDiagnostics", video.DecoderDiagnostics), ("PresentationDiagnostics", video.PresentationDiagnostics),
+                            ("PlaybackDiagnostics", video.PlaybackDiagnostics), ("ptsUntouched", ptsUntouched), ("monotonic", monotonic),
+                            ("recordedPresentations", samples.Length), ("presentationSamplesDropped", snapshot.Dropped), ("throughputCertified", false)));
                     }
                     phase = $"{fps} Stop/SESSION_END";
                     await protocol.SendAsync(Packet.Control(PacketType.Stop, session,
-                        new { reason = "bounded synthetic receiver probe complete" }), deadline.Token);
+                        JsonData.Object(("reason", "bounded synthetic receiver probe complete"))), deadline.Token);
                     await ReadControlAsync(PacketType.SessionEnd);
                     while (roles.Role != CastRole.Idle || video.IsAttached || server.IsBusy)
                         await Task.Delay(20, deadline.Token);
@@ -202,7 +176,7 @@ public sealed partial class MainWindow
                     audioPeer.Dispose();
                     await protocol.DisposeAsync();
                     control.Dispose();
-                    controlJournals.Add(new { fps, events = protocol.Journal, mediaRetiredBeforeControl = true });
+                    controlJournals.Add(JsonData.Object(("fps", fps), ("events", JsonData.Value(protocol.Journal)), ("mediaRetiredBeforeControl", true)));
                 }
             }
         }
@@ -221,37 +195,20 @@ public sealed partial class MainWindow
             video.CollectPresentationSamples = false;
             if (originalPresenter is not null && originalOnTop is { } onTop) originalPresenter.IsAlwaysOnTop = onTop;
         }
-        await File.WriteAllTextAsync(reportFile, JsonSerializer.Serialize(new
-        {
-            passed = failure is null && measurements.Count == 4,
-            failure,
-            measurements,
-            keyProofs,
-            ptsUntouched = measurements.Count == 4 ? true : (bool?)null,
-            monotonic = measurements.Count == 4 ? true : (bool?)null,
-            recordedPresentations,
-            droppedPresentationSamples,
-            presentationEvidence,
-            qpcFrequency = Stopwatch.Frequency,
-            controlJournals,
-            ptsEvidence = "Opt-in bounded successful native-present snapshots; independent of audio and MediaTiming.",
-            rateWindows = "Source/presentation FPS use first-to-last event intervals; decode FPS uses first-source-to-post-drain observation time. No physical display-refresh guarantee.",
-            ready = ReadinessTitle.Text == L("Ready"),
-            detached = !video.IsAttached,
-            awakeReleased = !video.KeepsDisplayAwake,
-            syntheticOnly = true,
-            width = 640,
-            height = 360,
-            codec = "h264",
-            audioOff = true,
-            captureChildrenExpected = 0,
-            captureUsed = false,
-            microphoneUsed = false,
-            userAppsTouched = false,
-            processId = Environment.ProcessId,
-            throughputCertified = false,
-            diagnostics
-        }, new JsonSerializerOptions { WriteIndented = true }));
+        await File.WriteAllTextAsync(reportFile, JsonData.Text(JsonData.Object(
+            ("passed", failure is null && measurements.Count == 4), ("failure", failure),
+            ("measurements", JsonData.Value(measurements)), ("keyProofs", JsonData.Value(keyProofs)),
+            ("ptsUntouched", measurements.Count == 4 ? true : (bool?)null), ("monotonic", measurements.Count == 4 ? true : (bool?)null),
+            ("recordedPresentations", recordedPresentations), ("droppedPresentationSamples", droppedPresentationSamples),
+            ("presentationEvidence", JsonData.Value(presentationEvidence)), ("qpcFrequency", Stopwatch.Frequency),
+            ("controlJournals", JsonData.Value(controlJournals)),
+            ("ptsEvidence", "Opt-in bounded successful native-present snapshots; independent of audio and MediaTiming."),
+            ("rateWindows", "Source/presentation FPS use first-to-last event intervals; decode FPS uses first-source-to-post-drain observation time. No physical display-refresh guarantee."),
+            ("ready", ReadinessTitle.Text == L("Ready")), ("detached", !video.IsAttached), ("awakeReleased", !video.KeepsDisplayAwake),
+            ("syntheticOnly", true), ("width", 640), ("height", 360), ("codec", "h264"), ("audioOff", true),
+            ("captureChildrenExpected", 0), ("captureUsed", false), ("microphoneUsed", false), ("userAppsTouched", false),
+            ("processId", Environment.ProcessId), ("throughputCertified", false), ("diagnostics", JsonData.Value(diagnostics))),
+            indented: true));
 
         static long QpcUs() => (long)((Int128)Stopwatch.GetTimestamp() * 1_000_000 / Stopwatch.Frequency);
     }

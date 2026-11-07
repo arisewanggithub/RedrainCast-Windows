@@ -18,10 +18,10 @@ $appVersion = [Reflection.AssemblyName]::GetAssemblyName((Join-Path $published '
 if ($ExpectedVersion -and $appVersion -ne [version]$ExpectedVersion) {
     throw "Published application version $appVersion differs from requested $ExpectedVersion."
 }
-foreach ($file in @('RedrainCast.App.dll', 'ScrcpySend.Core.dll', 'ScrcpyReceive.Core.dll',
-    'RedrainCast.Core.dll', 'RedrainCast.Protocol.dll', 'ScrcpySend.Media.dll', 'ScrcpyReceive.Media.dll',
-    'capture-worker\RedrainCast.CaptureWorker.dll', 'capture-worker\ScrcpySend.Core.dll',
-    'capture-worker\ScrcpySend.Media.dll', 'capture-worker\RedrainCast.Protocol.dll')) {
+foreach ($file in @('RedrainCast.App.dll', 'RedrainCast.Send.Core.dll', 'RedrainCast.Receive.Core.dll',
+    'RedrainCast.Core.dll', 'RedrainCast.Protocol.dll', 'RedrainCast.Send.Media.dll', 'RedrainCast.Receive.Media.dll',
+    'capture-worker\RedrainCast.CaptureWorker.dll', 'capture-worker\RedrainCast.Send.Core.dll',
+    'capture-worker\RedrainCast.Send.Media.dll', 'capture-worker\RedrainCast.Protocol.dll')) {
     $path = Join-Path $published $file
     $assemblyVersion = [Reflection.AssemblyName]::GetAssemblyName($path).Version
     $fileInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($path)

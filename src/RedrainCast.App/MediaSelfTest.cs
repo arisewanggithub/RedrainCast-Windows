@@ -1,10 +1,12 @@
+using System.Text.Json.Nodes;
+using RedrainCast.Protocol;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using RedrainCast.Core;
-using ScrcpySend.Core;
+using RedrainCast.Send.Core;
 
 namespace RedrainCast.App;
 
@@ -128,16 +130,15 @@ public sealed partial class MainWindow
             if (verifyOcclusion) AppWindow.Show();
         }
         catch (Exception error) { failure = $"{failure}\nWindow test visibility cleanup: {error}"; }
-        await File.WriteAllTextAsync(reportFile, JsonSerializer.Serialize(new
-        {
-            passed = failure is null, failure, presentedFrames = presented, playedAudioFrames = playedAudio, hardwareSurfaces,
-            receivingShowsVideoOnly = videoOnly, restoredReadyHome = ReadinessTitle.Text == L("Ready"),
-            enteredFullscreen, restoredWindow = AppWindow.Presenter.Kind == originalPresenter.Kind &&
-                AppWindow.Position == originalPosition && AppWindow.Size == originalSize,
-            exposedBeforePresentation, presentationDiagnostics,
-            verifyOcclusion, occlusionSurvivalVerified, presentationVerified = presented >= 5,
-            detached = !video.IsAttached, syntheticOnly = true, physicalDeviceTested = false, diagnostics
-        }, new JsonSerializerOptions { WriteIndented = true }));
+        await File.WriteAllTextAsync(reportFile, JsonData.Text(JsonData.Object(
+            ("passed", failure is null), ("failure", failure), ("presentedFrames", presented), ("playedAudioFrames", playedAudio), ("hardwareSurfaces", hardwareSurfaces),
+            ("receivingShowsVideoOnly", videoOnly), ("restoredReadyHome", ReadinessTitle.Text == L("Ready")),
+            ("enteredFullscreen", enteredFullscreen), ("restoredWindow", AppWindow.Presenter.Kind == originalPresenter.Kind &&
+                AppWindow.Position == originalPosition && AppWindow.Size == originalSize),
+            ("exposedBeforePresentation", exposedBeforePresentation), ("presentationDiagnostics", presentationDiagnostics),
+            ("verifyOcclusion", verifyOcclusion), ("occlusionSurvivalVerified", occlusionSurvivalVerified), ("presentationVerified", presented >= 5),
+            ("detached", !video.IsAttached), ("syntheticOnly", true), ("physicalDeviceTested", false), ("diagnostics", JsonData.Value(diagnostics))),
+            indented: true));
 
         void CaptureMeasurements()
         {
@@ -198,8 +199,8 @@ public sealed partial class MainWindow
 
     private sealed class SyntheticAudio(long firstPtsUs) : IAudioSource
     {
-        public object Configuration => new { codec = "raw", sampleRate = 48000, channels = 2,
-            csd = Array.Empty<string>(), sampleFormat = "s16le" };
+        public JsonNode Configuration => JsonData.Object(("codec", "raw"), ("sampleRate", 48000), ("channels", 2),
+            ("csd", JsonData.Value(Array.Empty<string>())), ("sampleFormat", "s16le"));
         public void BeginTransmission() { }
         public async IAsyncEnumerable<AudioPacket> ReadPacketsAsync([EnumeratorCancellation] CancellationToken token)
         {

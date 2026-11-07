@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
-using ScrcpyReceive.Core;
+using RedrainCast.Receive.Core;
 using Xunit;
 
 namespace RedrainCast.Tests;

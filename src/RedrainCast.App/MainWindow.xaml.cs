@@ -3,17 +3,19 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using RedrainCast.Protocol;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using RedrainCast.Core;
-using ScrcpyReceive.Core;
-using ScrcpySend.Core;
-using ScrcpySend.Media;
+using RedrainCast.Receive.Core;
+using RedrainCast.Send.Core;
+using RedrainCast.Send.Media;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics.Capture;
-using ReceiverDiscovery = ScrcpySend.Core.ReceiverDiscovery;
-using LocalDiscovery = ScrcpyReceive.Core.Discovery;
+using ReceiverDiscovery = RedrainCast.Send.Core.ReceiverDiscovery;
+using LocalDiscovery = RedrainCast.Receive.Core.Discovery;
 
 namespace RedrainCast.App;
 
@@ -562,7 +564,7 @@ public sealed partial class MainWindow : Window
             var selected = source ?? throw new InvalidOperationException("Choose a display or window first.");
             var selectedSettings = settings;
             Diagnostic($"Sender starting: target={endpoint.Key}; source={(selected.IsWindow ? "window" : "display")}, " +
-                $"captureSize={selected.Item.Size.Width}x{selected.Item.Size.Height}; settings={JsonSerializer.Serialize(selectedSettings)}");
+                $"captureSize={selected.Item.Size.Width}x{selected.Item.Size.Height}; settings={JsonSerializer.Serialize(selectedSettings, CaptureSettingsJsonContext.Default.CaptureSettings)}");
             await Task.Run(async () =>
             {
                 await using var outgoingVideo = new WorkerVideoSource(Environment.ProcessPath ??
@@ -811,7 +813,7 @@ public sealed partial class MainWindow : Window
                 var next = input.Settings ?? throw new ArgumentException(string.Join(" ",
                     new[] { input.DimensionError, input.BitrateError, input.FpsError }.OfType<string>()));
                 Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
-                File.WriteAllText(SettingsPath + ".tmp", JsonSerializer.Serialize(next));
+                File.WriteAllText(SettingsPath + ".tmp", JsonSerializer.Serialize(next, CaptureSettingsJsonContext.Default.CaptureSettings));
                 File.Move(SettingsPath + ".tmp", SettingsPath, true);
                 settings = next;
             }
@@ -987,7 +989,7 @@ public sealed partial class MainWindow : Window
             Phase("checking whole-home scrolling with and without a long error");
             using (var layoutTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(45)))
             {
-                var layoutMeasurements = new List<object>();
+                var layoutMeasurements = new List<JsonNode>();
                 await CheckHomeLayoutAsync(layoutMeasurements, journal, layoutTimeout.Token);
                 checks.Add($"Whole-home scrolling and Tab bring-into-view pass in {layoutMeasurements.Count} short-window layouts.");
             }
@@ -1065,9 +1067,10 @@ public sealed partial class MainWindow : Window
         try
         {
             journal?.Write($"UI self-test phase: writing result; passed={failure is null}, checks={checks.Count}, lastPhase={phase}");
-            File.WriteAllText(reportFile, JsonSerializer.Serialize(new { passed = failure is null, checks, failure, phase,
-                diagnosticLogPath, version = AppVersion.Current().Label, diagnostics },
-                new JsonSerializerOptions { WriteIndented = true }));
+            File.WriteAllText(reportFile, JsonData.Text(JsonData.Object(
+                ("passed", failure is null), ("checks", JsonData.Value(checks)), ("failure", failure), ("phase", phase),
+                ("diagnosticLogPath", diagnosticLogPath), ("version", AppVersion.Current().Label), ("diagnostics", JsonData.Value(diagnostics))),
+                indented: true));
         }
         finally { diagnosticLog = previousLog; diagnosticLogPath = previousLogPath; }
     }

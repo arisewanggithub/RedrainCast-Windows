@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using RedrainCast.Core;
-using ScrcpyReceive.Core;
+using RedrainCast.Receive.Core;
 using Xunit;
 
 namespace RedrainCast.Tests;

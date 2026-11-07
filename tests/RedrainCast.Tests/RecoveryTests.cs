@@ -5,11 +5,11 @@ using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using RedrainCast.Protocol;
-using ScrcpyReceive.Core;
-using ScrcpySend.Core;
+using RedrainCast.Receive.Core;
+using RedrainCast.Send.Core;
 using Xunit;
-using Packet = ScrcpyReceive.Core.Packet;
-using ProtocolException = ScrcpyReceive.Core.ProtocolException;
+using Packet = RedrainCast.Receive.Core.Packet;
+using ProtocolException = RedrainCast.Receive.Core.ProtocolException;
 
 namespace RedrainCast.Tests;
 
@@ -369,13 +369,13 @@ public sealed class RecoveryTests
         using var control = new TcpClient { NoDelay = true };
         await control.ConnectAsync(IPAddress.Loopback, server.Port, timeout.Token);
         var stream = control.GetStream();
-        await ScrcpyReceive.Core.Wire.WriteAsync(stream, Packet.Control(PacketType.Hello, 0,
+        await RedrainCast.Receive.Core.Wire.WriteAsync(stream, Packet.Control(PacketType.Hello, 0,
             new { role = "sender", versions = new[] { 3 }, name = "Test", streamRecovery = true, streamRecoveryVersion = 1 }), timeout.Token);
-        Assert.Equal(PacketType.Hello, (await ScrcpyReceive.Core.Wire.ReadAsync(stream, timeout.Token)).Type);
+        Assert.Equal(PacketType.Hello, (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Type);
         var request = JsonSerializer.SerializeToNode(new CaptureSettings(EnableAudio: true).Request("Fake"))!;
         request["audio"]!["codec"] = codec;
-        await ScrcpyReceive.Core.Wire.WriteAsync(stream, Packet.Control(PacketType.SessionRequest, 1, request), timeout.Token);
-        var accept = await ScrcpyReceive.Core.Wire.ReadAsync(stream, timeout.Token);
+        await RedrainCast.Receive.Core.Wire.WriteAsync(stream, Packet.Control(PacketType.SessionRequest, 1, request), timeout.Token);
+        var accept = await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token);
         Assert.Equal(PacketType.SessionAccept, accept.Type);
         var mediaToken = accept.Object().GetProperty("mediaToken").GetString()!;
         using var video = new TcpClient { NoDelay = true };
@@ -383,13 +383,13 @@ public sealed class RecoveryTests
         foreach (var (socket, channel) in new[] { (video, "video"), (audio, "audio") })
         {
             await socket.ConnectAsync(IPAddress.Loopback, server.Port, timeout.Token);
-            await ScrcpyReceive.Core.Wire.WriteAsync(socket.GetStream(), Packet.Control(PacketType.Hello, 1,
+            await RedrainCast.Receive.Core.Wire.WriteAsync(socket.GetStream(), Packet.Control(PacketType.Hello, 1,
                 new { role = "media", channel, token = mediaToken }), timeout.Token);
-            Assert.Equal(PacketType.Hello, (await ScrcpyReceive.Core.Wire.ReadAsync(socket.GetStream(), timeout.Token)).Type);
+            Assert.Equal(PacketType.Hello, (await RedrainCast.Receive.Core.Wire.ReadAsync(socket.GetStream(), timeout.Token)).Type);
         }
-        await ScrcpyReceive.Core.Wire.WriteAsync(video.GetStream(), new(PacketType.StreamConfig, 1, 1, 1, -1, 0,
+        await RedrainCast.Receive.Core.Wire.WriteAsync(video.GetStream(), new(PacketType.StreamConfig, 1, 1, 1, -1, 0,
             JsonSerializer.SerializeToUtf8Bytes(new { codec = "h264", width = 640, height = 360, csd = new[] { "AAAAAQ==" } })), timeout.Token);
-        await ScrcpyReceive.Core.Wire.WriteAsync(audio.GetStream(), new(PacketType.StreamConfig, 1, 2, 1, -1, 0,
+        await RedrainCast.Receive.Core.Wire.WriteAsync(audio.GetStream(), new(PacketType.StreamConfig, 1, 2, 1, -1, 0,
             JsonSerializer.SerializeToUtf8Bytes(new
             {
                 codec, sampleRate = 48000, channels = 2, sampleFormat = "s16le",
@@ -397,22 +397,22 @@ public sealed class RecoveryTests
                 codecDelayNs = 6500000, seekPrerollNs = 80000000
             })), timeout.Token);
         for (var i = 0; i < 2; i++)
-            Assert.Equal(PacketType.StreamReady, (await ScrcpyReceive.Core.Wire.ReadAsync(stream, timeout.Token)).Type);
+            Assert.Equal(PacketType.StreamReady, (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Type);
         const long keyPts = 1_000_000;
-        await ScrcpyReceive.Core.Wire.WriteAsync(video.GetStream(), new(PacketType.VideoFrame, 1, 1, 1, keyPts, 1, [1]), timeout.Token);
-        Assert.Equal(StreamRecovery.Key, (await ScrcpyReceive.Core.Wire.ReadAsync(stream, timeout.Token)).Object().GetProperty("state").GetString());
+        await RedrainCast.Receive.Core.Wire.WriteAsync(video.GetStream(), new(PacketType.VideoFrame, 1, 1, 1, keyPts, 1, [1]), timeout.Token);
+        Assert.Equal(StreamRecovery.Key, (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Object().GetProperty("state").GetString());
         var audioPts = codec == "raw" ? keyPts + 250_001 : keyPts;
         byte[] data = codec switch { "opus" => [248, 255, 254], "aac" => [1], _ => new byte[1920] };
-        await ScrcpyReceive.Core.Wire.WriteAsync(audio.GetStream(), new(PacketType.AudioPacket, 1, 2, 1, audioPts, 0, data), timeout.Token);
+        await RedrainCast.Receive.Core.Wire.WriteAsync(audio.GetStream(), new(PacketType.AudioPacket, 1, 2, 1, audioPts, 0, data), timeout.Token);
         if (requestsReset)
-            Assert.Equal(StreamRecovery.Request, (await ScrcpyReceive.Core.Wire.ReadAsync(stream, timeout.Token)).Object().GetProperty("state").GetString());
+            Assert.Equal(StreamRecovery.Request, (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Object().GetProperty("state").GetString());
         else
         {
             using var noReset = new CancellationTokenSource(TimeSpan.FromMilliseconds(350));
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ScrcpyReceive.Core.Wire.ReadAsync(stream, noReset.Token).AsTask());
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => RedrainCast.Receive.Core.Wire.ReadAsync(stream, noReset.Token).AsTask());
         }
-        await ScrcpyReceive.Core.Wire.WriteAsync(stream, Packet.Control(PacketType.Stop, 1, new { reason = "test" }), timeout.Token);
-        Assert.Equal(PacketType.SessionEnd, (await ScrcpyReceive.Core.Wire.ReadAsync(stream, timeout.Token)).Type);
+        await RedrainCast.Receive.Core.Wire.WriteAsync(stream, Packet.Control(PacketType.Stop, 1, new { reason = "test" }), timeout.Token);
+        Assert.Equal(PacketType.SessionEnd, (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Type);
         Assert.All(factory.Outputs, output => Assert.True(output.Disposed));
     }
 
@@ -433,25 +433,25 @@ public sealed class RecoveryTests
             new(MaxSize: source.Width), source, _ => { }, default);
         using var control = await listener.AcceptTcpClientAsync(timeout.Token);
         var stream = control.GetStream();
-        var hello = await ScrcpySend.Core.Wire.ReadAsync(stream, timeout.Token);
+        var hello = await RedrainCast.Send.Core.Wire.ReadAsync(stream, timeout.Token);
         Assert.True(hello.Json().GetProperty("streamRecovery").GetBoolean());
-        await ScrcpySend.Core.Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0,
+        await RedrainCast.Send.Core.Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0,
             new { role = "receiver", versions = new[] { 3 }, name = "Fake", streamRecovery = true, streamRecoveryVersion = 1 }), timeout.Token);
-        var request = await ScrcpySend.Core.Wire.ReadAsync(stream, timeout.Token);
+        var request = await RedrainCast.Send.Core.Wire.ReadAsync(stream, timeout.Token);
         var token = new string('A', 64);
-        await ScrcpySend.Core.Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, request.Session,
+        await RedrainCast.Send.Core.Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, request.Session,
             new { tracks = new[] { 1 }, mediaToken = token }), timeout.Token);
         using var video = await listener.AcceptTcpClientAsync(timeout.Token);
-        Assert.Equal(MessageType.Hello, (await ScrcpySend.Core.Wire.ReadAsync(video.GetStream(), timeout.Token)).Type);
-        await ScrcpySend.Core.Wire.WriteAsync(video.GetStream(), Message.Control(MessageType.Hello, request.Session, new { channel = "video" }), timeout.Token);
+        Assert.Equal(MessageType.Hello, (await RedrainCast.Send.Core.Wire.ReadAsync(video.GetStream(), timeout.Token)).Type);
+        await RedrainCast.Send.Core.Wire.WriteAsync(video.GetStream(), Message.Control(MessageType.Hello, request.Session, new { channel = "video" }), timeout.Token);
         using var audio = await listener.AcceptTcpClientAsync(timeout.Token);
-        Assert.Equal(MessageType.Hello, (await ScrcpySend.Core.Wire.ReadAsync(audio.GetStream(), timeout.Token)).Type);
-        await ScrcpySend.Core.Wire.WriteAsync(audio.GetStream(), Message.Control(MessageType.Hello, request.Session, new { channel = "audio" }), timeout.Token);
-        var config = await ScrcpySend.Core.Wire.ReadAsync(video.GetStream(), timeout.Token);
+        Assert.Equal(MessageType.Hello, (await RedrainCast.Send.Core.Wire.ReadAsync(audio.GetStream(), timeout.Token)).Type);
+        await RedrainCast.Send.Core.Wire.WriteAsync(audio.GetStream(), Message.Control(MessageType.Hello, request.Session, new { channel = "audio" }), timeout.Token);
+        var config = await RedrainCast.Send.Core.Wire.ReadAsync(video.GetStream(), timeout.Token);
         Assert.Equal(MessageType.StreamConfig, config.Type);
         var ready = new Message(MessageType.StreamReady, request.Session, 1, 1, -1, 0, """{"ok":true}"""u8.ToArray());
-        await ScrcpySend.Core.Wire.WriteAsync(stream, ready, timeout.Token);
-        var key = await ScrcpySend.Core.Wire.ReadAsync(video.GetStream(), timeout.Token);
+        await RedrainCast.Send.Core.Wire.WriteAsync(stream, ready, timeout.Token);
+        var key = await RedrainCast.Send.Core.Wire.ReadAsync(video.GetStream(), timeout.Token);
         Assert.Equal(MessageType.VideoFrame, key.Type);
         var body = new Dictionary<string, object>
         {
@@ -461,9 +461,9 @@ public sealed class RecoveryTests
             ["keyPtsUs"] = invalid == "noncanonical-key" ? "01" : StreamRecovery.Timestamp(key.PtsUs + (invalid == "wrong-key" ? 1 : 0))
         };
         if (invalid == "missing-generation") body.Remove("generation");
-        await ScrcpySend.Core.Wire.WriteAsync(stream, invalid == "duplicate-ready" ? ready :
+        await RedrainCast.Send.Core.Wire.WriteAsync(stream, invalid == "duplicate-ready" ? ready :
             Message.Control(MessageType.Status, request.Session, body), timeout.Token);
-        var response = await ScrcpySend.Core.Wire.ReadAsync(stream, timeout.Token);
+        var response = await RedrainCast.Send.Core.Wire.ReadAsync(stream, timeout.Token);
         Assert.Equal(MessageType.Error, response.Type);
         await Assert.ThrowsAsync<IOException>(() => cast.WaitAsync(timeout.Token));
     }
@@ -550,29 +550,29 @@ public sealed class RecoveryTests
         using var audio = new TcpClient { NoDelay = true };
         await control.ConnectAsync(IPAddress.Loopback, server.Port, timeout.Token);
         var stream = control.GetStream();
-        await ScrcpyReceive.Core.Wire.WriteAsync(stream, Packet.Control(PacketType.Hello, 0,
+        await RedrainCast.Receive.Core.Wire.WriteAsync(stream, Packet.Control(PacketType.Hello, 0,
             new { role = "sender", versions = new[] { 3 }, name = "High-FPS fake",
                 streamRecovery = true, streamRecoveryVersion = 1 }), timeout.Token);
-        Assert.Equal(PacketType.Hello, (await ScrcpyReceive.Core.Wire.ReadAsync(stream, timeout.Token)).Type);
+        Assert.Equal(PacketType.Hello, (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Type);
         var request = JsonSerializer.SerializeToNode(new CaptureSettings(EnableAudio: false).Request("Fake"))!;
         request["video"]!["maxFps"] = fps;
-        await ScrcpyReceive.Core.Wire.WriteAsync(stream, Packet.Control(PacketType.SessionRequest, 1, request), timeout.Token);
-        var accepted = await ScrcpyReceive.Core.Wire.ReadAsync(stream, timeout.Token);
+        await RedrainCast.Receive.Core.Wire.WriteAsync(stream, Packet.Control(PacketType.SessionRequest, 1, request), timeout.Token);
+        var accepted = await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token);
         Assert.Equal(PacketType.SessionAccept, accepted.Type);
         var mediaToken = accepted.Object().GetProperty("mediaToken").GetString()!;
         foreach (var (socket, channel) in new[] { (video, "video"), (audio, "audio") })
         {
             await socket.ConnectAsync(IPAddress.Loopback, server.Port, timeout.Token);
-            await ScrcpyReceive.Core.Wire.WriteAsync(socket.GetStream(), Packet.Control(PacketType.Hello, 1,
+            await RedrainCast.Receive.Core.Wire.WriteAsync(socket.GetStream(), Packet.Control(PacketType.Hello, 1,
                 new { role = "media", channel, token = mediaToken }), timeout.Token);
-            Assert.Equal(PacketType.Hello, (await ScrcpyReceive.Core.Wire.ReadAsync(socket.GetStream(), timeout.Token)).Type);
+            Assert.Equal(PacketType.Hello, (await RedrainCast.Receive.Core.Wire.ReadAsync(socket.GetStream(), timeout.Token)).Type);
         }
         for (uint generation = 1; generation <= 2; generation++)
         {
-            await ScrcpyReceive.Core.Wire.WriteAsync(video.GetStream(), new(PacketType.StreamConfig, 1, 1, generation, -1, 0,
+            await RedrainCast.Receive.Core.Wire.WriteAsync(video.GetStream(), new(PacketType.StreamConfig, 1, 1, generation, -1, 0,
                 JsonSerializer.SerializeToUtf8Bytes(new { codec = "h264", width = 640, height = 360,
                     csd = new[] { "AAAAAQ==" } })), timeout.Token);
-            var ready = await ScrcpyReceive.Core.Wire.ReadAsync(stream, timeout.Token);
+            var ready = await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token);
             Assert.Equal(PacketType.StreamReady, ready.Type);
             Assert.Equal(generation, ready.Generation);
         }
@@ -584,8 +584,8 @@ public sealed class RecoveryTests
             Assert.Equal("h264", captured.VideoCodec);
             Assert.Null(captured.AudioCodec);
         });
-        await ScrcpyReceive.Core.Wire.WriteAsync(stream, Packet.Control(PacketType.Stop, 1, new { reason = "test" }), timeout.Token);
-        Assert.Equal(PacketType.SessionEnd, (await ScrcpyReceive.Core.Wire.ReadAsync(stream, timeout.Token)).Type);
+        await RedrainCast.Receive.Core.Wire.WriteAsync(stream, Packet.Control(PacketType.Stop, 1, new { reason = "test" }), timeout.Token);
+        Assert.Equal(PacketType.SessionEnd, (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Type);
         Assert.All(factory.Outputs, output => Assert.True(output.Disposed));
     }
 
@@ -638,7 +638,9 @@ public sealed class RecoveryTests
         public int InitialDeliveryDelayMilliseconds { get; init; }
         public bool SuppressPackets { get; init; }
         public ConcurrentDictionary<long, byte[]> Original { get; } = new();
-        public object Configuration => new { codec = "raw", sampleRate = 48000, channels = 2, csd = Array.Empty<string>(), sampleFormat = "s16le" };
+        public System.Text.Json.Nodes.JsonNode Configuration => RedrainCast.Protocol.JsonData.Object(
+            ("codec", "raw"), ("sampleRate", 48000), ("channels", 2),
+            ("csd", RedrainCast.Protocol.JsonData.Value(Array.Empty<string>())), ("sampleFormat", "s16le"));
         public void BeginTransmission() { }
         public async IAsyncEnumerable<AudioPacket> ReadPacketsAsync([EnumeratorCancellation] CancellationToken token)
         {

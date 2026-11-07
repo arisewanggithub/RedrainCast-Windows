@@ -1,0 +1,46 @@
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
+using RedrainCast.Protocol;
+
+namespace RedrainCast.Receive.Core;
+
+public sealed record ListenerAddress(IPAddress Address, IPAddress Broadcast, string AdapterName = "");
+
+public static class Discovery
+{
+    public const int Port = 27183;
+    public static string DisplayEndpoint(IPAddress address, int port)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(port, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(port, 65535);
+        var host = address.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{address}]" : address.ToString();
+        return $"{host} : {port}";
+    }
+
+    public static IReadOnlyList<ListenerAddress> Addresses() =>
+        NetworkInterface.GetAllNetworkInterfaces()
+            .Where(item => item.OperationalStatus == OperationalStatus.Up &&
+                item.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+            .SelectMany(adapter => adapter.GetIPProperties().UnicastAddresses.Select(item => (Adapter: adapter, Item: item)))
+            .Where(entry => entry.Item.Address.AddressFamily == AddressFamily.InterNetwork &&
+                !IPAddress.IsLoopback(entry.Item.Address))
+            .Select(entry =>
+            {
+                var item = entry.Item;
+                var address = item.Address.GetAddressBytes();
+                var mask = item.IPv4Mask.GetAddressBytes();
+                return new ListenerAddress(item.Address,
+                    new IPAddress(address.Select((value, index) => (byte)(value | ~mask[index])).ToArray()),
+                    entry.Adapter.Name);
+            }).DistinctBy(item => item.Address).OrderBy(item => item.Address.ToString(), StringComparer.Ordinal).ToArray();
+
+    public static byte[] Advertisement(string name, int port, bool busy, string? instanceId = null)
+    {
+        var fields = JsonData.Object(
+            ("protocol", "screencopy"), ("version", Wire.Version), ("name", name),
+            ("port", port), ("state", busy ? "busy" : "available"));
+        if (instanceId is not null) fields["instanceId"] = instanceId;
+        return JsonData.Bytes(fields);
+    }
+}

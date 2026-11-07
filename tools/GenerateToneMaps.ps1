@@ -5,7 +5,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $PSScriptRoot 'ToneMapGenerator\ToneMapGenerator.csproj'
-$destination = Join-Path $root 'src\ScrcpySend.Core\ToneMaps'
+$destination = Join-Path $root 'src\RedrainCast.Send.Core\ToneMaps'
 New-Item -ItemType Directory -Force -Path $WorkDirectory, $destination | Out-Null
 & dotnet build $project -c Release --nologo
 if ($LASTEXITCODE -ne 0) { throw 'Tone-map generator build failed.' }
@@ -43,7 +43,7 @@ $sampleOutput = Join-Path $WorkDirectory 'samples-output.rgba64le'
 & dotnet $generator samples $samples
 if ($LASTEXITCODE -ne 0) { throw 'Reference swatch generation failed.' }
 Convert-Reference $samples '64x64' 800 $sampleOutput
-& dotnet $generator fixture $sampleOutput (Join-Path $root 'tests\ScrcpySend.Tests\fixtures\bt2390-reference.json')
+& dotnet $generator fixture $sampleOutput (Join-Path $root 'tests\RedrainCast.Send.Tests\fixtures\bt2390-reference.json')
 if ($LASTEXITCODE -ne 0) { throw 'Independent swatch fixture generation failed.' }
 $version = (& $FfmpegPath -version 2>&1 | Select-Object -First 1).ToString()
 $manifest = @{

@@ -5,8 +5,12 @@
 Owner-authorized setup created the `microsoft-store` GitHub environment with
 a deployment policy restricted to the `main` branch. The existing authorized
 `StoreAppPublisher` Entra application is reused without changing its roles or
-existing credentials. A dedicated RedrainCast client secret uses Azure's
-recommended 180-day expiration; rotate it before expiry.
+existing credentials. At the owner's request, the dedicated RedrainCast client
+secret uses Azure's maximum **730 days (24 months)** and expires **2028-11-06**.
+The initial 180-day credential was retired only after replacement authentication
+and the hosted read-only preflight passed. Rotate the replacement before expiry;
+Microsoft recommends shorter lifetimes, and custom lifetimes cannot exceed
+24 months.
 All three environment secrets have been configured privately. The client
 secret was transferred using Azure's value-copy button and encrypted GitHub
 secret input, never placed in source, logs or artifacts; its clipboard entry
