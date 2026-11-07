@@ -92,9 +92,15 @@ public sealed class HighFpsProbeControlTests
                     new { role = "media", channel, token = mediaToken }), limit.Token);
                 Assert.Equal(PacketType.Hello, (await Wire.ReadAsync(socket.GetStream(), limit.Token)).Type);
             }
-            await Task.Delay(2300, limit.Token);
+            // SESSION_ACCEPT precedes watchdog startup; wait for the heartbeat, not its nominal due time.
+            while (!control.Journal.Any(entry => entry.StartsWith("TX Pong", StringComparison.Ordinal)))
+                await Task.Delay(10, limit.Token);
             Assert.Contains(control.Journal, entry => entry.StartsWith("TX Pong", StringComparison.Ordinal));
+            var videoEnded = video.GetStream().ReadAsync(new byte[1], limit.Token).AsTask();
+            var audioEnded = audio.GetStream().ReadAsync(new byte[1], limit.Token).AsTask();
             await control.SendAsync(Packet.Control(PacketType.Stop, fps, new { reason = "test" }), limit.Token);
+            Assert.Equal(0, await videoEnded);
+            Assert.Equal(0, await audioEnded);
             Assert.Equal(fps, (await control.ReadAsync(PacketType.SessionEnd, limit.Token)).Session);
             while (receiver.IsBusy) await Task.Delay(10, limit.Token);
             var journal = control.Journal;

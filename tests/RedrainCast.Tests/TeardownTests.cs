@@ -15,6 +15,8 @@ public sealed class TeardownTests
         private readonly JsonDocument fixture = JsonDocument.Parse(File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "fixtures", "synthetic-h264.json")));
         public readonly TaskCompletionSource Fail = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource DisposalStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task BeforeDispose { get; init; } = Task.CompletedTask;
         public bool Disposed;
         public bool SupportsStreamRecovery => recovery;
         public string EncoderName => "Synthetic teardown test source";
@@ -31,7 +33,13 @@ public sealed class TeardownTests
             await Fail.Task.WaitAsync(token);
             throw new IOException("Original capture failure");
         }
-        public ValueTask DisposeAsync() { Disposed = true; fixture.Dispose(); return ValueTask.CompletedTask; }
+        public async ValueTask DisposeAsync()
+        {
+            DisposalStarted.TrySetResult();
+            await BeforeDispose;
+            Disposed = true;
+            fixture.Dispose();
+        }
     }
 
     private sealed class Peer : IDisposable
@@ -123,28 +131,54 @@ public sealed class TeardownTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(6));
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
-        var source = new Source(recovery);
+        var cleanup = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stopping = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var source = new Source(recovery) { BeforeDispose = cleanup.Task };
         var run = new SenderSession().RunAsync(new(IPAddress.Loopback, ((IPEndPoint)listener.LocalEndpoint).Port, "Test", false),
-            new(MaxSize: source.Width), source, _ => { }, default);
-        using var peer = await Peer.Connect(listener, recovery, timeout.Token);
-        var watch = Stopwatch.StartNew();
-        peer.Eof();
-        await Task.Delay(350, timeout.Token);
+            new(MaxSize: source.Width), source, state =>
+            {
+                if (state == "Stopping") stopping.TrySetResult(Stopwatch.GetTimestamp());
+            }, default);
         try
         {
-            if (invalid == "wrong-type")
-                await Wire.WriteAsync(peer.Stream, Message.Control(MessageType.Error, peer.Session,
-                    new { code = "DECODER_FAILED", message = "Do not replace", fatal = "true" }), timeout.Token);
-            else
-                await peer.Error(invalid == "unknown" ? "UNRECOGNIZED" : "DECODER_FAILED",
-                    invalid == "oversized" ? new string('x', 2049) : "Do not replace", invalid != "nonfatal",
-                    timeout.Token, invalid == "wrong-session" ? peer.Session + 1 : null);
+            using var peer = await Peer.Connect(listener, recovery, timeout.Token);
+            peer.Eof();
+            // The protocol grace starts after the sender observes EOF, not when the fake peer schedules FIN.
+            var stoppedAt = await stopping.Task.WaitAsync(timeout.Token);
+            await Task.Delay(350, timeout.Token);
+            try
+            {
+                if (invalid == "wrong-type")
+                    await Wire.WriteAsync(peer.Stream, Message.Control(MessageType.Error, peer.Session,
+                        new { code = "DECODER_FAILED", message = "Do not replace", fatal = "true" }), timeout.Token);
+                else
+                    await peer.Error(invalid == "unknown" ? "UNRECOGNIZED" : "DECODER_FAILED",
+                        invalid == "oversized" ? new string('x', 2049) : "Do not replace", invalid != "nonfatal",
+                        timeout.Token, invalid == "wrong-session" ? peer.Session + 1 : null);
+            }
+            catch (IOException) when (invalid == "wrong-session")
+            {
+                // Rejection can close the socket before the fake peer's write completes.
+                // The exact terminal protocol failure is still required below.
+            }
+            Message terminal;
+            do
+            {
+                terminal = await Wire.ReadAsync(peer.Stream, timeout.Token);
+                Assert.True(terminal.Type is MessageType.Ping or MessageType.Error);
+                Assert.Equal(peer.Session, terminal.Session);
+            } while (terminal.Type == MessageType.Ping);
+            var elapsed = Stopwatch.GetElapsedTime(stoppedAt);
+            Assert.Equal(MessageType.Error, terminal.Type);
+            Assert.Equal(peer.Session, terminal.Session);
+            Assert.True(terminal.Json().GetProperty("fatal").GetBoolean());
+            Assert.True(elapsed < TimeSpan.FromSeconds(3), $"Terminal error took {elapsed} after EOF observation.");
+            // Force cleanup to remain pending: it is not part of the media-EOF protocol bound.
+            await source.DisposalStarted.Task.WaitAsync(timeout.Token);
+            Assert.Equal(0, await peer.Audio.GetStream().ReadAsync(new byte[1], timeout.Token));
+            Assert.False(run.IsCompleted);
         }
-        catch (IOException) when (invalid == "wrong-session")
-        {
-            // Rejection can close the socket before the fake peer's write completes.
-            // The exact terminal protocol failure is still required below.
-        }
+        finally { cleanup.TrySetResult(); }
         var error = await Assert.ThrowsAsync<IOException>(() => run.WaitAsync(timeout.Token));
         Assert.Contains(invalid switch
         {
@@ -161,7 +195,7 @@ public sealed class TeardownTests
             Assert.IsType<ProtocolException>(original);
         }
         Assert.DoesNotContain("Do not replace", error.Message);
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(3));
+        Assert.True(source.Disposed);
     }
 
     [Theory]
