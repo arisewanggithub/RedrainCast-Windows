@@ -187,6 +187,9 @@ the required published `Assets\RedrainCast.ico` for the title bar and taskbar.
 Both portable and MSIX builds carry that file. Publication validates its source
 hash, every embedded EXE frame and actual Win32 `LoadImage`/`ExtractIconEx`
 pixels without launching the app. Packaging also verifies the ICO inside MSIX.
+The Win32/System.Drawing icon validator runs in built-in Windows PowerShell's
+.NET Framework host, including when called from `pwsh`, matching the native
+asset generator and avoiding PowerShell Core's different `Add-Type` references.
 Manifest artwork alone does not set the portable EXE/window icon. Already
 running older builds keep their old icon until reopened from a new build;
 no system icon-cache reset is required.

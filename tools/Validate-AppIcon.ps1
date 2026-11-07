@@ -3,6 +3,14 @@ param(
     [string]$ExecutablePath
 )
 $ErrorActionPreference = 'Stop'
+if ($PSVersionTable.PSEdition -eq 'Core') {
+    # Keep Win32/System.Drawing checks on the same .NET Framework host as asset generation.
+    $arguments = @('-NoProfile', '-STA', '-File', $PSCommandPath, '-IconPath', $IconPath)
+    if ($ExecutablePath) { $arguments += @('-ExecutablePath', $ExecutablePath) }
+    & powershell.exe @arguments
+    if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell native icon validation failed.' }
+    return
+}
 Add-Type -AssemblyName System.Drawing
 if (-not ('RedrainCast.NativeBrandIcon' -as [type])) {
     Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'
