@@ -287,9 +287,19 @@ public sealed class RecoveryTests
         var states = new ConcurrentQueue<string>();
         await using var server = new ReceiverServer("Evicted PCM prefix fake", factory, _ => { }, 0, IPAddress.Loopback);
         server.Start(false);
-        await using var source = new GeneratedSource();
+        // Keep key requests live, but avoid unrelated video queue pressure while PCM ages out.
+        await using var source = new GeneratedSource
+        {
+            CanEmitDependentFrames = () => factory.FirstOutput?.DecodedRecoveryKeyPtsUs is not null
+        };
+        var sound = new GeneratedAudio();
+        factory.ValidateAudio = packet =>
+        {
+            Assert.True(sound.Original.TryGetValue(packet.PtsUs, out var bytes));
+            Assert.Equal(bytes, packet.Payload);
+        };
         var cast = new SenderSession().RunAsync(new(IPAddress.Loopback, server.Port, "Test", false),
-            new(MaxSize: source.Width, EnableAudio: true), source, states.Enqueue, stop.Token, new GeneratedAudio());
+            new(MaxSize: source.Width, EnableAudio: true), source, states.Enqueue, stop.Token, sound);
         try
         {
             while (!states.Contains("Streaming"))
@@ -300,6 +310,13 @@ public sealed class RecoveryTests
             Assert.Equal(2, factory.Opens);
             var retry = Assert.Single(states, s => s.StartsWith("Recovering video generation", StringComparison.Ordinal));
             Assert.Contains("source PCM starts", retry);
+            var gap = long.Parse(retry.Split("source PCM starts ")[1].Split("us")[0], System.Globalization.CultureInfo.InvariantCulture);
+            Assert.True(gap > 250_000, $"Retained source PCM must actually miss the key window: {gap}us.");
+            var proof = Assert.Single(states, s => s.StartsWith("Recovery decoded KEY: generation=1,", StringComparison.Ordinal));
+            var firstKey = long.Parse(proof.Split("keyPtsUs=")[1].Split(',')[0], System.Globalization.CultureInfo.InvariantCulture);
+            var age = long.Parse(proof.Split("sourceAgeUs=")[1], System.Globalization.CultureInfo.InvariantCulture);
+            Assert.True(age >= 1_000_000, $"The initial decoded proof must retain its real delay: {age}us.");
+            Assert.Contains(sound.Original.Keys, pts => pts < firstKey + 250_000);
             Assert.DoesNotContain(states, s => s.Contains("decoded KEY proof is stale", StringComparison.Ordinal));
             stop.Cancel();
             await cast.WaitAsync(timeout.Token);
@@ -566,6 +583,7 @@ public sealed class RecoveryTests
         private int request = 1;
         public int SyncRequests;
         public bool IgnoreSync;
+        public Func<bool> CanEmitDependentFrames { get; init; } = () => true;
         public string EncoderName => "EXPLICIT FAKE/SYNTHETIC source";
         public int Width { get; }
         public int Height { get; }
@@ -591,6 +609,11 @@ public sealed class RecoveryTests
         {
             while (true)
             {
+                if (Volatile.Read(ref request) == 0 && !CanEmitDependentFrames())
+                {
+                    await Task.Delay(10, token);
+                    continue;
+                }
                 yield return new(Interlocked.Exchange(ref request, 0) != 0 ? key : dependent, QpcUs(), configuration);
                 await Task.Delay(10, token);
             }
@@ -634,6 +657,8 @@ public sealed class RecoveryTests
 
     private sealed class FakeFactory(bool audio) : IPlaybackFactory
     {
+        private FakeOutput? firstOutput;
+        public FakeOutput? FirstOutput => Volatile.Read(ref firstOutput);
         public Func<CancellationToken, Task>? Construction;
         public Action<Packet>? ValidateAudio;
         public int Opens, RecoveredAudio, RecoveredVideo;
@@ -653,6 +678,7 @@ public sealed class RecoveryTests
         {
             Requests.Enqueue(request);
             var output = new FakeOutput(this, ++Opens > 1, audio);
+            if (Opens == 1) Volatile.Write(ref firstOutput, output);
             Outputs.Add(output);
             if (Opens == 1) await Task.Delay(OpenDelayMilliseconds, token);
             return output;
@@ -677,9 +703,11 @@ public sealed class RecoveryTests
             public void Dispose() => exits.Enqueue(Environment.CurrentManagedThreadId);
         }
         public bool HasPresentedVideo => videoCount > 0;
-        private long? decodedKey;
+        private long decodedKey = -1;
         public long? DecodedRecoveryKeyPtsUs =>
-            !recovered && Environment.TickCount64 - keyObservedAt < owner.FirstKeyProofDelayMilliseconds ? null : decodedKey;
+            Interlocked.Read(ref decodedKey) is var pts && pts >= 0 &&
+            (recovered || Environment.TickCount64 - Interlocked.Read(ref keyObservedAt) >= owner.FirstKeyProofDelayMilliseconds)
+                ? pts : null;
         public long? FirstRecoverySourceAudioPtsUs { get; private set; }
         public async ValueTask ConfigureRecoveryAsync(Packet video, Packet? sound, bool midstream, CancellationToken token)
         {
@@ -689,7 +717,7 @@ public sealed class RecoveryTests
             await Task.Delay(recovered ? 25 : owner.ConfigureDelayMilliseconds, token);
             Assert.False(Disposed);
         }
-        public void SetRecoveryKey(long pts) { key = pts; keyObservedAt = Environment.TickCount64; }
+        public void SetRecoveryKey(long pts) { key = pts; Interlocked.Exchange(ref keyObservedAt, Environment.TickCount64); }
         public ValueTask ConfigureAsync(Packet packet, CancellationToken token) => ValueTask.CompletedTask;
         public async ValueTask PresentAsync(Packet packet, CancellationToken token)
         {
@@ -699,7 +727,7 @@ public sealed class RecoveryTests
                 videoCount++;
                 if (videoCount == 1 && owner.KeyDecodeDelayMilliseconds > 0)
                     await Task.Delay(owner.KeyDecodeDelayMilliseconds, token);
-                decodedKey = key;
+                Interlocked.Exchange(ref decodedKey, key);
                 if (!recovered && videoCount == 10 && owner.StallMilliseconds > 0)
                     await Task.Delay(owner.StallMilliseconds, token);
                 if (recovered) Interlocked.Increment(ref owner.RecoveredVideo);

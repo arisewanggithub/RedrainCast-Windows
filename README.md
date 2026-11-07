@@ -963,6 +963,13 @@ It does not install drivers or change system PATH.
 Publication/package output directories must be new or empty. Packaging checks
 PE architecture, required notices, assembly/package version and the exact
 Partner Center identity. See [STORE.md](STORE.md).
+The optional [Store update pipeline](docs/store/pipeline.md) consumes paired
+private CI artifacts only after a first manual publication, with separate
+upload/certification dispatches and manual final publication. An explicit
+listing-enabled upload can include all 22 translations and 44 screenshots
+after confirmation of the exact reviewed commit. Package-only uploads preserve
+listings. Both modes retain the supported self-contained, untrimmed MSIX format;
+single-file executables are not used for Store distribution.
 The repository release version in `Directory.Build.props` supplies the default
 publication version; packaging infers it from the published app instead of an
 independently hard-coded default. An explicit `Publish.ps1 -Version` is still

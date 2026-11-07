@@ -1,0 +1,69 @@
+name: Microsoft Store release
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: Upload packages, upload packages plus reviewed listings, or request certification (Manual publication hold)
+        required: true
+        default: upload-draft
+        type: choice
+        options: [upload-draft, upload-listings-draft, submit-draft]
+      build_run_id:
+        description: Successful main Windows build run ID (required for upload; derived from receipt for submit)
+        type: string
+      draft_run_id:
+        description: Successful upload-draft run ID whose receipt must be used (submit only)
+        type: string
+      confirm_store:
+        description: Type 9P1153MP6R32 to authorize this Store operation
+        required: true
+        type: string
+      confirm_listings_commit:
+        description: Exact main commit SHA whose 22 translations and 44 screenshots you reviewed (listing upload only)
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: microsoft-store-9P1153MP6R32
+  cancel-in-progress: false
+jobs:
+  offline-checks:
+    if: github.ref == 'refs/heads/main' && github.repository == 'arisewanggithub/RedrainCast-Windows'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Test Store guards without network or credentials
+        shell: powershell
+        run: .\tests\tools\Test-StoreRelease.ps1
+  store:
+    needs: offline-checks
+    if: github.ref == 'refs/heads/main' && github.repository == 'arisewanggithub/RedrainCast-Windows'
+    runs-on: windows-latest
+    environment: microsoft-store
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Perform explicitly selected Store operation
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STORE_STAGE: ${{ inputs.stage }}
+          STORE_BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          STORE_DRAFT_RUN_ID: ${{ inputs.draft_run_id }}
+          STORE_CONFIRMATION: ${{ inputs.confirm_store }}
+          STORE_LISTINGS_COMMIT: ${{ inputs.confirm_listings_commit }}
+          PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+          PARTNER_CENTER_CLIENT_ID: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+          PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+        run: |
+          .\tools\Invoke-StoreRelease.ps1 -Stage $env:STORE_STAGE `
+            -BuildRunId $env:STORE_BUILD_RUN_ID -DraftRunId $env:STORE_DRAFT_RUN_ID `
+            -ConfirmStore $env:STORE_CONFIRMATION -ConfirmListingsCommit $env:STORE_LISTINGS_COMMIT
+      - name: Keep sanitized receipt in private Actions only
+        if: success() && (inputs.stage == 'upload-draft' || inputs.stage == 'upload-listings-draft')
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: store-draft-receipt
+          path: artifacts/store-release/store-draft-receipt.json
+          if-no-files-found: error
+          retention-days: 14

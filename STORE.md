@@ -39,7 +39,12 @@ The custom domain is configured and HTTPS is enforced.
    outside the Store requires a trusted signature and separate signing setup.
 4. Upload to the new product, complete pricing/availability, age rating,
    privacy policy URL, description, screenshots, support details and notes.
-   This repository does not submit or publish automatically.
+   First publication must be completed manually. The optional
+   [guarded update pipeline](docs/store/pipeline.md) supports explicitly
+   dispatched package-only or reviewed listing-and-screenshot uploads and
+   certification requests only after a publication exists; final publication
+   remains manual. It has not been executed against
+   Partner Center as part of its implementation.
 5. Certification notes should describe the two-device trusted-LAN setup,
    automatic incoming acceptance, OS-assigned TCP listener ports, fixed UDP 27183
    discovery and application-based Private-network firewall permissions,

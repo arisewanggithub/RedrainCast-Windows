@@ -50,18 +50,37 @@ worker child process when sending. The standard app does not record media.
 
 ## INTERNAL — DO NOT PASTE
 
-- **Not release acceptance or proof of Store publication.** Latest reported
-  automated acceptance: ARM64, 989 tests passed, zero warnings; 16 shipping
-  boundary tests passed after the package-icon update. These are supplied
-  release-preparation results, not tests rerun for this document. Do not claim
-  x64 or native user-capture acceptance from this evidence. Source targets
-  ARM64 and x64.
-- **Unsigned packaging passed only.** Clean ARM64 publication:
-  `artifacts\v0.1.20-first-release\candidate-20261106-213539-clean\win-arm64`.
-  Branded unsigned candidate:
-  `artifacts\v0.1.20-first-release\package-brand-20261106-214155\RedrainCast-arm64.msix`.
-  SHA-256:
-  `55587ab6aeb08b99ccf7d0c1e9f29ecc7543f5bf1fb9bcae11eb74bbf3d75169`.
+- **Not release acceptance or proof of Store publication.** Reviewed-source
+  portable regression results: 1,133 tests passed. The separate Store guard
+  suite passed 58 offline checks on Windows PowerShell 5.1 after alignment
+  with the actual package-language export. These checks do not establish
+  native x64 playback or human capture acceptance.
+- **Fresh unsigned packaging passed only, 2026-11-07.** Both architectures
+  passed publication, branding, localization, manifest and shipping-boundary
+  validation at version 0.1.20.0:
+  - ARM64:
+    `artifacts\store-initial-20261107-0925\package-arm64\RedrainCast-arm64.msix`.
+    SHA-256:
+    `4389c15c5f1a9784be595f970bbd2b53ae18aa21c7565b1363540bf55a5c2d2f`.
+  - x64:
+    `artifacts\store-initial-20261107-0925-x64-restore\package-x64\RedrainCast-x64.msix`.
+    SHA-256:
+    `a3999e40958d7e147d3fb8acc1fa5c2092d9e6aff20c94d1cb9959b0b620f250`.
+  Both were uploaded and saved in the owner-authorized initial Partner Center
+  draft, Submission 1 (`1152921505702342229`). The portal marked Packages
+  Complete; this is not installed-package or certification acceptance.
+- Owner-authorized Free pricing and all worldwide markets were saved and
+  verified in the draft on 2026-11-07. All 240 supported market rows showed
+  zero retail prices; this does not constitute publication.
+- Owner-authorized IARC ratings were finalized in the draft on 2026-11-07;
+  the portal marked Age ratings Complete. Generated classifications include
+  Microsoft/IARC 12+, ESRB Teen, PEGI Parental Guidance and Germany USK 16+,
+  with user-interaction descriptors. The questionnaire declares native
+  screen/audio content exchange and does not claim reporting, moderation,
+  user blocking, or invitation-only controls. The first IARC rating ID remains
+  pending publication. These ratings do not replace physical-device acceptance.
+  The owner subsequently selected automatic publication after certification
+  for this initial submission. No certification was submitted.
 - **NOT ACCEPTED — human physical-device checks required:** install/launch
   under the intended Store identity; update/settings preservation where
   applicable; consented firewall flow, discovery and manual connection;
@@ -80,11 +99,14 @@ worker child process when sending. The standard app does not record media.
   https://redraincast.redrain.ccwu.cc/privacy/.
   Home: https://redraincast.redrain.ccwu.cc/.
   Support: https://redraincast.redrain.ccwu.cc/support/.
-  Enter the reviewed URLs in the applicable Partner Center product settings;
-  no listing or submission settings have been changed automatically.
+  These URLs were saved and read back in this product's initial draft
+  properties on 2026-11-07. The submission remains unpublished; no Store API
+  workflow, certification submission or final publication was executed.
 - Follow the existing [screenshot plan](README.md#screenshot-plan); no app
   screenshots were captured here. Review [listing preparation](README.md),
   [release acceptance](../../STORE.md), [product behavior](../../README.md)
   and [Store identity](../../StoreIdentity.json) before submission.
 
-Documentation-only change; no builds, installations or tests were performed.
+The browser draft preparation and package checks above are recorded separately
+from physical-device acceptance. No signing, installation or capture operation
+was performed as part of that Store preparation.

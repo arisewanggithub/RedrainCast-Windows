@@ -2,8 +2,26 @@
 
 The [en-US draft](listings/en-US.json) is prepared for **RedrainCast**
 (Store ID `9P1153MP6R32`), not for Cloud Drive Player. Files are ready for review
-in this repository; nothing has been committed, uploaded, saved in Partner
-Center, or submitted.
+in this repository; the listing assets are committed.
+
+On 2026-11-07, owner-authorized browser preparation created
+[Submission 1](https://partner.microsoft.com/en-us/dashboard/products/9P1153MP6R32/submissions/1152921505702342229)
+in Partner Center. The verified package identity, privacy/support/website
+properties, fresh ARM64/x64 0.1.20.0 packages and all 22 listing texts were
+saved to this **unpublished draft**. All 22 listings are Complete with two
+captioned screenshots each and the shared 300 x 300 Store icon. A fresh official
+export verified all texts, captions, icon references and the original 44 image
+references in Home-then-Sharing-settings order. This is not certification or
+release acceptance. Owner-authorized **Free** pricing and **all worldwide
+markets** were saved and read back on 2026-11-07; the per-market review showed
+zero retail prices in all 240 supported markets. Owner-authorized IARC ratings
+were saved and the Age ratings section marked Complete: Microsoft/IARC 12+,
+ESRB Teen, PEGI Parental Guidance and USK 16+ in Germany. Exact-package
+physical-device acceptance still requires owner checks. On 2026-11-07, the
+owner changed this initial submission to **publish as soon as certification
+passes**, replacing the earlier manual hold. Certification has not been
+submitted; the separately guarded REST update pipeline retains its Manual
+publication mode.
 
 ## Localized listing drafts
 
@@ -37,7 +55,16 @@ keywords, product identity, requirements and privacy meaning.
 | Chinese (Simplified) | [zh-Hans.json](listings/zh-Hans.json) |
 | Chinese (Traditional) | [zh-Hant.json](listings/zh-Hant.json) |
 
-These are reviewable content files, not a Partner Center import format. Select
+These are reviewable content files, not a Partner Center import format. The
+[guarded REST pipeline](pipeline.md) has an explicit `upload-listings-draft`
+mode that maps supported fields and uploads the 44 screenshots after exact
+reviewed-commit confirmation. It applies only after the first manual
+publication and never adopts an existing pending draft. Optional empty fields
+preserve existing values; product URLs and Store branding artwork still
+require Partner Center review. No live upload was performed while implementing
+the pipeline.
+
+For manual preparation, select
 the corresponding supported listing language in Partner Center before copying
 fields; do not infer a numeric portal language ID from a file name. Read JSON as
 UTF-8 when validating or scripting it, including in Windows PowerShell 5.
@@ -45,6 +72,40 @@ Two screenshots are prepared for every listing; screenshot approval and all
 drafts still need owner review before upload. Public URLs, brand names,
 empty first-release fields and internal
 submission-review metadata are intentionally shared across locales.
+
+### Initial-submission CSV import
+
+Partner Center's official **Export listings / Import listings** can populate
+the first submission; the REST update pipeline intentionally cannot. Use the
+CSV exported from this exact product/submission as the schema rather than
+inventing field IDs. The actual export uses the same 22 lowercase language
+keys as the packages, including neutral `ar`, `de`, `id`, `zh-hans` and
+`zh-hant`, not region-specific replacement keys.
+
+The CSV contains both `ID` (field identifier) and `id` (Indonesian).
+PowerShell's default `Import-Csv` cannot distinguish them. Use unique temporary
+column aliases with the native CSV parser, then restore the exact headers.
+Preserve quoted multiline descriptions, empty paragraphs, UTF-8, separator
+rows and the package-generated `OverrideLogosForWin10=False` values.
+Round-trip every field before importing; `TextFieldParser` alone can discard
+blank paragraphs inside quoted descriptions.
+
+An image preview and a hidden progressbar can precede persistence in the
+saved listing model. Verify a fresh official export, including icon references,
+instead of accepting preview dimensions or an overall Complete badge alone.
+For icon-only CSV changes, omit unchanged screenshot rows: reimporting existing
+image URLs can reorder complete screenshot/caption pairs during asynchronous
+rehydration. Compare the ordered asset references and their captions afterward.
+
+CSV-only import saved all 22 texts in this draft while leaving listings
+incomplete until screenshots were supplied. The automated browser's directory
+upload did not work; individual file uploads did. Do not change browser
+permissions or portal upload attributes as a workaround. For a normal manual
+folder import, follow Microsoft's root-folder-relative asset path format.
+Never import the internal `submissionReview` fields or overwrite unrelated
+existing listing content.
+
+[Microsoft's CSV import/export documentation](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/import-and-export-store-listings)
 
 ## Fields checked in Partner Center
 
