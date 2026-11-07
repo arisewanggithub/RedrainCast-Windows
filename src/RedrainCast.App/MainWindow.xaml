@@ -25,52 +25,58 @@
             </ResourceDictionary>
         </Grid.Resources>
         <ContentControl x:Name="PlayerInput" IsTabStop="False"
-                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" FlowDirection="LeftToRight">
             <Border Background="Black"><SwapChainPanel x:Name="VideoSurface"/></Border>
         </ContentControl>
-        <Grid x:Name="HomePage" RowSpacing="16" Padding="24"
+        <Border x:Name="PlaybackStatsOverlay" Visibility="Collapsed" IsHitTestVisible="False"
+                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12" Padding="8"
+                Background="#E610151B" CornerRadius="6">
+            <StackPanel x:Name="PlaybackStatsPanel" IsHitTestVisible="False"/>
+        </Border>
+        <Grid x:Name="HomePage"
               Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+            <ScrollViewer x:Name="HomeScroll" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
+                          HorizontalContentAlignment="Stretch" IsTabStop="False">
+            <Grid RowSpacing="16" Padding="24">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <Grid ColumnSpacing="16">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <StackPanel Spacing="4">
                     <TextBlock Text="RedrainCast" FontSize="30" FontWeight="SemiBold"/>
-                    <TextBlock Text="Send and receive screens." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock Text="{Binding HomeTagline, Source={StaticResource Strings}}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                 </StackPanel>
                 <Button x:Name="SettingsButton" Grid.Column="1" Click="Settings_Click" VerticalAlignment="Center"
-                        AutomationProperties.Name="Settings" ToolTipService.ToolTip="Settings">
+                        AutomationProperties.Name="{Binding Settings, Source={StaticResource Strings}}" ToolTipService.ToolTip="{Binding Settings, Source={StaticResource Strings}}">
                     <FontIcon Glyph="&#xE713;"/>
                 </Button>
             </Grid>
             <InfoBar x:Name="Problem" Grid.Row="1" IsOpen="False" IsClosable="True" Severity="Error"/>
-            <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
-                          HorizontalContentAlignment="Stretch">
-                <Grid x:Name="Cards" ColumnSpacing="16" RowSpacing="16">
+                <Grid x:Name="Cards" Grid.Row="2" ColumnSpacing="16" RowSpacing="16">
                     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                     <Border x:Name="SendCard" Padding="20" CornerRadius="12" VerticalAlignment="Top"
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                         <StackPanel Spacing="18">
-                            <TextBlock Text="Send screen" FontSize="24" FontWeight="SemiBold"/>
-                            <TextBlock Text="Choose a nearby receiver to start sharing." TextWrapping="Wrap"
+                            <TextBlock Text="{Binding SendScreen, Source={StaticResource Strings}}" FontSize="24" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding SendHint, Source={StaticResource Strings}}" TextWrapping="Wrap"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             <Button x:Name="ChooseSource" Click="ChooseSource_Click" HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="Left" ToolTipService.ToolTip="Choose a display or window">
+                                    HorizontalContentAlignment="Left" ToolTipService.ToolTip="{Binding ChooseSourceHelp, Source={StaticResource Strings}}">
                                 <StackPanel Spacing="4">
-                                    <TextBlock Text="Share a display or window" FontWeight="SemiBold"/>
-                                    <TextBlock x:Name="SourceLabel" Text="Choose what to share" TextWrapping="Wrap" FontSize="12"/>
+                                    <TextBlock Text="{Binding ShareSource, Source={StaticResource Strings}}" FontWeight="SemiBold"/>
+                                    <TextBlock x:Name="SourceLabel" Text="{Binding ChooseSource, Source={StaticResource Strings}}" TextWrapping="Wrap" FontSize="12"/>
                                 </StackPanel>
                             </Button>
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <TextBlock Text="Nearby receivers" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="1" Text="Auto-updating" FontSize="12" VerticalAlignment="Center"
+                                <TextBlock Text="{Binding NearbyReceivers, Source={StaticResource Strings}}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="{Binding AutoUpdating, Source={StaticResource Strings}}" FontSize="12" VerticalAlignment="Center"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             </Grid>
                             <ItemsControl x:Name="ReceiverList" HorizontalContentAlignment="Stretch">
@@ -82,12 +88,12 @@
                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                                 <StackPanel Spacing="4">
                                                     <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                                                    <TextBlock Text="{x:Bind DisplayAddress}" FontFamily="Consolas" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{x:Bind DisplayAddress}" FontFamily="Consolas" TextWrapping="Wrap" FlowDirection="LeftToRight"/>
                                                     <TextBlock Text="{x:Bind Status}" FontSize="13" FontWeight="SemiBold"
                                                                AutomationProperties.LiveSetting="Polite"/>
-                                                    <TextBlock Text="{x:Bind Parameters}" FontSize="12" TextWrapping="Wrap"
+                                                    <TextBlock Text="{x:Bind Parameters}" FontSize="12" TextWrapping="Wrap" FlowDirection="LeftToRight"
                                                                Visibility="{x:Bind local:MainWindow.OptionalTextVisibility(Parameters)}"/>
-                                                    <TextBlock Text="{x:Bind Encoder}" FontSize="12" TextWrapping="Wrap"
+                                                    <TextBlock Text="{x:Bind Encoder}" FontSize="12" TextWrapping="Wrap" FlowDirection="LeftToRight"
                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                                Visibility="{x:Bind local:MainWindow.OptionalTextVisibility(Encoder)}"/>
                                                     <TextBlock Text="{x:Bind Notice}" FontSize="12" TextWrapping="Wrap"
@@ -102,29 +108,29 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <TextBlock x:Name="DiscoveryStatus" Text="Looking for receivers..." TextWrapping="Wrap"
+                            <TextBlock x:Name="DiscoveryStatus" Text="{Binding LookingForReceivers, Source={StaticResource Strings}}" TextWrapping="Wrap"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            <Button x:Name="ManualConnect" Content="Connect by IP : Port" Click="ManualConnect_Click"/>
+                            <Button x:Name="ManualConnect" Content="{Binding ManualConnect, Source={StaticResource Strings}}" Click="ManualConnect_Click"/>
                         </StackPanel>
                     </Border>
                     <Border x:Name="ReceiveCard" Grid.Column="1" Padding="20" CornerRadius="12" VerticalAlignment="Top"
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
                         <StackPanel Spacing="18">
-                            <TextBlock Text="Receive screen" FontSize="24" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding ReceiveScreen, Source={StaticResource Strings}}" FontSize="24" FontWeight="SemiBold"/>
                             <Border x:Name="ReadinessBanner" CornerRadius="8" Background="{ThemeResource ControlFillColorSecondaryBrush}">
                                 <Grid>
                                 <Border x:Name="ReadyTint" CornerRadius="8" Background="{ThemeResource ReadyBackground}" Visibility="Collapsed"/>
                                 <StackPanel Spacing="6" Padding="18">
-                                    <TextBlock x:Name="ReadinessTitle" Text="STARTING" FontSize="30" FontWeight="Bold"
+                                    <TextBlock x:Name="ReadinessTitle" Text="{Binding Starting, Source={StaticResource Strings}}" FontSize="30" FontWeight="Bold"
                                                AutomationProperties.LiveSetting="Polite"/>
-                                    <TextBlock x:Name="ReadinessDetail" Text="Opening the listener..." TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="ReadinessDetail" Text="{Binding OpeningListener, Source={StaticResource Strings}}" TextWrapping="Wrap"/>
                                 </StackPanel>
                                 </Grid>
                             </Border>
                             <TextBlock x:Name="DeviceName" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                            <TextBlock Text="Connect to this PC" FontWeight="SemiBold"/>
-                            <TextBlock x:Name="AddressHint" Text="Use an address reachable from the sender's network." TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding ConnectThisPC, Source={StaticResource Strings}}" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="AddressHint" Text="{Binding AddressHint, Source={StaticResource Strings}}" TextWrapping="Wrap"/>
                             <ItemsControl x:Name="AddressList" HorizontalContentAlignment="Stretch">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
@@ -135,11 +141,11 @@
                                                 <StackPanel Spacing="4">
                                                     <TextBlock Text="{Binding Adapter}" FontSize="12" TextWrapping="Wrap"/>
                                                     <TextBlock Text="{Binding DisplayAddress}" FontFamily="Consolas" FontSize="18"
-                                                               IsTextSelectionEnabled="True" TextWrapping="Wrap"/>
+                                                               IsTextSelectionEnabled="True" TextWrapping="Wrap" FlowDirection="LeftToRight"/>
                                                 </StackPanel>
                                                 <Button Grid.Column="1" Tag="{Binding CanonicalAddress}" Click="CopyAddress_Click"
-                                                        VerticalAlignment="Center" AutomationProperties.Name="Copy address"
-                                                        ToolTipService.ToolTip="Copy IP:Port without spaces">
+                                                        VerticalAlignment="Center" AutomationProperties.Name="{Binding CopyAddress, Source={StaticResource Strings}}"
+                                                        ToolTipService.ToolTip="{Binding CopyAddressHelp, Source={StaticResource Strings}}">
                                                     <FontIcon Glyph="&#xE8C8;" FontSize="16"/>
                                                 </Button>
                                             </Grid>
@@ -149,18 +155,19 @@
                             </ItemsControl>
                             <TextBlock x:Name="AddressFeedback" TextWrapping="Wrap" FontSize="12"
                                        AutomationProperties.LiveSetting="Polite"/>
-                            <TextBlock Text="Incoming casts open automatically and fill this window." TextWrapping="Wrap"/>
-                            <TextBlock Text="Receiving pauses while you send your screen. Use only on trusted networks."
+                            <TextBlock Text="{Binding IncomingHint, Source={StaticResource Strings}}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding TrustedNetworkHint, Source={StaticResource Strings}}"
                                        FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         </StackPanel>
                     </Border>
                 </Grid>
-            </ScrollViewer>
             <Grid Grid.Row="3">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <TextBlock x:Name="VersionText" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                <HyperlinkButton Grid.Column="1" Content="Connection help" Click="Help_Click"/>
+                <HyperlinkButton x:Name="ConnectionHelp" Grid.Column="1" Content="{Binding ConnectionHelp, Source={StaticResource Strings}}" Click="Help_Click"/>
             </Grid>
+            </Grid>
+            </ScrollViewer>
         </Grid>
     </Grid>
 </Window>

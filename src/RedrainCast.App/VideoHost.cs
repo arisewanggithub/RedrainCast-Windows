@@ -16,15 +16,31 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
     private VideoPlayback? playback;
     private XamlRoot? root;
     public long PresentedFrames => active?.PresentedFrames ?? 0;
+    public int RequestedFramesPerSecond => active?.FramesPerSecond ?? 0;
+    public int ProcessorInputFramesPerSecond => active?.ProcessorInputFramesPerSecond ?? 0;
+    public int ProcessorOutputFramesPerSecond => active?.ProcessorOutputFramesPerSecond ?? 0;
+    public int ProcessorConfigurations => active?.ProcessorConfigurations ?? 0;
+    internal bool CollectPresentationSamples { get; set; }
+    internal PresentationDiagnosticSnapshot PresentationSnapshot() =>
+        (active ?? throw new InvalidOperationException("No diagnostic presenter is attached.")).PresentationSnapshot();
+    internal void CheckDiagnosticGpuBudget() => ScrcpySend.Media.MediaDiagnostics.CheckGpuBudget(
+        (active ?? throw new InvalidOperationException("No diagnostic video device is attached.")).Device);
     public long RedrawnFrames => active?.RedrawnFrames ?? 0;
     public long PlayedAudioFrames => playback?.PlayedAudioFrames ?? 0;
+    public long? FirstRecoverySourceAudioPtsUs => playback?.FirstRecoverySourceAudioPtsUs;
+    public string PlaybackDiagnostics => playback?.Diagnostics ?? "";
     public long MaximumAvSkewUs => playback?.MaximumAvSkewUs ?? 0;
     public int AvMeasurements => playback?.AvMeasurements ?? 0;
     public long MaximumSteadySkewUs => playback?.MaximumSteadySkewUs ?? 0;
+    public AvTimingSample? LastAvTiming => playback?.LastAvTiming;
+    public AvTimingSample? MaximumAvTiming => playback?.MaximumAvTiming;
+    public long PlaybackEpoch { get; private set; }
     public long DecodedFrames => playback?.DecodedFrames ?? 0;
     public long SkippedFrames => playback?.SkippedFrames ?? 0;
     public long LastPresentedPtsUs => playback?.LastPresentedPtsUs ?? 0;
+    public int LastPresentedRotationDegrees => playback?.LastPresentedRotationDegrees ?? 0;
     public string DecoderDiagnostics => playback?.DecoderDiagnostics ?? "";
+    public string PresentationDiagnostics => active?.Diagnostics ?? "";
     public int HardwareSurfaceCount => playback?.HardwareSurfaceCount ?? 0;
     public int MinimumHardwareSurfaces => playback?.MinimumHardwareSurfaces ?? 0;
     public (long Silence, long Dropped) AudioRecovery => playback?.AudioRecovery ?? (0, 0);
@@ -32,7 +48,16 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
     public bool KeepsDisplayAwake => playback?.KeepsDisplayAwake ?? false;
     public bool IsAttached => active is not null;
     public bool IsPlaying => PresentedFrames > 0;
-    public string Description => "Hardware-only 8-bit H.264, HEVC Main and AV1 Profile 0 over custom TCP with PCM/AAC-LC/Opus audio. Immediate video and adaptive 50-150 ms audio buffering. Auto orientation, up to 60 FPS; brief audio gaps remain possible.";
+    public bool HasDecodedVideo => DecodedFrames > 0;
+    public bool IsPresentationSuspended => playback?.IsPresentationSuspended ?? false;
+    private readonly Lazy<bool> rotationSupport = new(GpuPresenter.ProbeVideoRotation);
+    public bool SupportsVideoRotation => rotationSupport.Value;
+    public bool SupportsStreamRecovery => true;
+    public RedrainCast.Protocol.ReceiverOptionCapabilities ReceiverOptions => RedrainCast.Protocol.ReceiverOptionCapabilities.Implemented;
+    public CastRequest? StatisticsRequest { get; private set; }
+    public PlaybackStatistics? Statistics => playback?.Statistics(PlaybackEpoch);
+    public event Action? StatisticsAvailabilityChanged;
+    public string Description => "Hardware-only 8-bit H.264, HEVC Main and AV1 Profile 0 over custom TCP with PCM/AAC-LC/Opus audio. Immediate video and adaptive 50-150 ms audio buffering. Auto orientation, requests from 1 to 240 FPS; actual decode/display performance depends on codec, resolution and hardware. Brief audio gaps remain possible.";
 
     public VideoHost(SwapChainPanel panel, Action<string> status)
     {
@@ -73,7 +98,8 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            presenter = new GpuPresenter();
+            presenter = new GpuPresenter(request.VideoProcessingFramesPerSecond);
+            if (CollectPresentationSamples) presenter.EnablePresentationDiagnostics();
             decoder = new HardwareDecoder(presenter.Device, request.VideoCodec);
             if (request.AudioCodec is not null) audio = new AudioPlayback(request.AudioCodec);
             var ownedPresenter = presenter;
@@ -94,6 +120,8 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
                 {
                     playback = null;
                     active = null;
+                    StatisticsRequest = null;
+                    StatisticsAvailabilityChanged?.Invoke();
                     status("Playback ended.");
                 }
             })), detail => new ValueTask(OnUiAsync(() =>
@@ -104,6 +132,9 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
             await OnUiAsync(() =>
             {
                 playback = ownedPlayback;
+                PlaybackEpoch++;
+                StatisticsRequest = request.EffectiveOptions.PlaybackStats ? request : null;
+                StatisticsAvailabilityChanged?.Invoke();
                 Resize();
             });
             ownedPlayback.CheckHealth();

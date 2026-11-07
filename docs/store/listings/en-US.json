@@ -1,0 +1,48 @@
+{
+  "locale": "en-US",
+  "productName": "RedrainCast",
+  "description": "Share a screen or window between your Windows PC and compatible RedrainCast devices on a trusted local network.\n\nRedrainCast combines sending and receiving in one native Windows app. Choose a display or window to share, select a nearby receiver, and start casting. You can also connect directly using the receiver's displayed IP address and port.\n\nShare output audio along with your screen, adjust capture limits and video quality, and view optional playback statistics on compatible receivers. Incoming casts open in a fullscreen view. Stop sharing to return to the receiver's previous window state.\n\nRequirements\n- Windows 11 version 22H2 or later on ARM64 or x64.\n- A compatible RedrainCast app on the other device, including supported Windows and Android devices. RedrainCast is not a generic Miracast or Google Cast receiver.\n- A trusted local network and supported hardware video encoding/decoding. Codec availability depends on the device.\n\nImportant network and privacy information\nIncoming casts are accepted automatically while the receiver is available. Use RedrainCast only on networks and with devices you trust. Local casting traffic and discovery are not authenticated or encrypted. No account or cloud relay is used. The standard app does not record your screen or audio to files.",
+  "whatsNew": "",
+  "productFeatures": [
+    "Send and receive screens in one native Windows application.",
+    "Share a selected display or window.",
+    "Find nearby receivers or connect using an IP address and port.",
+    "Cast with compatible RedrainCast apps on Windows and Android.",
+    "Send output audio with your screen.",
+    "Adjust maximum capture size, frame rate, bitrate and supported video codec.",
+    "View optional playback statistics on compatible receivers.",
+    "Use fullscreen receiving with light, dark and high-contrast Windows themes."
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "Share your screen or a window, with optional audio, between compatible Windows and Android devices on a trusted local network.",
+  "keywords": [
+    "screen sharing",
+    "screencasting",
+    "local network",
+    "window sharing",
+    "screen receiver",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/en-US/01-home.png", "caption": "Send and receive screens.", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/en-US/02-sharing-settings.png", "caption": "Sharing settings", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

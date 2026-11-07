@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Net.Sockets;
+using System.Diagnostics;
 
 namespace ScrcpyReceive.Core;
 
@@ -12,10 +13,12 @@ public static class TcpSocketDiagnostics
         try
         {
             var data = new byte[88];
+            var started = Stopwatch.GetTimestamp();
             // SIO_TCP_INFO, version 0: a read-only query on this owned socket.
             var count = socket.IOControl(unchecked((int)0xD8000027), new byte[4], data);
             if (count < 85) return $"tcpInfo=unavailable(responseBytes={count})";
-            return $"availableBytes={socket.Available}, " + Parse(data.AsSpan(0, count));
+            var queryUs = (long)Stopwatch.GetElapsedTime(started).TotalMicroseconds;
+            return $"availableBytes={socket.Available}, queryUs={queryUs}, " + Parse(data.AsSpan(0, count));
         }
         catch (Exception error) when (error is SocketException or ObjectDisposedException)
         {

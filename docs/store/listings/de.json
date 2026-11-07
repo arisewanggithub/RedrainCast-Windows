@@ -1,0 +1,48 @@
+{
+  "locale": "de",
+  "productName": "RedrainCast",
+  "description": "Geben Sie einen Bildschirm oder ein Fenster zwischen Ihrem Windows-PC und kompatiblen RedrainCast-Geräten in einem vertrauenswürdigen lokalen Netzwerk frei.\n\nRedrainCast vereint Senden und Empfangen in einer nativen Windows-App. Wählen Sie einen Bildschirm oder ein Fenster zur Freigabe und einen Empfänger in der Nähe aus und starten Sie die Übertragung. Sie können auch direkt eine Verbindung über die angezeigte IP-Adresse und den Port des Empfängers herstellen.\n\nÜbertragen Sie die Audioausgabe zusammen mit Ihrem Bildschirm, passen Sie die Aufnahmegrenzen und die Videoqualität an und blenden Sie bei Bedarf Wiedergabestatistiken auf kompatiblen Empfängern ein. Eingehende Übertragungen werden im Vollbildmodus geöffnet. Wenn Sie die Freigabe beenden, kehrt das Empfängerfenster in seinen vorherigen Zustand zurück.\n\nVoraussetzungen\n- Windows 11, Version 22H2 oder neuer, auf ARM64 oder x64.\n- Eine kompatible RedrainCast-App auf dem anderen Gerät, etwa auf unterstützten Windows- und Android-Geräten. RedrainCast ist kein universeller Miracast- oder Google Cast-Empfänger.\n- Ein vertrauenswürdiges lokales Netzwerk und unterstützte hardwaregestützte Videokodierung und -dekodierung. Die Verfügbarkeit der Codecs hängt vom Gerät ab.\n\nWichtige Informationen zu Netzwerk und Datenschutz\nEingehende Übertragungen werden automatisch angenommen, solange der Empfänger verfügbar ist. Verwenden Sie RedrainCast nur in Netzwerken und mit Geräten, denen Sie vertrauen. Weder der lokale Datenverkehr für die Bildschirm- und Audioübertragung noch die Geräteerkennung werden authentifiziert oder verschlüsselt. Es wird weder ein Konto noch eine Weiterleitung über die Cloud verwendet. Die Standard-App zeichnet Ihren Bildschirm oder Ihre Audioausgabe nicht in Dateien auf.",
+  "whatsNew": "",
+  "productFeatures": [
+    "Bildschirme mit einer einzigen nativen Windows-App senden und empfangen.",
+    "Einen ausgewählten Bildschirm oder ein Fenster freigeben.",
+    "Empfänger in der Nähe finden oder eine Verbindung über IP-Adresse und Port herstellen.",
+    "Mit kompatiblen RedrainCast-Apps auf Windows und Android übertragen.",
+    "Die Audioausgabe zusammen mit Ihrem Bildschirm senden.",
+    "Maximale Aufnahmegröße, Bildrate, Bitrate und unterstützten Videocodec anpassen.",
+    "Bei Bedarf Wiedergabestatistiken auf kompatiblen Empfängern anzeigen.",
+    "Übertragungen im Vollbildmodus empfangen und helle, dunkle sowie kontrastreiche Windows-Designs nutzen."
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "Geben Sie Ihren Bildschirm oder ein Fenster auf Wunsch mit Audio zwischen kompatiblen Windows- und Android-Geräten in einem vertrauenswürdigen lokalen Netzwerk frei.",
+  "keywords": [
+    "Bildschirm teilen",
+    "Bildschirmübertragung",
+    "lokales Netzwerk",
+    "Fenster teilen",
+    "Bildschirm empfangen",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/de/01-home.png", "caption": "Bildschirme senden und empfangen.", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/de/02-sharing-settings.png", "caption": "Freigabeeinstellungen", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

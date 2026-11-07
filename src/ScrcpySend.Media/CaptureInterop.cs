@@ -40,10 +40,15 @@ internal static partial class CaptureInterop
 
     public static CaptureSource OwnWindowForDiagnostics(nint window)
     {
+        EnsureOwnWindow(window);
+        return new(CreateItem(window, 3), window, true);
+    }
+
+    internal static void EnsureOwnWindow(nint window)
+    {
         GetWindowThreadProcessId(window, out var process);
         if (process != Environment.ProcessId)
             throw new ArgumentException("Capture diagnostics may only capture a window owned by this process.");
-        return new(CreateItem(window, 3), window, true);
     }
 
     internal static unsafe Windows.Graphics.Capture.GraphicsCaptureItem CreateItem(nint target, int method)
@@ -75,6 +80,54 @@ internal static partial class CaptureInterop
         Marshal.ThrowExceptionForHR(CreateDirect3D11DeviceFromDXGIDevice(dxgi.NativePointer, out var pointer));
         try { return MarshalInterface<IDirect3DDevice>.FromAbi(pointer); }
         finally { Marshal.Release(pointer); }
+    }
+
+    // Public Windows.Graphics.Capture.Interop.h interfaces (SDK 10.0.26100.2161).
+    // Availability is queried at runtime; their presence in the SDK is not a minimum-OS guarantee.
+    private static readonly Guid WindowItemInterop = new("38E4C48B-94E6-4C44-9CFA-968193316C0C");
+    private static readonly Guid MonitorItemInterop = new("33274D14-A076-4048-8416-747E9B04DB7B");
+
+    internal static bool SupportsItemHandles(nint owner)
+    {
+        var item = CreateItem(owner, 3);
+        var result = ReadItemHandle(item, WindowItemInterop);
+        if (result.HResult == unchecked((int)0x80004002)) return false;
+        Marshal.ThrowExceptionForHR(result.HResult);
+        if (result.Handle != owner) throw new IOException("Capture-item capability probe returned an unexpected owner handle.");
+        return true;
+    }
+
+    internal static (nint Handle, bool IsWindow) ItemTarget(Windows.Graphics.Capture.GraphicsCaptureItem item)
+    {
+        var result = ReadItemHandle(item, WindowItemInterop);
+        if (result.HResult >= 0 && result.Handle != 0) return (result.Handle, true);
+        if (result.HResult != unchecked((int)0x80004002))
+            throw new IOException($"The selected window is unavailable (0x{result.HResult:X8}).");
+        result = ReadItemHandle(item, MonitorItemInterop);
+        if (result.HResult >= 0 && result.Handle != 0) return (result.Handle, false);
+        if (result.HResult == unchecked((int)0x80004002))
+            throw new NotSupportedException("This Windows runtime cannot expose the selected source's capture handle.");
+        throw new IOException($"The selected display is unavailable (0x{result.HResult:X8}).");
+    }
+
+    private static unsafe (int HResult, nint Handle) ReadItemHandle(
+        Windows.Graphics.Capture.GraphicsCaptureItem item, Guid iid)
+    {
+        var inspectable = MarshalInspectable<Windows.Graphics.Capture.GraphicsCaptureItem>.FromManaged(item);
+        nint interop = 0, handle = 0;
+        try
+        {
+            var result = Marshal.QueryInterface(inspectable, in iid, out interop);
+            if (result < 0) return (result, 0);
+            var get = (delegate* unmanaged[Stdcall]<nint, nint*, int>)(*(nint**)interop)[3];
+            result = get(interop, &handle);
+            return (result, handle);
+        }
+        finally
+        {
+            if (interop != 0) Marshal.Release(interop);
+            Marshal.Release(inspectable);
+        }
     }
 
     public static unsafe ID3D11Texture2D Texture(IDirect3DSurface surface)

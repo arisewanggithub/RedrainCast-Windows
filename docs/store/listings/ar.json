@@ -1,0 +1,48 @@
+{
+  "locale": "ar",
+  "productName": "RedrainCast",
+  "description": "شارك شاشة أو نافذة بين جهاز الكمبيوتر الذي يعمل بنظام Windows وأجهزة متوافقة مع RedrainCast عبر شبكة محلية موثوقة.\n\nيجمع RedrainCast بين الإرسال والاستقبال في تطبيق واحد مصمم خصيصًا لنظام Windows. اختر شاشة أو نافذة لمشاركتها، ثم اختر جهاز استقبال قريبًا وابدأ البث. يمكنك أيضًا الاتصال مباشرةً باستخدام عنوان IP والمنفذ المعروضين على جهاز الاستقبال.\n\nشارك صوت الإخراج مع شاشتك، واضبط حدود الالتقاط وجودة الفيديو، واعرض إحصاءات التشغيل الاختيارية على أجهزة الاستقبال المتوافقة. تُفتح عمليات البث الواردة في وضع ملء الشاشة. عند إيقاف المشاركة، تعود نافذة جهاز الاستقبال إلى حالتها السابقة.\n\nالمتطلبات\n- نظام Windows 11 بالإصدار 22H2 أو أحدث، على معمارية ARM64 أو x64.\n- تطبيق RedrainCast متوافق على الجهاز الآخر، بما في ذلك أجهزة Windows وAndroid المدعومة. لا يعمل RedrainCast كجهاز استقبال عام لبث Miracast أو Google Cast.\n- شبكة محلية موثوقة ودعم ترميز الفيديو وفك ترميزه باستخدام العتاد. يختلف توفر برامج الترميز حسب الجهاز.\n\nمعلومات مهمة حول الشبكة والخصوصية\nتُقبل عمليات البث الواردة تلقائيًا ما دام جهاز الاستقبال متاحًا. استخدم RedrainCast فقط على شبكات تثق بها ومع أجهزة تثق بها. لا تخضع حركة بيانات بث الشاشة والصوت عبر الشبكة المحلية ولا حركة بيانات اكتشاف الأجهزة للمصادقة، ولا يُشفَّر أيٌّ منها. لا يُستخدم أي حساب أو وسيط سحابي. لا يسجّل التطبيق القياسي شاشتك أو صوتك في ملفات.",
+  "whatsNew": "",
+  "productFeatures": [
+    "أرسل الشاشات واستقبلها في تطبيق واحد مصمم خصيصًا لنظام Windows.",
+    "شارك شاشة أو نافذة تختارها.",
+    "اعثر على أجهزة استقبال قريبة أو اتصل باستخدام عنوان IP ومنفذ.",
+    "شارك شاشتك باستخدام تطبيقات RedrainCast المتوافقة على Windows وAndroid.",
+    "أرسل صوت الإخراج مع شاشتك.",
+    "اضبط الحد الأقصى لأبعاد الالتقاط ومعدل الإطارات ومعدل البت وبرنامج ترميز الفيديو المدعوم.",
+    "اعرض إحصاءات التشغيل الاختيارية على أجهزة الاستقبال المتوافقة.",
+    "استقبل البث بملء الشاشة مع نُسق Windows الفاتحة والداكنة وعالية التباين."
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "شارك شاشتك أو نافذة، مع إمكانية مشاركة الصوت، بين أجهزة Windows وAndroid المتوافقة عبر شبكة محلية موثوقة.",
+  "keywords": [
+    "مشاركة الشاشة",
+    "بث الشاشة",
+    "شبكة محلية",
+    "مشاركة النوافذ",
+    "استقبال الشاشة",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/ar/01-home.png", "caption": "أرسل الشاشات واستقبلها.", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/ar/02-sharing-settings.png", "caption": "إعدادات المشاركة", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

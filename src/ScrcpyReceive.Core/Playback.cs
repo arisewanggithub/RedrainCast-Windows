@@ -1,15 +1,31 @@
 namespace ScrcpyReceive.Core;
 
+public sealed record ReceiverRecoveryState(long Session, uint Generation, uint ActiveGeneration, bool Recovering);
+
+public sealed record AvTimingSample(uint Generation, long VideoPtsUs, long PlayedSourceAudioPtsUs,
+    long PlayedSourceFrames, long SignedSkewUs, long ObservedAtMilliseconds);
+
 public interface IPlaybackFactory
 {
     string Description { get; }
+    bool SupportsVideoRotation => false;
+    bool SupportsStreamRecovery => false;
+    RedrainCast.Protocol.ReceiverOptionCapabilities ReceiverOptions => RedrainCast.Protocol.ReceiverOptionCapabilities.None;
     ValueTask<IPlayback> OpenAsync(CastRequest request, CancellationToken cancellationToken);
 }
 
+public interface IStreamRecoveryPlayback : IPlayback
+{
+    long? DecodedRecoveryKeyPtsUs { get; }
+    long? FirstRecoverySourceAudioPtsUs { get; }
+    ValueTask ConfigureRecoveryAsync(Packet video, Packet? audio, bool midstream, CancellationToken token);
+    void SetRecoveryKey(long keyPtsUs);
+}
 public interface IPlayback : IAsyncDisposable
 {
     void CheckHealth() { }
     string Diagnostics => "";
+    // The caller owns this worker-thread scope across configuration/native epoch changes.
     IDisposable? EnterTrack(uint track) => null;
     void Observe(Packet packet) { }
     // Completion means the real resources exist, not merely that configuration was queued.
@@ -20,6 +36,8 @@ public interface IPlayback : IAsyncDisposable
 public interface IVideoPlaybackProgress
 {
     bool HasPresentedVideo { get; }
+    bool HasDecodedVideo => HasPresentedVideo;
+    bool IsPresentationSuspended => false;
     // Override when current-generation presentation resets on reconfiguration.
     bool HasEverPresentedVideo => HasPresentedVideo;
 }

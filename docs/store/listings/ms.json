@@ -1,0 +1,48 @@
+{
+  "locale": "ms",
+  "productName": "RedrainCast",
+  "description": "Kongsi skrin atau tetingkap antara PC Windows anda dengan peranti RedrainCast yang serasi melalui rangkaian setempat yang dipercayai.\n\nRedrainCast menggabungkan penghantaran dan penerimaan dalam satu aplikasi Windows natif. Pilih paparan atau tetingkap untuk dikongsi, pilih penerima berdekatan dan mula menyiarkan. Anda juga boleh menyambung secara terus menggunakan alamat IP dan port yang dipaparkan oleh penerima.\n\nKongsi audio output bersama skrin anda, laraskan had tangkapan dan kualiti video serta lihat statistik main balik pilihan pada penerima yang serasi. Siaran masuk dibuka dalam paparan skrin penuh. Hentikan perkongsian untuk mengembalikan tetingkap penerima kepada keadaan sebelumnya.\n\nKeperluan\n- Windows 11 versi 22H2 atau lebih baharu pada ARM64 atau x64.\n- Aplikasi RedrainCast yang serasi pada peranti satu lagi, termasuk peranti Windows dan Android yang disokong. RedrainCast bukan penerima Miracast atau Google Cast umum.\n- Rangkaian setempat yang dipercayai dan pengekodan/penyahkodan video perkakasan yang disokong. Ketersediaan kodek bergantung pada peranti.\n\nMaklumat penting tentang rangkaian dan privasi\nSiaran masuk diterima secara automatik selagi penerima tersedia. Gunakan RedrainCast hanya pada rangkaian dan dengan peranti yang anda percayai. Trafik siaran skrin dan audio setempat serta penemuan peranti tidak melalui pengesahan dan tidak disulitkan. Tiada akaun atau geganti awan digunakan. Aplikasi standard tidak merakam skrin atau audio anda ke dalam fail.",
+  "whatsNew": "",
+  "productFeatures": [
+    "Hantar dan terima skrin dalam satu aplikasi Windows natif.",
+    "Kongsi paparan atau tetingkap yang dipilih.",
+    "Cari penerima berdekatan atau sambung menggunakan alamat IP dan port.",
+    "Siarkan dengan aplikasi RedrainCast yang serasi pada Windows dan Android.",
+    "Hantar audio output bersama skrin anda.",
+    "Laraskan saiz tangkapan maksimum, kadar bingkai, kadar bit dan kodek video yang disokong.",
+    "Lihat statistik main balik pilihan pada penerima yang serasi.",
+    "Terima siaran dalam skrin penuh dengan tema Windows cerah, gelap dan kontras tinggi."
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "Kongsi skrin atau tetingkap anda, dengan audio pilihan, antara peranti Windows dan Android yang serasi melalui rangkaian setempat yang dipercayai.",
+  "keywords": [
+    "perkongsian skrin",
+    "siaran skrin",
+    "rangkaian setempat",
+    "perkongsian tetingkap",
+    "penerima skrin",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/ms/01-home.png", "caption": "Hantar dan terima skrin.", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/ms/02-sharing-settings.png", "caption": "Tetapan perkongsian", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

@@ -3,6 +3,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json;
+using RedrainCast.Protocol;
 
 namespace ScrcpyReceive.Core;
 
@@ -18,6 +19,7 @@ public sealed class ReceiverServer : IAsyncDisposable
     private readonly TcpListener listener;
     private readonly CancellationTokenSource lifetime = new();
     private readonly HashSet<Connection> connections = [];
+    private readonly HashSet<Connection> retiringConnections = [];
     private readonly Action<ReceiverNotice> notify;
     private readonly Func<IDisposable?>? acquireSession;
     private Connection? active;
@@ -53,8 +55,35 @@ public sealed class ReceiverServer : IAsyncDisposable
             return port > 0 ? port : throw new InvalidOperationException("The listener has not bound a TCP port.");
         }
     }
-    public bool IsBusy { get { lock (gate) return active is not null; } }
+    public bool IsBusy { get { lock (gate) return active is not null || retiringConnections.Any(item => item.HasSessionResources); } }
+    public ReceiverRecoveryState? RecoveryState
+    {
+        get
+        {
+            Connection? connection;
+            lock (gate) connection = active;
+            return connection?.RecoveryState;
+        }
+    }
+    public string Diagnostics
+    {
+        get
+        {
+            Connection? connection;
+            lock (gate) connection = active;
+            return connection?.ProgressDiagnostics ?? "session=none";
+        }
+    }
     public byte[] Advertisement => Discovery.Advertisement(name, Port, IsBusy, instanceId);
+    public ReceiveStatistics? Statistics
+    {
+        get
+        {
+            Connection? connection;
+            lock (gate) connection = active;
+            return connection?.Statistics;
+        }
+    }
 
     public void Start(bool advertise = true)
     {
@@ -108,6 +137,7 @@ public sealed class ReceiverServer : IAsyncDisposable
         try { await connection.RunAsync(); }
         finally
         {
+            connection.Dispose();
             bool released;
             lock (gate)
             {
@@ -115,10 +145,10 @@ public sealed class ReceiverServer : IAsyncDisposable
                 if (released) active = null;
                 connections.Remove(connection);
             }
-            try { connection.Dispose(); }
-            finally { connection.SessionLease?.Dispose(); }
             if (released && !lifetime.IsCancellationRequested)
-                notify(new("Listening", "Cast resources released; ready for a new sender."));
+                notify(connection.ResourcesDisposed
+                    ? new("Listening", "Cast resources released; ready for a new sender.")
+                    : new("Cleanup pending", "Transport closed; receiver resources remain owned until retirement completes."));
         }
     }
 
@@ -126,7 +156,7 @@ public sealed class ReceiverServer : IAsyncDisposable
     {
         lock (gate)
         {
-            if (active is not null) return false;
+            if (active is not null || retiringConnections.Any(item => item.HasSessionResources)) return false;
             if (acquireSession is not null)
             {
                 var lease = acquireSession();
@@ -218,17 +248,26 @@ public sealed class ReceiverServer : IAsyncDisposable
 
     private sealed class Connection : IDisposable
     {
+        private sealed class MediaEofException(string message) : IOException(message);
         public IDisposable? SessionLease { get; set; }
+        private bool videoRotation;
+        private bool streamRecovery;
+        private ReceiverOptionCapabilities receiverOptions = ReceiverOptionCapabilities.None;
         private readonly ReceiverServer owner;
         private readonly TcpClient client;
         private readonly NetworkStream stream;
+        private readonly BoundaryReadStream input;
         private readonly CancellationTokenSource cancellation;
         private readonly CancellationTokenSource playbackCancellation;
         private readonly SemaphoreSlim writer = new(1, 1);
         private readonly ReceiveDiagnostics receive = new();
+        private readonly ControlLatency controlLatency = new();
         private readonly ReceiverActivity activity = new();
         private readonly TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource mediaAttached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource retirement = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource peerTerminal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private MediaEofException? mediaEof;
         // Reserve the remaining encoded budget for in-progress packets on both media sockets.
         private ReceiveQueue queue = new(4 * 1024 * 1024);
         private long session;
@@ -239,6 +278,16 @@ public sealed class ReceiverServer : IAsyncDisposable
         private bool accepted;
         private bool disposed;
         private int stopping;
+        private int failing;
+        private bool brokenWriter;
+        private Task<Packet>? pendingControlRead;
+        private readonly HashSet<Task> pendingWrites = [];
+        private Task retirementWorkers = Task.CompletedTask;
+        private Task resourceDisposal = Task.CompletedTask;
+        private bool resourcesDisposed;
+        public bool HasSessionResources => accepted && mediaTrack == 0;
+        public bool ResourcesDisposed => Volatile.Read(ref resourcesDisposed);
+        public ReceiverRecoveryState? RecoveryState => (Volatile.Read(ref playbackForMedia) as RecoveryPlayback)?.State;
         private readonly string mediaToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         private readonly Connection?[] mediaChannels = new Connection?[2];
         private uint mediaTrack;
@@ -250,6 +299,7 @@ public sealed class ReceiverServer : IAsyncDisposable
             this.owner = owner;
             this.client = client;
             stream = client.GetStream();
+            input = new(stream);
             cancellation = CancellationTokenSource.CreateLinkedTokenSource(owner.lifetime.Token);
             playbackCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token);
         }
@@ -276,15 +326,43 @@ public sealed class ReceiverServer : IAsyncDisposable
             }
         }
 
-        private async Task SendAsync(Packet packet, CancellationToken extraCancellation = default)
+        private Task SendAsync(Packet packet, CancellationToken extraCancellation = default)
+        {
+            lock (client)
+            {
+                if (disposed) return Task.FromException(new IOException("Receiver connection has retired."));
+                var sending = SendOwnedAsync(packet, extraCancellation);
+                pendingWrites.Add(sending);
+                _ = sending.ContinueWith(completed =>
+                {
+                    lock (client) pendingWrites.Remove(completed);
+                    if (completed.Exception is { } failure)
+                        NotifyCleanupFailure("control-write", failure.GetBaseException());
+                }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                return sending;
+            }
+        }
+
+        private async Task SendOwnedAsync(Packet packet, CancellationToken extraCancellation)
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token, extraCancellation);
             timeout.CancelAfter(TimeSpan.FromSeconds(10));
             await writer.WaitAsync(timeout.Token);
             try
             {
+                timeout.Token.ThrowIfCancellationRequested();
+                if (brokenWriter) throw new IOException("Control writer is unusable.");
                 activity.Begin(ReceiverOperation.Write, packet.Type.ToString());
-                try { await Wire.WriteAsync(stream, packet, timeout.Token); }
+                // Epoch/Stop cancellation may retire a queued frame, never truncate a started control frame.
+                using var writing = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token);
+                writing.CancelAfter(TimeSpan.FromSeconds(10));
+                try { await Wire.WriteAsync(stream, packet, writing.Token); }
+                catch (OperationCanceledException error) when (!cancellation.IsCancellationRequested)
+                {
+                    brokenWriter = true;
+                    throw new ProtocolException($"Control writer exceeded its 10-second deadline: {error.GetType().Name}", "TIMEOUT");
+                }
+                catch { brokenWriter = true; throw; }
                 finally { activity.Complete(ReceiverOperation.Write); }
             }
             finally { writer.Release(); }
@@ -293,15 +371,20 @@ public sealed class ReceiverServer : IAsyncDisposable
         private async Task<Packet> ReadAsync(CancellationToken token)
         {
             var begin = Environment.TickCount64;
+            var bytes = input.BytesRead;
             activity.Begin(ReceiverOperation.Read, "header");
             try
             {
-                var packet = await Wire.ReadAsync(stream, token, (incoming, received, total) =>
+                var packet = await Wire.ReadAsync(input, token, (incoming, received, total) =>
                     activity.Progress(ReceiverOperation.Read,
                         $"{incoming.Type} track={incoming.Track} generation={incoming.Generation} payload={received}/{total}"));
                 receive.Received(packet, Environment.TickCount64 - begin);
                 Interlocked.Exchange(ref lastInput, Environment.TickCount64);
                 return packet;
+            }
+            catch (EndOfStreamException) when (mediaTrack != 0 && input.BytesRead == bytes)
+            {
+                throw new MediaEofException($"{(mediaTrack == 1 ? "Video" : "Audio")} connection failed: Sender closed a media connection.");
             }
             finally { activity.Complete(ReceiverOperation.Read); }
         }
@@ -311,6 +394,8 @@ public sealed class ReceiverServer : IAsyncDisposable
             IPlayback? playback = null;
             Task? pump = null;
             Task? watchdog = null;
+            Task? playbackRetirement = null;
+            long retirementStarted = 0;
             try
             {
                 using var setup = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token);
@@ -340,7 +425,24 @@ public sealed class ReceiverServer : IAsyncDisposable
                     await SendAsync(Packet.Control(PacketType.Reject, 0, new { code = "BUSY", message = "Receiver already in use" }));
                     return;
                 }
-                await SendAsync(Packet.Control(PacketType.Hello, 0, new { role = "receiver", versions = new[] { 3 }, name = owner.name }), setup.Token);
+                var offersRotation = json.TryGetProperty("videoRotation", out _) && JsonObject.Boolean(json, "videoRotation");
+                videoRotation = offersRotation && owner.factory.SupportsVideoRotation;
+                var response = new Dictionary<string, object>
+                {
+                    ["role"] = "receiver", ["versions"] = new[] { 3 }, ["name"] = owner.name
+                };
+                if (videoRotation) response["videoRotation"] = true;
+                try { receiverOptions = ReceiverOptionProtocol.Capabilities(json).Intersect(owner.factory.ReceiverOptions); }
+                catch (FormatException error) { throw new ProtocolException(error.Message); }
+                if (receiverOptions.PlaybackStats) response["receiverOptions"] = receiverOptions.WireValue;
+                try { streamRecovery = StreamRecovery.Negotiated(json) && owner.factory.SupportsStreamRecovery; }
+                catch (FormatException error) { throw new ProtocolException(error.Message); }
+                if (streamRecovery)
+                {
+                    response["streamRecovery"] = true;
+                    response["streamRecoveryVersion"] = StreamRecovery.Version;
+                }
+                await SendAsync(Packet.Control(PacketType.Hello, 0, response), setup.Token);
                 var requestPacket = await ReadAsync(setup.Token);
                 while (requestPacket.Type != PacketType.SessionRequest)
                 {
@@ -368,20 +470,28 @@ public sealed class ReceiverServer : IAsyncDisposable
                     return;
                 }
                 CastRequest request;
+                var requestJson = requestPacket.Object();
+                try { _ = ReceiverOptionProtocol.Parse(requestJson, receiverOptions); }
+                catch (FormatException error) { throw new ProtocolException(error.Message); }
                 try
                 {
-                    request = CastRequest.Parse(requestPacket.Object());
+                    request = CastRequest.Parse(requestJson, receiverOptions);
                 }
                 catch (ProtocolException error)
                 {
                     throw new ProtocolException(error.Message, "UNSUPPORTED_CONFIG");
                 }
+                controlLatency.Valid(Environment.TickCount64);
                 if (request.AudioCodec is not null)
                 {
                     queue.Dispose();
                     queue = new ReceiveQueue(4 * 1024 * 1024 - 256 * 1024, audioReserveBytes: 256 * 1024);
                 }
                 playback = await owner.factory.OpenAsync(request, setup.Token);
+                if (streamRecovery)
+                    playback = new RecoveryPlayback(owner.factory, request, playback, queue, session,
+                        packet => SendAsync(packet, playbackCancellation.Token),
+                        detail => owner.notify(new("Recovery", detail)), playbackCancellation.Token);
                 playbackForMedia = playback;
                 expectedTracks = request.Tracks.Length;
                 accepted = true;
@@ -390,12 +500,16 @@ public sealed class ReceiverServer : IAsyncDisposable
                 Interlocked.Exchange(ref startup, Environment.TickCount64);
                 owner.notify(new("Initializing", $"{request.VideoCodec}, {request.AudioCodec ?? "audio off"}"));
                 var trackState = new TrackState(request);
+                var workerPlayback = playback;
                 pump = Task.WhenAll(request.Tracks.Select(track =>
-                    TrackThread.Run(() => PumpAsync(playback, trackState, track))));
-                watchdog = WatchdogAsync(playback);
+                    TrackThread.Run(() => PumpAsync(workerPlayback, trackState, track))));
+                watchdog = WatchdogAsync(workerPlayback);
                 while (!cancellation.IsCancellationRequested)
                 {
-                    var packet = await ReadAsync(cancellation.Token);
+                    pendingControlRead = ReadAsync(cancellation.Token);
+                    if (await Task.WhenAny(pendingControlRead, retirement.Task) != pendingControlRead) return;
+                    var packet = await pendingControlRead;
+                    pendingControlRead = null;
                     JsonObject.Require(packet.Session == session, "Session mismatch.");
                     if (Volatile.Read(ref stopping) != 0 && packet.Type is not (PacketType.SessionEnd or PacketType.Stop))
                         continue;
@@ -406,19 +520,27 @@ public sealed class ReceiverServer : IAsyncDisposable
                         case PacketType.AudioPacket:
                             throw new ProtocolException("Media and configuration require their dedicated connections.");
                         case PacketType.Ping:
+                            controlLatency.Valid(Environment.TickCount64);
                             await SendAsync(Packet.Control(PacketType.Pong, session, new { nonce = JsonObject.Number(packet.Object(), "nonce") }));
                             break;
                         case PacketType.Pong:
-                            _ = JsonObject.Number(packet.Object(), "nonce");
+                            controlLatency.Valid(Environment.TickCount64, JsonObject.Number(packet.Object(), "nonce"));
                             break;
                         case PacketType.Stop:
                             var reason = JsonObject.Text(packet.Object(), "reason", 1024);
+                            peerTerminal.TrySetResult();
                             Interlocked.Exchange(ref stopping, 1);
                             playbackCancellation.Cancel();
-                            if (pump is not null) await pump;
+                            retirementStarted = Environment.TickCount64;
                             var retiring = playback;
                             playback = null;
-                            await retiring.DisposeAsync();
+                            playbackRetirement = RetirePlaybackAsync(retiring);
+                            try { await playbackRetirement.WaitAsync(TimeSpan.FromSeconds(2)); }
+                            catch (TimeoutException)
+                            {
+                                throw new ProtocolException("Playback retirement exceeded its 2-second deadline.", "TIMEOUT");
+                            }
+                            RetireMedia();
                             await SendAsync(Packet.Control(PacketType.SessionEnd, session, new { reason }));
                             owner.notify(new("Disconnected", "Sender stopped the cast."));
                             return;
@@ -434,9 +556,14 @@ public sealed class ReceiverServer : IAsyncDisposable
                                 "CAPTURE_FAILED" or "AUDIO_FAILED" or "DECODER_FAILED" or "TIMEOUT" or "CONGESTION" or "INTERNAL",
                                 "Unknown sender error code.");
                             var message = JsonObject.Text(body, "message", 2048);
+                            JsonObject.Require(message.Length > 0, "Invalid sender error message.");
                             var fatal = JsonObject.Boolean(body, "fatal");
                             owner.notify(new("Sender error", $"{code}: {message}; {DiagnosticSnapshot(playback)}"));
-                            if (fatal) return;
+                            if (fatal)
+                            {
+                                peerTerminal.TrySetResult();
+                                return;
+                            }
                             break;
                         case PacketType.Status:
                             _ = JsonObject.Text(packet.Object(), "state");
@@ -445,6 +572,7 @@ public sealed class ReceiverServer : IAsyncDisposable
                         default:
                             throw new ProtocolException("Unexpected sender packet.");
                     }
+                    controlLatency.Valid(Environment.TickCount64);
                 }
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
@@ -459,17 +587,54 @@ public sealed class ReceiverServer : IAsyncDisposable
             }
             finally
             {
-                cancellation.Cancel();
-                client.Dispose();
-                Connection[] channels;
-                lock (owner.gate) channels = mediaChannels.OfType<Connection>().ToArray();
-                foreach (var channel in channels) channel.Abort();
-                await Task.WhenAll(channels.Select(channel => channel.Completion));
-                if (pump is not null) await pump;
-                if (watchdog is not null) await watchdog;
-                try { if (playback is not null) await playback.DisposeAsync(); }
-                catch (Exception error) { owner.notify(new("Cleanup failed", $"{error.GetType().Name}: {error.Message}")); }
-                finally { ended.TrySetResult(); }
+                Interlocked.Exchange(ref stopping, 1);
+                peerTerminal.TrySetResult();
+                playbackCancellation.Cancel();
+                if (retirementStarted == 0) retirementStarted = Environment.TickCount64;
+                var channels = RetireMedia();
+                var retiringResources = RetireAsync();
+                retirementWorkers = retiringResources;
+                try
+                {
+                    var remaining = Math.Max(0, 2000 - (Environment.TickCount64 - retirementStarted));
+                    await retiringResources.WaitAsync(TimeSpan.FromMilliseconds(remaining));
+                    // SendAsync serializes whole frames; acquire after all producers have retired.
+                    using var flushing = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                    await writer.WaitAsync(flushing.Token);
+                    writer.Release();
+                }
+                catch (Exception error)
+                {
+                    NotifyCleanupFailure("connection-retirement", error);
+                }
+                finally
+                {
+                    cancellation.Cancel();
+                    client.Dispose();
+                    if (pendingControlRead is not null)
+                    {
+                        try { await pendingControlRead; }
+                        catch (Exception error) when (error is IOException or SocketException or OperationCanceledException or ObjectDisposedException) { }
+                    }
+                    ended.TrySetResult();
+                }
+
+                async Task RetireAsync()
+                {
+                    await Task.WhenAll(channels.Select(channel => channel.Completion)
+                        .Concat(new[] { watchdog, playbackRetirement ?? RetirePlaybackAsync(playback) }.OfType<Task>()));
+                }
+            }
+
+            async Task RetirePlaybackAsync(IPlayback? retiring)
+            {
+                var channels = RetireMedia();
+                try
+                {
+                    await Task.WhenAll(channels.Select(channel => channel.Completion)
+                        .Concat(new[] { pump, watchdog }.OfType<Task>()));
+                }
+                finally { if (retiring is not null) await retiring.DisposeAsync(); }
             }
         }
 
@@ -484,22 +649,35 @@ public sealed class ReceiverServer : IAsyncDisposable
                 while (true)
                 {
                     var packet = await channel.ReadAsync(linked.Token);
-                    if (Volatile.Read(ref stopping) != 0) continue;
+                    MediaTiming.Record(MediaStage.SocketRead, packet.Session, packet.Track, packet.Generation,
+                        packet.PtsUs, a: packet.Payload.Length);
+                    if (Volatile.Read(ref stopping) != 0 || Volatile.Read(ref mediaEof) is not null) continue;
                     JsonObject.Require(packet.Session == session && packet.Track == channel.mediaTrack &&
                         (packet.Type == PacketType.StreamConfig ||
                          packet.Type == (channel.mediaTrack == 1 ? PacketType.VideoFrame : PacketType.AudioPacket)),
                         "Packet does not belong to this media channel.");
                     JsonObject.Require(channel.mediaTrack == 1 || expectedTracks == 2, "Audio was not enabled.");
                     var handlingAt = Environment.TickCount64;
+                    MediaTiming.Record(MediaStage.AdmissionBegin, packet.Session, packet.Track, packet.Generation, packet.PtsUs);
                     channel.activity.Begin(ReceiverOperation.Admission,
                         $"{packet.Type} track={packet.Track} generation={packet.Generation} bytes={packet.Payload.Length}");
                     try
                     {
-                        await queue.AddAsync(packet, linked.Token);
+                        JsonObject.Require(videoRotation || packet.Flags <= 1, "Video rotation was not negotiated.");
+                        if (playbackForMedia is RecoveryPlayback recovery)
+                        {
+                            if (!recovery.Admit(packet)) continue;
+                            try { queue.Add(packet); }
+                            catch (ProtocolException error) when (error.Code == "CONGESTION" && Wire.IsMedia(packet.Type))
+                            { recovery.Pressure(); continue; }
+                        }
+
+                        else await queue.AddAsync(packet, linked.Token);
                         if (Wire.IsMedia(packet.Type)) playbackForMedia?.Observe(packet);
                     }
                     finally
                     {
+                        MediaTiming.Record(MediaStage.AdmissionEnd, packet.Session, packet.Track, packet.Generation, packet.PtsUs);
                         channel.activity.Complete(ReceiverOperation.Admission);
                         channel.receive.Handled(Environment.TickCount64 - handlingAt);
                     }
@@ -510,12 +688,20 @@ public sealed class ReceiverServer : IAsyncDisposable
             {
                 if (!cancellation.IsCancellationRequested && Volatile.Read(ref stopping) == 0)
                 {
+                    if (error is MediaEofException eof)
+                    {
+                        Interlocked.CompareExchange(ref mediaEof, eof, null);
+                        playbackCancellation.Cancel();
+                        // Control is deliberately still readable while the peer finishes terminal reporting.
+                        await Task.WhenAny(peerTerminal.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+                        if (peerTerminal.Task.IsCompleted || cancellation.IsCancellationRequested) return;
+                    }
                     var code = error is ProtocolException protocol ? protocol.Code :
                         error is OperationCanceledException ? "TIMEOUT" :
                         error is IOException or SocketException ? "PROTOCOL" : "INTERNAL";
                     await FailAsync(new ProtocolException(
                         $"{(channel.mediaTrack == 1 ? "Video" : "Audio")} connection failed: {error.Message}", code), playbackForMedia);
-                    Abort();
+                    retirement.TrySetResult();
                 }
             }
         }
@@ -528,29 +714,70 @@ public sealed class ReceiverServer : IAsyncDisposable
             {
                 available = $"unavailable({error.GetType().Name})";
             }
-            Connection[] channels;
-            lock (owner.gate) channels = mediaChannels.OfType<Connection>().ToArray();
             return $"socketAvailableBytes={available}; {TcpSocketDiagnostics.Read(client.Client)}; " +
-                $"{activity.Diagnostics}; {receive.Diagnostics}; {queue.Diagnostics}" +
-                string.Concat(channels.Select(channel => $" channel={channel.mediaTrack} [{channel.activity.Diagnostics}; {channel.receive.Diagnostics}]")) +
+                ProgressDiagnostics +
                 (playback is null ? "" : $" {playback.Diagnostics}");
+        }
+
+        public string ProgressDiagnostics
+        {
+            get
+            {
+                Connection[] channels;
+                lock (owner.gate) channels = mediaChannels.OfType<Connection>().ToArray();
+                return $"session={session}; {activity.Diagnostics}; {receive.Diagnostics}; {queue.Diagnostics}" +
+                    string.Concat(channels.Select(channel =>
+                        $" channel={channel.mediaTrack} [{channel.activity.Diagnostics}; {channel.receive.Diagnostics}]"));
+            }
+        }
+
+        public ReceiveStatistics? Statistics
+        {
+            get
+            {
+                if (!accepted || Volatile.Read(ref stopping) != 0 || disposed) return null;
+                Connection? video, audio;
+                lock (owner.gate) { video = mediaChannels[0]; audio = mediaChannels[1]; }
+                var now = Environment.TickCount64;
+                var latency = controlLatency.Snapshot(now);
+                var result = new ReceiveStatistics(session,
+                    video?.receive.Snapshot(1) ?? new(0, 0, null),
+                    audio?.receive.Snapshot(2) ?? new(0, 0, null),
+                    queue.Snapshot(1), queue.Snapshot(2), latency.RttMs, latency.AgeMs, RecoveryState, queue.MediaByteBudget,
+                    queue.WaitingSnapshot(1), queue.WaitingSnapshot(2));
+                return Volatile.Read(ref stopping) != 0 || disposed ? null : result;
+            }
         }
 
         private async Task FailAsync(Exception error, IPlayback? playback = null)
         {
+            if (Interlocked.Exchange(ref failing, 1) != 0) return;
+            error = Volatile.Read(ref mediaEof) ?? error;
+            peerTerminal.TrySetResult();
+            Interlocked.Exchange(ref stopping, 1);
+            playbackCancellation.Cancel();
             var code = error is ProtocolException protocol ? protocol.Code :
                 error is OperationCanceledException ? "TIMEOUT" : "PROTOCOL";
             owner.notify(new(code, error.Message + " " + DiagnosticSnapshot(playback)));
             try
             {
                 await SendAsync(accepted
-                    ? Packet.Control(PacketType.Error, session, new { code, message = error.Message, fatal = true })
-                    : Packet.Control(PacketType.Reject, session, new { code, message = error.Message }));
+                    ? Packet.Control(PacketType.Error, session, new { code, message = error.Message[..Math.Min(2048, error.Message.Length)], fatal = true })
+                    : Packet.Control(PacketType.Reject, session, new { code, message = error.Message[..Math.Min(2048, error.Message.Length)] }));
             }
             catch (Exception sendError) when (sendError is IOException or SocketException or OperationCanceledException or ObjectDisposedException)
             {
                 owner.notify(new("Control closed", $"Could not deliver {code}: {sendError.GetType().Name}"));
             }
+            finally { retirement.TrySetResult(); }
+        }
+
+        private Connection[] RetireMedia()
+        {
+            Connection[] channels;
+            lock (owner.gate) channels = mediaChannels.OfType<Connection>().ToArray();
+            foreach (var channel in channels) channel.Abort();
+            return channels;
         }
 
         private async Task PumpAsync(IPlayback playback, TrackState state, uint track)
@@ -586,7 +813,7 @@ public sealed class ReceiverServer : IAsyncDisposable
                     }
                     else
                     {
-                        state.Media(packet);
+                        if (playback is not RecoveryPlayback) state.Media(packet);
                         await playback.PresentAsync(packet, timeout.Token);
                     }
                     }
@@ -601,9 +828,9 @@ public sealed class ReceiverServer : IAsyncDisposable
             catch (Exception error)
             {
                 await FailAsync(error is ProtocolException ? error :
-                    new ProtocolException($"Playback failed: {error.Message}", track == 2 ? "AUDIO_FAILED" : "DECODER_FAILED"), playback);
-                cancellation.Cancel();
-                client.Dispose();
+                    new ProtocolException($"Playback failed: {error.Message}",
+                        error is TimeoutException ? "TIMEOUT" : track == 2 ? "AUDIO_FAILED" : "DECODER_FAILED"), playback);
+                retirement.TrySetResult();
             }
         }
 
@@ -612,15 +839,16 @@ public sealed class ReceiverServer : IAsyncDisposable
             using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(100));
             var nextPing = Environment.TickCount64 + 2000;
             var nextTransportProbe = Environment.TickCount64;
-            var initialStartup = Interlocked.Read(ref startup);
-            var videoStarted = false;
+            var presentationDeadline = new PresentationDeadline(Interlocked.Read(ref startup));
+            var presentationSuspended = false;
             try
             {
-                while (await timer.WaitForNextTickAsync(cancellation.Token))
+                while (await timer.WaitForNextTickAsync(playbackCancellation.Token))
                 {
                     if (Volatile.Read(ref stopping) != 0) continue;
                     try { playback.CheckHealth(); }
                     catch (ProtocolException) { throw; }
+                    catch (TimeoutException error) { throw new ProtocolException(error.Message, "TIMEOUT"); }
                     catch (Exception error) { throw new ProtocolException($"Playback health failed: {error.Message}", "DECODER_FAILED"); }
                     var now = Environment.TickCount64;
                     if (now >= nextTransportProbe && activity.ReadNoProgressMs >= 250)
@@ -628,26 +856,33 @@ public sealed class ReceiverServer : IAsyncDisposable
                         activity.RecordTransport(TcpSocketDiagnostics.Read(client.Client));
                         nextTransportProbe = now + 250;
                     }
-                    videoStarted |= playback is IVideoPlaybackProgress { HasEverPresentedVideo: true };
+                    var tracksConfigured = Volatile.Read(ref tracksReady) == expectedTracks;
+                    var generationStarted = Interlocked.Read(ref startup);
+                    var presentationExpired = playback is IVideoPlaybackProgress progress &&
+                        presentationDeadline.HasExpired(now, generationStarted, tracksConfigured, progress);
+                    if (presentationSuspended != presentationDeadline.IsSuspended)
+                    {
+                        presentationSuspended = presentationDeadline.IsSuspended;
+                        owner.notify(new("Video", presentationSuspended
+                            ? "Receiver window is occluded; presentation deadline suspended while decoding and liveness continue."
+                            : "Receiver window is visible; presentation deadline resumed."));
+                    }
                     if (now - Interlocked.Read(ref lastInput) >= 10_000 ||
-                        playback is IVideoPlaybackProgress && !videoStarted && now - initialStartup >= 10_000 ||
-                        (Volatile.Read(ref tracksReady) < expectedTracks ||
-                            playback is IVideoPlaybackProgress { HasPresentedVideo: false }) &&
-                        now - Interlocked.Read(ref startup) >= 10_000)
+                        !tracksConfigured && now - generationStarted >= 10_000 || presentationExpired)
                         throw new ProtocolException("Session startup or incoming traffic timed out.", "TIMEOUT");
                     if (now >= nextPing)
                     {
-                        await SendAsync(Packet.Control(PacketType.Ping, session, new { nonce = unchecked((int)now) }));
+                        if (controlLatency.Begin(now) is { } nonce)
+                            await SendAsync(Packet.Control(PacketType.Ping, session, new { nonce }));
                         nextPing = now + 2000;
                     }
                 }
             }
-            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+            catch (OperationCanceledException) when (playbackCancellation.IsCancellationRequested) { }
             catch (Exception error) when (error is IOException or SocketException or OperationCanceledException)
             {
                 await FailAsync(error, playback);
-                cancellation.Cancel();
-                client.Dispose();
+                retirement.TrySetResult();
             }
         }
 
@@ -664,7 +899,7 @@ public sealed class ReceiverServer : IAsyncDisposable
             {
                 if (accepted)
                 {
-                    await SendAsync(Packet.Control(PacketType.Stop, session, new { reason }), deadline.Token);
+                    await SendAsync(Packet.Control(PacketType.Stop, session, new { reason }), deadline.Token).WaitAsync(deadline.Token);
                     await ended.Task.WaitAsync(deadline.Token);
                 }
             }
@@ -672,11 +907,18 @@ public sealed class ReceiverServer : IAsyncDisposable
             {
                 owner.notify(new("Disconnect", $"Closing control connection: {error.GetType().Name}"));
             }
-            finally { Abort(); }
+            finally
+            {
+                retirement.TrySetResult();
+                try { await Completion.WaitAsync(TimeSpan.FromSeconds(2)); }
+                catch (TimeoutException) { Abort(); }
+            }
         }
 
         public void Abort()
         {
+            // Media retirement acquires the server gate; never nest it inside the client lock.
+            RetireMedia();
             lock (client)
             {
                 if (disposed) return;
@@ -687,15 +929,50 @@ public sealed class ReceiverServer : IAsyncDisposable
 
         public void Dispose()
         {
+            Task workers;
             lock (client)
             {
+                if (disposed) return;
                 disposed = true;
                 client.Dispose();
-                cancellation.Dispose();
-                playbackCancellation.Dispose();
-                writer.Dispose();
-                queue.Dispose();
+                workers = Task.WhenAll(pendingWrites.Concat(new[] { retirementWorkers, pendingControlRead }.OfType<Task>()));
             }
+            lock (owner.gate) owner.retiringConnections.Add(this);
+            resourceDisposal = DisposeResourcesAsync(workers);
+        }
+
+        private async Task DisposeResourcesAsync(Task workers)
+        {
+            var deferred = !workers.IsCompleted;
+            var failed = false;
+            try { await workers; }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+            catch (Exception error)
+            {
+                failed = true;
+                NotifyCleanupFailure("connection-workers", error);
+            }
+            foreach (var (resource, origin) in new (IDisposable?, string)[]
+                { (queue, "queue"), (writer, "control-writer"), (playbackCancellation, "playback-cancellation"),
+                    (cancellation, "transport-cancellation"), (SessionLease, "session-lease") })
+            {
+                try { resource?.Dispose(); }
+                catch (Exception error)
+                {
+                    failed = true;
+                    NotifyCleanupFailure(origin, error);
+                }
+            }
+            Volatile.Write(ref resourcesDisposed, true);
+            lock (owner.gate) owner.retiringConnections.Remove(this);
+            if (deferred && !failed)
+                owner.notify(new("Cleanup complete", "origin=connection-retirement; receiver resources released."));
+        }
+
+        private void NotifyCleanupFailure(string origin, Exception error)
+        {
+            var type = error.GetType().Name;
+            owner.notify(new("Cleanup failed", $"origin={origin}; code=INTERNAL; type={type[..Math.Min(80, type.Length)]}"));
         }
     }
 }

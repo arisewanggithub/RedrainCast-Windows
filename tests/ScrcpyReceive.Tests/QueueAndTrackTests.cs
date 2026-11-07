@@ -5,6 +5,28 @@ namespace ScrcpyReceive.Tests;
 
 public sealed class QueueAndTrackTests
 {
+    [Fact]
+    public async Task RecoveryDropsOnlyQueuedMediaAndRetainsStartedPacketAndConfiguration()
+    {
+        using var queue = new ReceiveQueue();
+        var started = Media(0);
+        queue.Add(started);
+        Assert.Same(started, await queue.TakeAsync(1, default));
+        queue.Add(Media(10));
+        var configuration = Configuration(generation: 2);
+        queue.Add(configuration);
+        queue.Add(Media(20));
+        queue.DiscardQueuedMedia();
+        queue.Complete(started);
+        Assert.Same(configuration, await queue.TakeAsync(1, default));
+        queue.Complete(configuration);
+        using var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(30));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queue.TakeAsync(1, stop.Token).AsTask());
+        var next = Media(30, generation: 2);
+        queue.Add(next);
+        Assert.Same(next, await queue.TakeAsync(1, default));
+        queue.Complete(next);
+    }
     internal static Packet Media(long pts, uint track = 1, uint generation = 1, int size = 4) =>
         new(track == 1 ? PacketType.VideoFrame : PacketType.AudioPacket, 1, track, generation, pts, 0, new byte[size]);
 

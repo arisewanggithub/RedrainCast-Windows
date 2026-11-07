@@ -3,6 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\RedrainCast.Protocol\RedrainCast.Protocol.csproj"/>
     <EmbeddedResource Include="ToneMaps\*.rgba16f.gz"/>
     <Content Include="ToneMaps\manifest.json" Link="licenses\tone-map-provenance.json"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"/>

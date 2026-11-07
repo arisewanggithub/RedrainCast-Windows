@@ -42,6 +42,12 @@ public sealed class RequestTests
 
     [Theory]
     [InlineData("\"maxFps\":60", "\"maxFps\":0")]
+    [InlineData("\"maxFps\":60", "\"maxFps\":-1")]
+    [InlineData("\"maxFps\":60", "\"maxFps\":241")]
+    [InlineData("\"maxFps\":60", "\"maxFps\":2147483647")]
+    [InlineData("\"maxFps\":60", "\"maxFps\":2147483648")]
+    [InlineData("\"maxFps\":60", "\"maxFps\":120.0")]
+    [InlineData("\"maxFps\":60", "\"maxFps\":\"120\"")]
     [InlineData("\"bitrate\":8000000", "\"bitrate\":0")]
     [InlineData("\"maxSize\":1920", "\"maxSize\":16385")]
     [InlineData("\"displayId\":0", "\"displayId\":-1")]

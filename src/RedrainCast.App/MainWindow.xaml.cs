@@ -25,8 +25,13 @@ public sealed partial class MainWindow : Window
     private readonly CancellationTokenSource lifetime = new();
     private readonly VideoHost video;
     private readonly WindowLayoutController layout;
+    private readonly DispatcherTimer statisticsTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly PlaybackRateSampler statisticsRates = new();
     private readonly bool isolated;
     private readonly List<string> diagnostics = [];
+    private DiagnosticLog? diagnosticLog;
+    private string? diagnosticLogPath;
+    private string? diagnosticLogError;
     private readonly HashSet<IPAddress> localAddresses = [IPAddress.Loopback, IPAddress.IPv6Loopback];
     private ReceiverUiState receiverState = new();
     private ReceiverServer? receiver;
@@ -37,12 +42,26 @@ public sealed partial class MainWindow : Window
     private OutgoingCast? outgoing;
     private IReadOnlyList<ReceiverEndpoint> discovered = [];
     private CaptureSource? source;
+    private CancellationTokenRegistration sourceClosedNotice;
     private CaptureSettings settings = new();
     private ContentDialog? currentDialog;
+    private readonly AppStrings strings = AppStrings.Current;
+    private SystemLanguageNotifications? languageNotifications;
+    private XamlRoot? observedRoot;
+    private Func<string>? problemTitle;
+    private Func<string>? problemMessage;
+    private string? copiedEndpoint;
+    private string L(string key, params object?[] values) => strings.Get(key, values);
+    private TextBlock InputHeader(string key) => new()
+    {
+        Text = L(key), FlowDirection = strings.IsRightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight,
+        TextWrapping = TextWrapping.Wrap
+    };
     private int receiverGeneration;
     private bool closing;
     private bool picking;
     private TaskCompletionSource? pickerFinished;
+    private CancellationTokenSource? pickerCancellation;
     private bool receiverFaulted;
     private bool discoveryFailed;
     private bool showingVideo;
@@ -50,28 +69,89 @@ public sealed partial class MainWindow : Window
     private readonly string instanceId = Guid.NewGuid().ToString("N");
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RedrainCast", "settings.json");
+    private static string DiagnosticDirectory => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RedrainCast", "Logs");
 
-    public MainWindow(bool isolated = false)
+    public MainWindow(bool isolated = false, Func<IReadOnlyList<string>>? preferredLanguages = null)
     {
         this.isolated = isolated;
         InitializeComponent();
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "RedrainCast.ico");
+        if (!File.Exists(iconPath))
+            throw new FileNotFoundException("The required RedrainCast window icon is missing.", iconPath);
+        AppWindow.SetIcon(iconPath);
         Title = "RedrainCast";
         DeviceName.Text = Environment.MachineName;
-        VersionText.Text = $"RedrainCast {AppVersion.Current().Label}";
+        VersionText.Text = L("Version", AppVersion.Current().Label);
+        if (!isolated)
+        {
+            try
+            {
+                diagnosticLog = new DiagnosticLog(DiagnosticDirectory);
+                diagnosticLogPath = diagnosticLog.FilePath;
+                Diagnostic($"App started: version={AppVersion.Current().Label}, pid={Environment.ProcessId}, " +
+                    $"architecture={System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}, OS={Environment.OSVersion}; log={diagnosticLogPath}");
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                diagnosticLogError = error.Message;
+                Report(new IOException($"Diagnostic logging could not start in {DiagnosticDirectory}. {error.Message}", error));
+            }
+        }
         video = new(VideoSurface, detail => OnReceiverNotice(new("Video", detail), receiverGeneration));
+        statisticsTimer.Tick += StatisticsTick;
+        video.StatisticsAvailabilityChanged += UpdateStatisticsVisibility;
+        WindowRoot.Loaded += ObserveRoot;
         layout = new(this, HomePage, Report);
+        strings.Changed += RefreshLanguage;
+        strings.Start(DispatcherQueue, error => Diagnostic($"Localization: {error}"), preferredLanguages);
+        try { languageNotifications = new(this, strings.Reconcile); }
+        catch (Exception error) { Report(error); }
         WindowRoot.ActualThemeChanged += (_, _) => UpdateTitleBar();
         UpdateTitleBar();
         AppWindow.Closing += OnClosing;
         Closed += (_, _) =>
         {
+            statisticsTimer.Stop();
+            statisticsTimer.Tick -= StatisticsTick;
+            video.StatisticsAvailabilityChanged -= UpdateStatisticsVisibility;
+            ClearStatistics();
             video.Dispose();
             layout.Dispose();
+            WindowRoot.Loaded -= ObserveRoot;
+            if (observedRoot is not null) observedRoot.Changed -= RootPresentationChanged;
+            languageNotifications?.Dispose();
+            strings.Changed -= RefreshLanguage;
+            strings.Stop();
+            sourceClosedNotice.Dispose();
+            source?.Dispose();
+            var log = diagnosticLog;
+            diagnosticLog = null;
+            try { log?.Dispose(); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                diagnosticLogError = error.Message;
+                Report(new IOException($"Diagnostic log could not close. {error.Message}", error));
+            }
             lifetime.Dispose();
         };
     }
 
     internal Task InitializeAsync() => startup ??= InitializeCoreAsync();
+
+    private void ObserveRoot(object sender, RoutedEventArgs args)
+    {
+        if (observedRoot is not null) observedRoot.Changed -= RootPresentationChanged;
+        observedRoot = WindowRoot.XamlRoot;
+        observedRoot.Changed += RootPresentationChanged;
+        strings.Reconcile();
+    }
+
+    private void RootPresentationChanged(XamlRoot sender, XamlRootChangedEventArgs args)
+    {
+        UpdateStatisticsVisibility();
+        if (sender.IsHostVisible) strings.Reconcile();
+    }
 
     private async Task InitializeCoreAsync()
     {
@@ -79,7 +159,7 @@ public sealed partial class MainWindow : Window
         {
             LoadSettings();
             try { SetSource(WindowsVideoSource.SelectDefaultDisplay()); }
-            catch (Exception error) { Report(new IOException($"Choose a display or window before sending. {error.Message}", error)); }
+            catch (Exception error) { ReportAction(error, "ChooseSourceFirst"); }
         }
         await StartReceiverAsync();
         if (!isolated) discovery = DiscoverAsync();
@@ -89,20 +169,66 @@ public sealed partial class MainWindow : Window
     {
         void Apply()
         {
-            diagnostics.Add($"{DateTimeOffset.Now:O} {detail}");
+            var line = $"{DateTimeOffset.Now:O} {detail}";
+            diagnostics.Add(line);
             while (diagnostics.Count > 100) diagnostics.RemoveAt(0);
+            try { diagnosticLog?.Write(line); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                var failed = diagnosticLog;
+                diagnosticLog = null;
+                try { failed?.Dispose(); }
+                catch (Exception cleanupError) when (cleanupError is IOException or UnauthorizedAccessException)
+                {
+                    error = new AggregateException("Diagnostic write and cleanup failed.", error, cleanupError);
+                }
+                diagnosticLogError = error.Message;
+                Report(new IOException($"Diagnostic logging stopped. {error.Message}", error));
+            }
         }
         if (DispatcherQueue.HasThreadAccess) Apply();
         else DispatcherQueue.TryEnqueue(Apply);
     }
 
-    private void Report(Exception error)
+    private void Report(Exception error) => ReportAction(error, "RetryAction");
+
+    private void ReportAction(Exception error, string messageKey, params object?[] values)
     {
         Diagnostic(error.ToString());
-        Problem.Title = "Action failed";
-        Problem.Message = error.Message;
+        problemTitle = () => L("ActionFailed");
+        var key = error is UiActionException action ? action.Key : messageKey;
+        problemMessage = () => L(key, values) + "\n" + L("TechnicalDetails", strings.LeftToRight(error.Message));
+        RefreshProblem();
         Problem.Severity = InfoBarSeverity.Error;
         Problem.IsOpen = true;
+    }
+
+    private void RefreshProblem()
+    {
+        if (problemTitle is not null) Problem.Title = problemTitle();
+        if (problemMessage is not null) Problem.Message = problemMessage();
+    }
+
+    private void RefreshSourceLabel()
+    {
+        SourceLabel.Text = source is null ? L("ChooseSource") :
+            source.Closed.IsCancellationRequested ? L("SourceClosed") :
+            L("SourceDimensions", strings.LeftToRight(source.Item.DisplayName),
+                strings.LeftToRight(source.Item.Size.Width.ToString(CultureInfo.InvariantCulture)),
+                strings.LeftToRight(source.Item.Size.Height.ToString(CultureInfo.InvariantCulture)));
+    }
+
+    private void RefreshLanguage()
+    {
+        HomePage.FlowDirection = strings.IsRightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
+        PlaybackStatsPanel.FlowDirection = HomePage.FlowDirection;
+        if (currentDialog is not null) currentDialog.FlowDirection = HomePage.FlowDirection;
+        VersionText.Text = L("Version", AppVersion.Current().Label);
+        RefreshSourceLabel();
+        if (copiedEndpoint is not null) AddressFeedback.Text = L("CopiedAddress", strings.LeftToRight(copiedEndpoint));
+        RefreshProblem();
+        RefreshStatisticsLanguage();
+        Render();
     }
 
     private void OnReceiverNotice(ReceiverNotice notice, int generation)
@@ -117,6 +243,7 @@ public sealed partial class MainWindow : Window
             if (notice.ListeningEndpoints is not null)
             {
                 AddressFeedback.Text = "";
+                copiedEndpoint = null;
                 localAddresses.Clear();
                 localAddresses.UnionWith([IPAddress.Loopback, IPAddress.IPv6Loopback]);
                 foreach (var endpoint in notice.ListeningEndpoints) localAddresses.Add(EndpointText.Parse(endpoint).Address);
@@ -124,8 +251,10 @@ public sealed partial class MainWindow : Window
             if (notice.State is "Start failed" or "Listener failed" or "Cleanup failed") receiverFaulted = true;
             if (receiverState.ProblemCode is not null && notice.State == receiverState.ProblemCode)
             {
-                Problem.Title = receiverState.ProblemTitle;
-                Problem.Message = $"{receiverState.ProblemMessage}\n{notice.Detail}";
+                var problemState = receiverState;
+                problemTitle = () => L(ReceiverPresentation.TitleKey(problemState));
+                problemMessage = () => L(ReceiverPresentation.ProblemKey(problemState)) + "\n" + L("TechnicalDetails", strings.LeftToRight(notice.Detail));
+                RefreshProblem();
                 Problem.Severity = receiverState.IsWarning ? InfoBarSeverity.Warning : InfoBarSeverity.Error;
                 Problem.IsOpen = true;
             }
@@ -142,23 +271,25 @@ public sealed partial class MainWindow : Window
         return lease;
     }
 
-    private Task StartReceiverAsync(int port = 0)
+    private Task StartReceiverAsync(int port = 0, IPAddress? bindAddress = null)
     {
         if (closing || receiver is not null) return Task.CompletedTask;
         receiverState = new();
         AddressFeedback.Text = "";
+        copiedEndpoint = null;
         receiverFaulted = false;
         var generation = ++receiverGeneration;
         ReceiverServer? candidate = null;
+        var address = bindAddress ?? (isolated ? IPAddress.Loopback : IPAddress.Any);
         try
         {
             candidate = new(Environment.MachineName, video, notice => OnReceiverNotice(notice, generation),
-                port, isolated ? IPAddress.Loopback : IPAddress.Any, AcquireReceiving, instanceId);
+                port, address, AcquireReceiving, instanceId);
             candidate.Start(advertise: !isolated);
             receiver = candidate;
             if (isolated)
-                OnReceiverNotice(new("Listening", "Isolated loopback listener.",
-                    [LocalDiscovery.DisplayEndpoint(IPAddress.Loopback, candidate.Port)]), generation);
+                OnReceiverNotice(new("Listening", IPAddress.IsLoopback(address) ? "Isolated loopback listener." : "Owned LAN test listener.",
+                    [LocalDiscovery.DisplayEndpoint(address, candidate.Port)]), generation);
         }
         catch (Exception error) when (error is SocketException or ArgumentException or NetworkInformationException)
         {
@@ -206,8 +337,9 @@ public sealed partial class MainWindow : Window
             }), detail => DispatcherQueue.TryEnqueue(() =>
             {
                 Diagnostic(detail);
-                Problem.Title = "Invalid discovery advertisement ignored";
-                Problem.Message = detail;
+                problemTitle = () => L("InvalidAdvertisement");
+                problemMessage = () => L("TechnicalDetails", strings.LeftToRight(detail));
+                RefreshProblem();
                 Problem.Severity = InfoBarSeverity.Warning;
                 Problem.IsOpen = true;
             }), lifetime.Token);
@@ -218,7 +350,7 @@ public sealed partial class MainWindow : Window
             discoveryFailed = true;
             DispatcherQueue.TryEnqueue(() =>
             {
-                Report(new IOException($"Nearby discovery stopped. Connect by IP : Port instead. {error.Message}", error));
+                ReportAction(error, "DiscoveryUnavailable");
                 RenderDevices();
             });
         }
@@ -229,19 +361,25 @@ public sealed partial class MainWindow : Window
         receiver is not null && localAddresses.Contains(endpoint.Address) && endpoint.Port == receiver.Port;
 
     private bool CanSend => !closing && !picking && receiverState.ProblemCode != "Cleanup failed" &&
-        roles.Role == CastRole.Idle && source is not null;
+        roles.Role == CastRole.Idle && source is not null && !source.Closed.IsCancellationRequested;
 
     private void RenderDevices()
     {
         var nearby = discovered.Where(endpoint => !IsSelf(endpoint)).ToArray();
-        var rows = ReceiverRows.Create(nearby, outgoing, CanSend);
+        var presented = outgoing is null ? null : outgoing with
+        {
+            Notice = outgoing.NoticeKey is not null ? L(outgoing.NoticeKey) : string.IsNullOrEmpty(outgoing.Notice) ? "" :
+                L("OperationalNotice") + "\n" + L("TechnicalDetails", strings.LeftToRight(outgoing.Notice))
+        };
+        var rows = ReceiverRows.Create(nearby, presented, CanSend, key => L(key),
+            (action, name) => L("ActionHelp", action, name));
         if (ReceiverList.ItemsSource is not ReceiverRow[] previous || !previous.SequenceEqual(rows))
             ReceiverList.ItemsSource = rows;
         DiscoveryStatus.Text = discoveryFailed
-            ? outgoing is null ? "Discovery unavailable. Connect by IP : Port." : "Discovery unavailable. The active destination is retained above."
+            ? L(outgoing is null ? "DiscoveryUnavailable" : "DiscoveryUnavailableActive")
             : nearby.Length == 0
-                ? outgoing is null ? "No nearby receivers yet. Both devices need a reachable local network." : "No nearby receivers advertised. The active destination is shown above."
-                : $"{nearby.Length} receiver(s) discovered. Updated automatically.";
+                ? L(outgoing is null ? "NoReceivers" : "NoReceiversActive")
+                : L("ReceiverCount", nearby.Length);
     }
 
     public static Visibility OptionalTextVisibility(string text) => string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
@@ -250,38 +388,44 @@ public sealed partial class MainWindow : Window
     {
         var role = roles.Role;
         var paused = role == CastRole.Sending;
-        ReadinessTitle.Text = paused ? "PAUSED" : role == CastRole.Receiving ? "CONNECTING" :
-            receiverState.Phase == ReceiverUiPhase.Ready ? "READY" : receiverState.Status.ToUpperInvariant();
-        ReadinessDetail.Text = paused ? "Receiving pauses while you share your screen." :
-            role == CastRole.Receiving ? "Preparing the incoming video..." :
-            receiverState.Phase == ReceiverUiPhase.Ready ? "Listening for connections" :
-            receiverState.Phase == ReceiverUiPhase.NoNetwork ? "Connect to Wi-Fi or Ethernet." :
-            receiverState.Phase == ReceiverUiPhase.Starting ? "Opening the listener..." : receiverState.ProblemMessage;
+        ReadinessTitle.Text = L(paused ? "Paused" : role == CastRole.Receiving ? "ConnectingBanner" :
+            receiverState.Phase == ReceiverUiPhase.Ready ? "Ready" : "ReceiverPhase" + receiverState.Phase);
+        ReadinessDetail.Text = L(paused ? "PauseReceiveHint" :
+            role == CastRole.Receiving ? "PreparingVideo" :
+            receiverState.Phase == ReceiverUiPhase.Ready ? "Listening" :
+            receiverState.Phase == ReceiverUiPhase.NoNetwork ? "ConnectNetwork" :
+            receiverState.Phase == ReceiverUiPhase.Starting ? "OpeningListener" : ReceiverPresentation.ProblemKey(receiverState));
         ReadyTint.Visibility = !paused && role == CastRole.Idle && receiverState.Phase == ReceiverUiPhase.Ready
             ? Visibility.Visible : Visibility.Collapsed;
         var showAddresses = !paused && receiverState.ListenerOpen && !receiverFaulted;
         AddressList.Visibility = showAddresses ? Visibility.Visible : Visibility.Collapsed;
-        AddressHint.Text = paused ? "Local receiving addresses are unavailable while sending." :
-            "Use an address reachable from the sender's network.";
+        AddressHint.Text = L(paused ? "AddressUnavailableSending" : "AddressHint");
         AddressList.ItemsSource = showAddresses ? receiverState.Addresses.Select(endpoint =>
         {
             var parsed = EndpointText.Parse(endpoint);
-            return new AddressRow(receiverState.AdapterLabels.TryGetValue(endpoint, out var label) ? label : "Local network",
+            return new AddressRow(receiverState.AdapterLabels.TryGetValue(endpoint, out var label) ? label : L("LocalNetwork"),
                 EndpointText.Format(parsed.Address, parsed.Port), EndpointText.Format(parsed.Address, parsed.Port, false));
         }).ToArray() : Array.Empty<AddressRow>();
         SettingsButton.IsEnabled = ChooseSource.IsEnabled = !closing && !picking && role == CastRole.Idle;
         ManualConnect.IsEnabled = CanSend;
         RenderDevices();
-        var playing = video.IsPlaying;
-        if (role == CastRole.Receiving) currentDialog?.Hide();
+        var playing = video.HasDecodedVideo || showingVideo && role == CastRole.Receiving;
+        UpdateStatisticsVisibility();
+        if (role == CastRole.Receiving)
+        {
+            currentDialog?.Hide();
+            pickerCancellation?.Cancel();
+        }
         if (showingVideo == playing) return;
         showingVideo = playing;
         HomePage.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
         PlayerInput.IsTabStop = playing;
         if (playing)
         {
+            Diagnostic($"Receiver video surface exposed: decodedFrames={video.DecodedFrames}, presentedFrames={video.PresentedFrames}");
             presenterBeforePlayback = AppWindow.Presenter;
             AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+            Activate();
             PlayerInput.Focus(FocusState.Programmatic);
         }
         else
@@ -295,6 +439,7 @@ public sealed partial class MainWindow : Window
 
     private void WindowRoot_SizeChanged(object sender, SizeChangedEventArgs args)
     {
+        FitStatisticsPanel();
         var stacked = args.NewSize.Width < 900;
         Cards.ColumnDefinitions[1].Width = stacked ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
         Grid.SetColumn(ReceiveCard, stacked ? 0 : 1);
@@ -307,44 +452,66 @@ public sealed partial class MainWindow : Window
 
     private void SetSource(CaptureSource selected)
     {
+        selected.EnsureAvailable();
+        sourceClosedNotice.Dispose();
+        var previous = source;
         source = selected;
-        SourceLabel.Text = $"{selected.Item.DisplayName} ({selected.Item.Size.Width} x {selected.Item.Size.Height})";
+        if (!ReferenceEquals(previous, selected)) previous?.Dispose();
+        sourceClosedNotice = selected.Closed.Register(() => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (closing || !ReferenceEquals(source, selected)) return;
+            RefreshSourceLabel();
+            RenderDevices();
+            ManualConnect.IsEnabled = CanSend;
+        }));
+        RefreshSourceLabel();
         RenderDevices();
         ManualConnect.IsEnabled = CanSend;
     }
 
     private async void ChooseSource_Click(object sender, RoutedEventArgs args)
     {
-        if (picking || roles.Role != CastRole.Idle) return;
+        if (closing || picking || roles.Role != CastRole.Idle) return;
         picking = true;
         pickerFinished = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cancelled = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        pickerCancellation = cancelled;
         Render();
         try
         {
-            var targets = CaptureSource.Enumerate();
-            var choices = new ComboBox
+            var owner = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            CaptureSource? selected;
+            if (CaptureSource.SupportsNativePicker(owner))
+                selected = await NativeSourcePicker.PickAsync(owner, cancelled.Token);
+            else
             {
-                Header = "Display or window", ItemsSource = targets, SelectedIndex = targets.Count > 0 ? 0 : -1,
-                HorizontalAlignment = HorizontalAlignment.Stretch
-            };
-            var currentSource = source;
-            choices.SelectedItem = targets.FirstOrDefault(target => currentSource is not null &&
-                target.Handle == currentSource.Handle && target.IsWindow == currentSource.IsWindow)
-                ?? targets.FirstOrDefault();
-            var dialog = new ContentDialog
+                Diagnostic("Native capture-item handle interop is unavailable; using the compatibility visual chooser.");
+                var targets = CaptureSource.Enumerate(owner);
+                await using var picker = new SourcePicker(targets, source,
+                    () => SourcePickerPolicy.CanSelect(cancelled.IsCancellationRequested, closing, roles.Role),
+                    Diagnostic, WindowRoot.ActualHeight, WindowRoot.ActualWidth);
+                await ShowDialogAsync(picker.Dialog);
+                selected = picker.Selected;
+            }
+            if (selected is not null)
             {
-                Title = "Choose what to share", Content = choices, PrimaryButtonText = "Choose", CloseButtonText = "Cancel",
-                IsPrimaryButtonEnabled = targets.Count > 0
-            };
-            if (await ShowDialogAsync(dialog) == ContentDialogResult.Primary && choices.SelectedItem is CaptureTarget target && !closing)
-                SetSource(target.Open());
+                try
+                {
+                    if (SourcePickerPolicy.CanSelect(cancelled.IsCancellationRequested, closing, roles.Role))
+                        SetSource(selected);
+                }
+                finally { if (!ReferenceEquals(source, selected)) selected.Dispose(); }
+            }
         }
-        catch (Exception error) { Report(error); }
+        catch (OperationCanceledException) when (cancelled.IsCancellationRequested) { }
+        catch (Exception error) { ReportAction(error, "ChooseSourceFailed"); }
         finally
         {
             picking = false;
+            pickerCancellation = null;
             pickerFinished.TrySetResult();
             if (!closing) Render();
+            if (!closing && roles.Role == CastRole.Idle) ChooseSource.Focus(FocusState.Programmatic);
         }
     }
 
@@ -367,7 +534,7 @@ public sealed partial class MainWindow : Window
         if (sending is not null || !CanSend) return;
         if (endpoint.Busy || IsSelf(endpoint))
         {
-            Report(new ArgumentException(endpoint.Busy ? "That receiver is busy." : "Choose another device, not this PC's own receiver."));
+            ReportAction(new ArgumentException("Destination is busy or is this receiver."), endpoint.Busy ? "ReceiverBusy" : "ChooseOtherDevice");
             return;
         }
         sending = SendAsync(endpoint);
@@ -380,7 +547,7 @@ public sealed partial class MainWindow : Window
         var lease = roles.TryAcquire(CastRole.Sending);
         if (lease is null)
         {
-            Report(new InvalidOperationException("An incoming cast has already started."));
+            ReportAction(new InvalidOperationException("An incoming cast has already started."), "IncomingAlreadyStarted");
             return;
         }
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
@@ -394,39 +561,60 @@ public sealed partial class MainWindow : Window
             await StopReceiverAsync();
             var selected = source ?? throw new InvalidOperationException("Choose a display or window first.");
             var selectedSettings = settings;
+            Diagnostic($"Sender starting: target={endpoint.Key}; source={(selected.IsWindow ? "window" : "display")}, " +
+                $"captureSize={selected.Item.Size.Width}x{selected.Item.Size.Height}; settings={JsonSerializer.Serialize(selectedSettings)}");
             await Task.Run(async () =>
             {
-                await using var outgoingVideo = new WindowsVideoSource(selected, selectedSettings, Diagnostic);
-                await using var audio = selectedSettings.EnableAudio ? new WindowsAudioSource() : null;
+                await using var outgoingVideo = new WorkerVideoSource(Environment.ProcessPath ??
+                    throw new IOException("Cannot locate the capture worker executable."), selected, selectedSettings, Diagnostic);
+                if (peerSelfTestAudioFactory is not null && !isolated)
+                    throw new InvalidOperationException("Synthetic peer audio is restricted to isolated self-tests.");
+                await using IAudioSource? audio = selectedSettings.EnableAudio
+                    ? peerSelfTestAudioFactory?.Invoke() ?? new WindowsAudioSource() : null;
                 DispatcherQueue.TryEnqueue(() =>
                 {
                     if (!ReferenceEquals(sendStop, stop) || outgoing is null) return;
                     var codec = selectedSettings.VideoCodec switch
                     {
-                        "h264" => "H.264", "h265" => "HEVC", "av1" => "AV1",
+                        "h264" => "H.264", "h265" => "H.265 (HEVC)", "av1" => "AV1",
                         _ => throw new NotSupportedException("Unsupported video codec.")
                     };
                     outgoing = outgoing with
                     {
-                        Parameters = $"{codec} - {outgoingVideo.Width} x {outgoingVideo.Height}",
+                        Parameters = $"{codec} - {outgoingVideo.Width.ToString(CultureInfo.InvariantCulture)} x {outgoingVideo.Height.ToString(CultureInfo.InvariantCulture)}",
                         Encoder = outgoingVideo.EncoderName
                     };
                     RenderDevices();
                 });
                 stop.Token.ThrowIfCancellationRequested();
-                await new SenderSession().RunAsync(endpoint, selectedSettings, outgoingVideo,
-                    text => DispatcherQueue.TryEnqueue(() =>
+                try
+                {
+                    await new SenderSession().RunAsync(endpoint, selectedSettings, outgoingVideo,
+                    text =>
                     {
-                        if (!closing && ReferenceEquals(sendStop, stop) && outgoing is not null)
+                        Diagnostic($"Sender state: {text}");
+                        if (text.StartsWith("Recovery transport timing:", StringComparison.Ordinal) ||
+                            text.StartsWith("Recovery pressure timing:", StringComparison.Ordinal)) return;
+                        DispatcherQueue.TryEnqueue(() =>
                         {
-                            outgoing = outgoing.ApplyStatus(text);
-                            RenderDevices();
-                        }
-                    }), stop.Token, audio);
+                            if (!closing && ReferenceEquals(sendStop, stop) && outgoing is not null)
+                            {
+                                outgoing = outgoing.ApplyStatus(text) with { Encoder = outgoingVideo.EncoderName };
+                                RenderDevices();
+                            }
+                        });
+                    }, stop.Token, audio);
+                }
+                catch (Exception error) when (error is not OperationCanceledException)
+                {
+                    throw new IOException($"{error.Message}\nSender video: {outgoingVideo.Statistics}\n" +
+                        $"Diagnostic log: {diagnosticLogPath ?? "unavailable in this isolated test"}", error);
+                }
+                finally { Diagnostic($"Sender session ended: {outgoingVideo.Statistics}"); }
             });
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
-        catch (Exception error) { Report(error); }
+        catch (Exception error) { ReportAction(error, "SendingFailed"); }
         finally
         {
             sendStop = null;
@@ -449,13 +637,14 @@ public sealed partial class MainWindow : Window
         if (currentDialog is not null || closing || roles.Role != CastRole.Idle) return ContentDialogResult.None;
         currentDialog = dialog;
         dialog.XamlRoot = WindowRoot.XamlRoot;
+        dialog.FlowDirection = HomePage.FlowDirection;
         try { return await dialog.ShowAsync(); }
         finally { currentDialog = null; }
     }
 
     private async void ManualConnect_Click(object sender, RoutedEventArgs args)
     {
-        var input = new TextBox { Header = "Receiver IP : Port", PlaceholderText = "192.168.1.42 : 50432" };
+        var input = new TextBox { FlowDirection = FlowDirection.LeftToRight };
         var errorLabel = new TextBlock { TextWrapping = TextWrapping.Wrap };
         var content = new StackPanel { Spacing = 12 };
         content.Children.Add(input);
@@ -463,17 +652,31 @@ public sealed partial class MainWindow : Window
         ReceiverEndpoint? target = null;
         var dialog = new ContentDialog
         {
-            Title = "Connect to a receiver", Content = content,
-            PrimaryButtonText = "Send", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary
+            Content = content, DefaultButton = ContentDialogButton.Primary
         };
+        string? validationKey = null;
+        using var labels = strings.Bind(() =>
+        {
+            input.Header = InputHeader("ReceiverAddress");
+            input.PlaceholderText = L("AddressExample");
+            dialog.Title = L("ConnectReceiver");
+            dialog.PrimaryButtonText = L("Send");
+            dialog.CloseButtonText = L("Cancel");
+            errorLabel.Text = validationKey is null ? "" : L(validationKey);
+        });
         dialog.PrimaryButtonClick += (_, click) =>
         {
             try
             {
+                validationKey = "AddressValidation";
                 target = EndpointText.Parse(input.Text);
-                if (IsSelf(target)) throw new ArgumentException("Enter another device's address, not this PC's receiver.");
+                if (IsSelf(target))
+                {
+                    validationKey = "OwnAddress";
+                    throw new ArgumentException("Self-receiver endpoint rejected.");
+                }
             }
-            catch (ArgumentException error) { errorLabel.Text = error.Message; click.Cancel = true; }
+            catch (ArgumentException) { errorLabel.Text = L(validationKey!); click.Cancel = true; }
         };
         try
         {
@@ -491,43 +694,120 @@ public sealed partial class MainWindow : Window
             var data = new DataPackage();
             data.SetText(endpoint);
             Clipboard.SetContent(data);
-            AddressFeedback.Text = $"Copied {EndpointText.Parse(endpoint).Address} : {EndpointText.Parse(endpoint).Port}";
+            var parsed = EndpointText.Parse(endpoint);
+            copiedEndpoint = EndpointText.Format(parsed.Address, parsed.Port);
+            AddressFeedback.Text = L("CopiedAddress", strings.LeftToRight(copiedEndpoint));
         }
-        catch (Exception error) { Report(new IOException($"Could not copy the address. {error.Message}", error)); }
+        catch (Exception error) { ReportAction(error, "CopyFailed"); }
     }
 
     private async void Settings_Click(object sender, RoutedEventArgs args)
     {
-        var size = new TextBox { Header = "Maximum dimension (64-3840 pixels)", Text = settings.MaxSize.ToString(CultureInfo.CurrentCulture) };
+        try { await ShowSharingSettingsAsync(); }
+        catch (Exception error) { ReportAction(error, "SettingsUnavailable"); }
+    }
+
+    private async Task<CodecSelection> ReadCodecSelectionAsync()
+    {
+        var selectedSource = source;
+        CodecSelection selection;
+        try
+        {
+            selection = await Task.Run(() => new CodecSelection(
+                WindowsVideoSource.ReadCaptureAdapterVendorId(), selectedSource?.ReadColor(Diagnostic).Hdr));
+        }
+        catch (Exception error)
+        {
+            throw new IOException($"Could not read capture adapter/display metadata for codec choices. No compatibility assumption was made. {error.Message}", error);
+        }
+        if (!ReferenceEquals(selectedSource, source))
+            throw new UiActionException("SourceChanged");
+        return selection;
+    }
+
+    private async Task ShowSharingSettingsAsync()
+    {
+        var codecSelection = await ReadCodecSelectionAsync();
+        await ShowSharingSettingsDialogAsync(codecSelection, ReadCodecSelectionAsync);
+    }
+
+    private async Task ShowSharingSettingsDialogAsync(CodecSelection codecSelection, Func<Task<CodecSelection>> refreshSelection)
+    {
+        var editCulture = strings.Culture;
+        var size = new TextBox { Text = settings.MaxSize.ToString(editCulture), FlowDirection = FlowDirection.LeftToRight };
         var fps = new ComboBox
         {
-            Header = "Maximum FPS (this receiver supports up to 60)",
             ItemsSource = CaptureSettings.FpsPresets.Append(settings.MaxFps).Distinct().Order().ToArray(),
-            SelectedItem = settings.MaxFps, HorizontalAlignment = HorizontalAlignment.Stretch
+            SelectedItem = settings.MaxFps, HorizontalAlignment = HorizontalAlignment.Stretch, FlowDirection = FlowDirection.LeftToRight
         };
-        var bitrate = new TextBox { Header = "Video bitrate (0.1-100 Mbps)", Text = (settings.VideoBitrate / 1_000_000m).ToString(CultureInfo.CurrentCulture) };
-        var codec = new ComboBox { Header = "Video codec", ItemsSource = new[] { "H.264", "HEVC", "AV1" },
-            SelectedIndex = settings.VideoCodec switch { "h265" => 1, "av1" => 2, _ => 0 }, HorizontalAlignment = HorizontalAlignment.Stretch };
-        var orientation = new ComboBox { Header = "Receiver orientation", ItemsSource = new[] { "Auto", "Landscape", "Portrait" },
+        var bitrate = new TextBox { Text = (settings.VideoBitrate / 1_000_000m).ToString(editCulture), FlowDirection = FlowDirection.LeftToRight };
+        var codec = new ComboBox { ItemsSource = codecSelection.Choices, FlowDirection = FlowDirection.LeftToRight,
+            DisplayMemberPath = nameof(CodecChoice.Label), SelectedItem = codecSelection.Find(settings.VideoCodec),
+            HorizontalAlignment = HorizontalAlignment.Stretch };
+        var orientation = new ComboBox { ItemsSource = new[] { L("Auto"), L("Landscape"), L("Portrait") },
             SelectedIndex = settings.ReceiverOrientation switch { "landscape" => 1, "portrait" => 2, _ => 0 }, HorizontalAlignment = HorizontalAlignment.Stretch };
-        var audio = new CheckBox { Content = "Send audio to receiver (silences local playback)", IsChecked = settings.EnableAudio };
+        var audio = new CheckBox { IsChecked = settings.EnableAudio };
+        var playbackStats = new CheckBox { IsChecked = settings.ShowPlaybackStatistics };
+        string? settingsErrorKey = string.IsNullOrEmpty(codecSelection.SavedSelectionMessage(settings.VideoCodec)) ? null : "SavedCodecUnavailable";
+        string? settingsErrorDetail = null;
         var errorLabel = new TextBlock { TextWrapping = TextWrapping.Wrap };
         var content = new StackPanel { Spacing = 12 };
-        foreach (var element in new FrameworkElement[] { size, fps, bitrate, codec, orientation, audio, errorLabel })
+        foreach (var element in new FrameworkElement[] { size, fps, bitrate, codec, orientation, audio, playbackStats, errorLabel })
             content.Children.Add(element);
         var dialog = new ContentDialog
         {
-            Title = "Sharing settings", Content = new ScrollViewer { Content = content },
-            PrimaryButtonText = "Save", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary
+            Content = new ScrollViewer { Content = content }, DefaultButton = ContentDialogButton.Primary
         };
-        dialog.PrimaryButtonClick += (_, click) =>
+        void RefreshSettingsLabels()
         {
+            size.Header = InputHeader("MaximumDimension");
+            fps.Header = InputHeader("MaximumFPS");
+            bitrate.Header = InputHeader("VideoBitrate");
+            codec.Header = InputHeader("VideoCodec");
+            orientation.Header = InputHeader("ReceiverOrientation");
+            var selectedIndex = orientation.SelectedIndex;
+            orientation.ItemsSource = new[] { L("Auto"), L("Landscape"), L("Portrait") };
+            orientation.SelectedIndex = selectedIndex;
+            audio.Content = L("SendAudio");
+            playbackStats.Content = L("ShowStatistics");
+            dialog.Title = L("SharingSettings");
+            dialog.PrimaryButtonText = L("Save");
+            dialog.CloseButtonText = L("Cancel");
+            errorLabel.Text = settingsErrorKey is null ? "" :
+                L(settingsErrorKey, 0.1m.ToString(editCulture)) +
+                (settingsErrorDetail is null ? "" : "\n" + L("TechnicalDetails", strings.LeftToRight(settingsErrorDetail)));
+        }
+        using var labels = strings.Bind(RefreshSettingsLabels);
+        var cancelled = false;
+        dialog.CloseButtonClick += (_, _) => cancelled = true;
+        dialog.Closing += (_, closingArgs) =>
+        {
+            if (closingArgs.Result != ContentDialogResult.Primary) cancelled = true;
+        };
+        dialog.PrimaryButtonClick += async (_, click) =>
+        {
+            var deferral = click.GetDeferral();
+            dialog.IsPrimaryButtonEnabled = false;
             try
             {
+                var requested = codec.SelectedItem as CodecChoice;
+                codecSelection = await refreshSelection();
+                if (cancelled)
+                {
+                    click.Cancel = true;
+                    return;
+                }
+                codec.ItemsSource = codecSelection.Choices;
+                codec.SelectedItem = requested is null ? null : codecSelection.Find(requested.Codec);
+                var videoCodec = codecSelection.ValidateSelection(requested);
+                var receiverOrientation = orientation.SelectedIndex switch
+                {
+                    0 => "auto", 1 => "landscape", 2 => "portrait",
+                    _ => throw new ArgumentException("Choose a receiver orientation before saving.")
+                };
                 var input = CaptureSettings.ParseInput(size.Text, bitrate.Text,
                     fps.SelectedItem is int cap ? cap : null,
-                    new[] { "auto", "landscape", "portrait" }[orientation.SelectedIndex], CultureInfo.CurrentCulture,
-                    new[] { "h264", "h265", "av1" }[codec.SelectedIndex], audio.IsChecked == true);
+                    receiverOrientation, editCulture, videoCodec, audio.IsChecked == true, playbackStats.IsChecked == true);
                 var next = input.Settings ?? throw new ArgumentException(string.Join(" ",
                     new[] { input.DimensionError, input.BitrateError, input.FpsError }.OfType<string>()));
                 Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
@@ -535,15 +815,21 @@ public sealed partial class MainWindow : Window
                 File.Move(SettingsPath + ".tmp", SettingsPath, true);
                 settings = next;
             }
-            catch (Exception error) when (error is ArgumentException or IOException or UnauthorizedAccessException)
+            catch (Exception error)
             {
-                errorLabel.Text = error.Message;
-                Diagnostic(error.ToString());
+                settingsErrorKey = error is ArgumentException ? "SettingsValidation" : "RetryAction";
+                settingsErrorDetail = error is ArgumentException ? null : error.Message;
+                RefreshSettingsLabels();
+                ReportAction(error, settingsErrorKey!, 0.1m.ToString(editCulture));
                 click.Cancel = true;
             }
+            finally
+            {
+                dialog.IsPrimaryButtonEnabled = true;
+                deferral.Complete();
+            }
         };
-        try { await ShowDialogAsync(dialog); }
-        catch (Exception error) { Report(error); }
+        await ShowDialogAsync(dialog);
     }
 
     private void LoadSettings()
@@ -555,7 +841,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or ArgumentException or NotSupportedException)
         {
-            Report(new IOException($"Saved settings could not be loaded; default sharing settings are in use. {error.Message}", error));
+            ReportAction(error, "SavedSettingsFailed");
         }
     }
 
@@ -563,23 +849,32 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            await ShowDialogAsync(new ContentDialog
+            var content = new StackPanel { Spacing = 12 };
+            var body = new TextBlock { TextWrapping = TextWrapping.Wrap };
+            content.Children.Add(body);
+            var support = new HyperlinkButton
             {
-                Title = "Connect on a trusted local network",
-                Content = new TextBlock
-                {
-                    Text = "Open RedrainCast on both PCs. Choose a nearby receiver and Send, or enter its IP : Port manually.\n\n" +
-                        "Incoming casts are accepted automatically. While receiving, this window shows only video. " +
-                        "Playback enters fullscreen automatically and restores the previous window when it ends. " +
-                        "Enter or F toggles fullscreen; Esc leaves fullscreen. End the cast from the sender to return home.\n\n" +
-                        "While sending, receiving is paused. Use Stop in the active receiver's row to automatically resume receiving.\n\n" +
-                        "Windows assigns each receiver an available TCP port. Use the current IP : Port shown by that receiver; it may change after listening restarts. UDP 27183 discovers receivers.\n\n" +
-                        "Allow the application through Windows Firewall on trusted Private networks, not just a fixed TCP port. " +
-                        "Traffic is not authenticated or encrypted. Do not expose listening ports to the internet.",
-                    TextWrapping = TextWrapping.Wrap
-                },
-                CloseButtonText = "Close"
+                NavigateUri = new Uri("https://redraincast.redrain.ccwu.cc/support/")
+            };
+            content.Children.Add(support);
+            var privacy = new HyperlinkButton
+            {
+                NavigateUri = new Uri("https://redraincast.redrain.ccwu.cc/privacy/")
+            };
+            content.Children.Add(privacy);
+            var dialog = new ContentDialog
+            {
+                Content = new ScrollViewer { Content = content }
+            };
+            using var labels = strings.Bind(() =>
+            {
+                body.Text = L("HelpBody");
+                support.Content = L("HelpSupport");
+                privacy.Content = L("PrivacyPolicy");
+                dialog.Title = L("TrustedNetworkTitle");
+                dialog.CloseButtonText = L("Close");
             });
+            await ShowDialogAsync(dialog);
         }
         catch (Exception error) { Report(error); }
     }
@@ -631,16 +926,27 @@ public sealed partial class MainWindow : Window
         catch (Exception error) { closing = false; Report(error); }
     }
 
-    internal async Task RunSelfTestAsync(string reportFile)
+    internal async Task RunSelfTestAsync(string reportFile, DiagnosticLog? journal = null)
     {
         var checks = new List<string>();
         string? failure = null;
+        var previousLog = diagnosticLog;
+        var previousLogPath = diagnosticLogPath;
+        diagnosticLog = journal;
+        diagnosticLogPath = journal?.FilePath;
+        var phase = "checking startup";
+        void Phase(string next) { phase = next; Diagnostic($"UI self-test phase: {phase}"); }
         try
         {
+            Phase("checking startup");
             await Task.Delay(250);
-            if (receiver is null || ReadinessTitle.Text != "READY" || HomePage.Visibility != Visibility.Visible)
+            if (receiver is null || ReadinessTitle.Text != L("Ready") || HomePage.Visibility != Visibility.Visible)
                 throw new InvalidOperationException("Startup did not show a ready listener on the home screen.");
             checks.Add("Automatic startup opens a real loopback listener and shows READY.");
+            var displayedVersion = L("Version", AppVersion.Current().Label);
+            if (VersionText.Text != displayedVersion)
+                throw new InvalidOperationException($"Displayed version does not match the running app: expected {displayedVersion}.");
+            checks.Add($"The displayed version matches the running app: {displayedVersion}.");
             if (AddressList.ItemsSource is not AddressRow[] addresses || addresses.Length != 1 ||
                 !addresses[0].DisplayAddress.Contains(" : ", StringComparison.Ordinal) ||
                 addresses[0].CanonicalAddress.Contains(' '))
@@ -652,15 +958,17 @@ public sealed partial class MainWindow : Window
             if (receiver.Port != original) throw new InvalidOperationException("Startup opened a second listener.");
             using (var lease = roles.TryAcquire(CastRole.Sending) ?? throw new InvalidOperationException("Could not reserve sending."))
             {
+                Phase("pausing receiver for outgoing role");
                 await StopReceiverAsync();
                 Render();
-                if (ReadinessTitle.Text != "PAUSED" || AddressList.Visibility != Visibility.Collapsed || receiver is not null)
+                if (ReadinessTitle.Text != L("Paused") || AddressList.Visibility != Visibility.Collapsed || receiver is not null)
                     throw new InvalidOperationException("Sending did not pause the actual listener and hide its endpoints.");
                 if (roles.TryAcquire(CastRole.Receiving) is not null)
                     throw new InvalidOperationException("Receiving was admitted while sending.");
             }
             await StartReceiverAsync();
-            if (receiver is null || ReadinessTitle.Text != "READY")
+            Phase("checking receiver restart and discovery identity");
+            if (receiver is null || ReadinessTitle.Text != L("Ready"))
                 throw new InvalidOperationException("Receiving did not restart after the outgoing lease ended.");
             using var connection = new TcpClient();
             await connection.ConnectAsync(IPAddress.Loopback, receiver.Port);
@@ -672,20 +980,30 @@ public sealed partial class MainWindow : Window
                 throw new InvalidOperationException("Discovery listed this app as its own target.");
             checks.Add("Nearby list excludes current/retired self identities but retains a different local app instance.");
             AppWindow.Resize(new Windows.Graphics.SizeInt32(760, 740));
+            Phase("checking responsive layout");
             await Task.Delay(150);
             if (Grid.GetRow(ReceiveCard) != 1) throw new InvalidOperationException("Narrow layout did not stack the cards.");
             checks.Add("Narrow windows stack sending and receiving panels.");
+            Phase("checking whole-home scrolling with and without a long error");
+            using (var layoutTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(45)))
+            {
+                var layoutMeasurements = new List<object>();
+                await CheckHomeLayoutAsync(layoutMeasurements, journal, layoutTimeout.Token);
+                checks.Add($"Whole-home scrolling and Tab bring-into-view pass in {layoutMeasurements.Count} short-window layouts.");
+            }
             SetSource(WindowsVideoSource.SelectDefaultDisplay());
+            Phase("checking failed destination and worker retirement");
             using var unavailable = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             unavailable.Bind(new IPEndPoint(IPAddress.Loopback, 0));
             var unavailablePort = ((IPEndPoint)unavailable.LocalEndPoint!).Port;
             var beforeFailure = diagnostics.Count;
             await StartSendingAsync(new(IPAddress.Loopback, unavailablePort, "Unavailable test receiver", false));
-            if (receiver is null || ReadinessTitle.Text != "READY" || !Problem.IsOpen || roles.Role != CastRole.Idle ||
+            if (receiver is null || ReadinessTitle.Text != L("Ready") || !Problem.IsOpen || roles.Role != CastRole.Idle ||
                 outgoing is not null || ReceiverList.ItemsSource is ReceiverRow[] failedRows && failedRows.Any(row => row.IsActive) ||
                 !diagnostics.Skip(beforeFailure).Any(detail => detail.Contains("SocketException", StringComparison.Ordinal)))
                 throw new InvalidOperationException("A real outgoing TCP connection failure did not report its error and restore receiving.");
-            checks.Add("Hardware encoder preflight followed by a real outgoing TCP failure reports the error and restores READY.");
+            checks.Add("Capture source preflight followed by a real outgoing TCP failure reports the error and restores READY.");
+            Phase("checking bind conflict and recovery");
             await StopReceiverAsync();
             var blocker = new TcpListener(IPAddress.Loopback, 0);
             blocker.Start();
@@ -694,20 +1012,21 @@ public sealed partial class MainWindow : Window
                 var blockedPort = ((IPEndPoint)blocker.LocalEndpoint).Port;
                 await StartReceiverAsync(blockedPort);
                 if (receiver is not null || receiverState.Phase != ReceiverUiPhase.Unavailable ||
-                    ReadinessTitle.Text != "RECEIVER UNAVAILABLE" || !Problem.IsOpen || !CanSend ||
+                    ReadinessTitle.Text != L("ReceiverPhaseUnavailable") || !Problem.IsOpen || !CanSend ||
                     !Problem.Message.Contains($"TCP {blockedPort}", StringComparison.Ordinal))
                     throw new InvalidOperationException("A bound port did not retain an explicit unavailable state while leaving sending enabled.");
             }
             finally { blocker.Stop(); }
             await StartReceiverAsync();
-            if (receiver is null || ReadinessTitle.Text != "READY")
+            if (receiver is null || ReadinessTitle.Text != L("Ready"))
                 throw new InvalidOperationException("Receiving did not recover after the conflicting listener was released.");
             checks.Add("Real bind conflict retains its startup error, leaves sending enabled, and recovers after the port is released.");
+            Phase("checking sharing settings");
             Settings_Click(SettingsButton, new RoutedEventArgs());
             await Task.Delay(150);
             if (currentDialog?.Content is not ScrollViewer { Content: StackPanel settingsPanel } ||
-                !settingsPanel.Children.OfType<ComboBox>().Select(combo => combo.Header?.ToString())
-                    .SequenceEqual(new[] { "Maximum FPS (this receiver supports up to 60)", "Video codec", "Receiver orientation" }))
+                !settingsPanel.Children.OfType<ComboBox>().Select(combo => combo.Header is TextBlock header ? header.Text : combo.Header?.ToString())
+                    .SequenceEqual(new[] { L("MaximumFPS"), L("VideoCodec"), L("ReceiverOrientation") }))
                 throw new InvalidOperationException("Sharing settings lost the FPS/codec/orientation options or expose a transport selector.");
             var fpsChoice = settingsPanel.Children.OfType<ComboBox>().First();
             if (fpsChoice.IsEditable || !fpsChoice.Items.Cast<int>().SequenceEqual(CaptureSettings.FpsPresets) ||
@@ -737,11 +1056,19 @@ public sealed partial class MainWindow : Window
                 !captureTargets.Any(target => target.IsWindow && target.Handle == WinRT.Interop.WindowNative.GetWindowHandle(this)))
                 throw new InvalidOperationException("The target-aware source selector did not enumerate displays and this window.");
             (source ?? throw new InvalidOperationException("Capture source was not selected.")).ReadColor().Validate();
-            checks.Add("Target-aware capture enumerates displays/windows and reads valid per-display color metadata.");
+            checks.Add("Target-aware capture enumerates displays/windows and preserves per-display HDR mode with explicit known/unknown luminance metadata.");
+            Phase("checking inline send negotiation, capture and cleanup");
             await RunInlineSendingSelfTestAsync(checks);
+            Phase("all checks completed");
         }
-        catch (Exception error) { failure = error.ToString(); }
-        File.WriteAllText(reportFile, JsonSerializer.Serialize(new { passed = failure is null, checks, failure, diagnostics },
-            new JsonSerializerOptions { WriteIndented = true }));
+        catch (Exception error) { failure = $"{phase}: {error}"; Diagnostic($"UI self-test failed: {failure}"); }
+        try
+        {
+            journal?.Write($"UI self-test phase: writing result; passed={failure is null}, checks={checks.Count}, lastPhase={phase}");
+            File.WriteAllText(reportFile, JsonSerializer.Serialize(new { passed = failure is null, checks, failure, phase,
+                diagnosticLogPath, version = AppVersion.Current().Label, diagnostics },
+                new JsonSerializerOptions { WriteIndented = true }));
+        }
+        finally { diagnosticLog = previousLog; diagnosticLogPath = previousLogPath; }
     }
 }

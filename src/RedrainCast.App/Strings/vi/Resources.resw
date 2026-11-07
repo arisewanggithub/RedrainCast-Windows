@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <!-- Canonical catalog. Preserve indexed placeholders exactly; never translate brand names, codec identifiers, IP addresses, PTS, HWND or protocol identifiers. -->
+  <data name="HomeTagline" xml:space="preserve"><value>Gửi và nhận màn hình.</value></data>
+  <data name="AppDescription" xml:space="preserve"><value>Gửi và nhận màn hình trên mạng cục bộ đáng tin cậy.</value><comment>Windows package/Start description. RedrainCast is the unchanged application display name.</comment></data>
+  <data name="Settings" xml:space="preserve"><value>Cài đặt</value></data>
+  <data name="SendScreen" xml:space="preserve"><value>Gửi màn hình</value></data>
+  <data name="SendHint" xml:space="preserve"><value>Chọn một thiết bị nhận ở gần để bắt đầu chia sẻ.</value></data>
+  <data name="ChooseSourceHelp" xml:space="preserve"><value>Chọn màn hình hoặc cửa sổ</value></data>
+  <data name="ShareSource" xml:space="preserve"><value>Chia sẻ màn hình hoặc cửa sổ</value></data>
+  <data name="ChooseSource" xml:space="preserve"><value>Chọn nội dung chia sẻ</value></data>
+  <data name="NearbyReceivers" xml:space="preserve"><value>Thiết bị nhận ở gần</value></data>
+  <data name="AutoUpdating" xml:space="preserve"><value>Tự động cập nhật</value></data>
+  <data name="LookingForReceivers" xml:space="preserve"><value>Đang tìm thiết bị nhận...</value></data>
+  <data name="ManualConnect" xml:space="preserve"><value>Kết nối bằng IP : Cổng</value><comment>IP is a network abbreviation. Preserve the address/port distinction.</comment></data>
+  <data name="ReceiveScreen" xml:space="preserve"><value>Nhận màn hình</value></data>
+  <data name="Starting" xml:space="preserve"><value>ĐANG KHỞI ĐỘNG</value><comment>Readiness banner.</comment></data>
+  <data name="OpeningListener" xml:space="preserve"><value>Đang mở trình lắng nghe kết nối...</value></data>
+  <data name="ConnectThisPC" xml:space="preserve"><value>Kết nối với PC này</value></data>
+  <data name="AddressHint" xml:space="preserve"><value>Dùng địa chỉ có thể truy cập từ mạng của thiết bị gửi.</value></data>
+  <data name="CopyAddress" xml:space="preserve"><value>Sao chép địa chỉ</value></data>
+  <data name="CopyAddressHelp" xml:space="preserve"><value>Sao chép IP:Cổng không có dấu cách</value></data>
+  <data name="IncomingHint" xml:space="preserve"><value>Luồng truyền màn hình đến sẽ tự động mở và lấp đầy cửa sổ này.</value></data>
+  <data name="TrustedNetworkHint" xml:space="preserve"><value>Việc nhận sẽ tạm dừng khi bạn gửi màn hình. Chỉ sử dụng trên mạng đáng tin cậy.</value></data>
+  <data name="ConnectionHelp" xml:space="preserve"><value>Trợ giúp kết nối</value></data>
+  <data name="Version" xml:space="preserve"><value>RedrainCast · {0}</value><comment>{0} invariant release label (v plus version). Do not translate RedrainCast.</comment></data>
+  <data name="ActionFailed" xml:space="preserve"><value>Thao tác thất bại</value></data>
+  <data name="TechnicalDetails" xml:space="preserve"><value>Chi tiết kỹ thuật: {0}</value><comment>{0} original technical/OS error, may be English. Do not translate or interpret its contents.</comment></data>
+  <data name="RetryAction" xml:space="preserve"><value>Không thể hoàn tất thao tác. Kiểm tra chi tiết rồi thử lại.</value></data>
+  <data name="InvalidAdvertisement" xml:space="preserve"><value>Đã bỏ qua thông báo khám phá thiết bị không hợp lệ</value></data>
+  <data name="DiscoveryUnavailable" xml:space="preserve"><value>Không thể khám phá thiết bị. Hãy kết nối bằng IP : Cổng.</value></data>
+  <data name="DiscoveryUnavailableActive" xml:space="preserve"><value>Không thể khám phá thiết bị. Đích đang kết nối vẫn được giữ lại ở trên.</value></data>
+  <data name="NoReceivers" xml:space="preserve"><value>Chưa có thiết bị nhận ở gần. Cả hai thiết bị cần kết nối mạng cục bộ có thể truy cập lẫn nhau.</value></data>
+  <data name="NoReceiversActive" xml:space="preserve"><value>Không có thông báo hiện diện từ thiết bị nhận ở gần. Đích đang kết nối được hiển thị ở trên.</value></data>
+  <data name="ReceiverCount" xml:space="preserve"><value>Đã tìm thấy {0} thiết bị nhận. Tự động cập nhật.</value><comment>{0} integer receiver count. Use a grammatically count-neutral form where needed.</comment></data>
+  <data name="Paused" xml:space="preserve"><value>ĐÃ TẠM DỪNG</value></data>
+  <data name="ConnectingBanner" xml:space="preserve"><value>ĐANG KẾT NỐI</value></data>
+  <data name="Ready" xml:space="preserve"><value>SẴN SÀNG</value></data>
+  <data name="PauseReceiveHint" xml:space="preserve"><value>Việc nhận sẽ tạm dừng khi bạn chia sẻ màn hình.</value></data>
+  <data name="PreparingVideo" xml:space="preserve"><value>Đang chuẩn bị video đến...</value></data>
+  <data name="Listening" xml:space="preserve"><value>Đang chờ kết nối</value></data>
+  <data name="ConnectNetwork" xml:space="preserve"><value>Kết nối với Wi-Fi hoặc Ethernet.</value></data>
+  <data name="AddressUnavailableSending" xml:space="preserve"><value>Không có địa chỉ nhận cục bộ trong khi gửi.</value></data>
+  <data name="LocalNetwork" xml:space="preserve"><value>Mạng cục bộ</value></data>
+  <data name="SourceClosed" xml:space="preserve"><value>Nguồn đã đóng. Hãy chọn lại nguồn.</value></data>
+  <data name="SourceDimensions" xml:space="preserve"><value>{0} ({1} x {2})</value><comment>{0} original source name, {1}/{2} invariant pixel width/height. Preserve original names.</comment></data>
+  <data name="Connecting" xml:space="preserve"><value>Đang kết nối...</value></data>
+  <data name="Casting" xml:space="preserve"><value>Đang truyền màn hình</value></data>
+  <data name="Stopping" xml:space="preserve"><value>Đang dừng...</value></data>
+  <data name="Busy" xml:space="preserve"><value>Đang bận</value></data>
+  <data name="Available" xml:space="preserve"><value>Khả dụng</value></data>
+  <data name="Send" xml:space="preserve"><value>Gửi</value></data>
+  <data name="Stop" xml:space="preserve"><value>Dừng</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Hủy</value></data>
+  <data name="Save" xml:space="preserve"><value>Lưu</value></data>
+  <data name="Close" xml:space="preserve"><value>Đóng</value></data>
+  <data name="ActionHelp" xml:space="preserve"><value>{0}: {1}</value><comment>Accessible button name: {0} localized action, {1} verbatim peer/source name.</comment></data>
+  <data name="OperationalNotice" xml:space="preserve"><value>Thông báo kết nối</value></data>
+  <data name="ReceiverAddress" xml:space="preserve"><value>IP : Cổng của thiết bị nhận</value></data>
+  <data name="ConnectReceiver" xml:space="preserve"><value>Kết nối với thiết bị nhận</value></data>
+  <data name="AddressExample" xml:space="preserve"><value>192.168.1.42 : 50432</value><comment>Keep invariant ASCII example address and port unchanged.</comment></data>
+  <data name="AddressValidation" xml:space="preserve"><value>Nhập IP đơn hướng : Cổng hiện tại của thiết bị nhận, ví dụ 192.168.1.42 : 50432. Đặt địa chỉ IPv6 trong dấu ngoặc vuông, ví dụ [fe80::1] : 50432. Cổng phải nằm trong khoảng từ 1 đến 65535.</value><comment>Keep network address examples and numeric limits unchanged.</comment></data>
+  <data name="OwnAddress" xml:space="preserve"><value>Nhập địa chỉ của thiết bị khác, không phải địa chỉ nhận của PC này.</value></data>
+  <data name="CopiedAddress" xml:space="preserve"><value>Đã sao chép {0}</value><comment>{0} invariant IP : Port, never translate.</comment></data>
+  <data name="SharingSettings" xml:space="preserve"><value>Cài đặt chia sẻ</value></data>
+  <data name="MaximumDimension" xml:space="preserve"><value>Kích thước tối đa (64-3840 điểm ảnh)</value></data>
+  <data name="MaximumFPS" xml:space="preserve"><value>FPS thu hình tối đa</value><comment>FPS = frames per second.</comment></data>
+  <data name="VideoBitrate" xml:space="preserve"><value>Tốc độ bit video (0.1-100 Mbps)</value><comment>Mbps = megabits per second. Preserve numeric limits.</comment></data>
+  <data name="VideoCodec" xml:space="preserve"><value>Bộ mã hóa video</value></data>
+  <data name="ReceiverOrientation" xml:space="preserve"><value>Hướng hiển thị trên thiết bị nhận</value></data>
+  <data name="Auto" xml:space="preserve"><value>Tự động</value></data>
+  <data name="Landscape" xml:space="preserve"><value>Ngang</value></data>
+  <data name="Portrait" xml:space="preserve"><value>Dọc</value></data>
+  <data name="SendAudio" xml:space="preserve"><value>Gửi âm thanh đến thiết bị nhận (tắt tiếng phát tại máy)</value></data>
+  <data name="ShowStatistics" xml:space="preserve"><value>Hiển thị thống kê phát trên thiết bị nhận</value></data>
+  <data name="SettingsValidation" xml:space="preserve"><value>Nhập kích thước là số nguyên từ 64 đến 3840 điểm ảnh, giới hạn FPS từ 1 đến 120 và tốc độ bit từ {0} đến 100 Mbps (tối đa sáu chữ số thập phân). Chọn bộ mã hóa và hướng hiển thị được hỗ trợ.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
+  <data name="SavedCodecUnavailable" xml:space="preserve"><value>Bộ mã hóa đã lưu không khả dụng trong ngữ cảnh thu hình này. Hãy chọn lại một bộ mã hóa được hỗ trợ trước khi lưu.</value></data>
+  <data name="HelpBody" xml:space="preserve"><value>Mở RedrainCast trên cả hai thiết bị: PC Windows hoặc thiết bị Android tương thích. Đảm bảo cả hai cùng kết nối với một mạng cục bộ đáng tin cậy.
+
+Trên thiết bị gửi, chọn một thiết bị nhận ở gần rồi nhấn Gửi, hoặc nhập IP : Cổng hiện tại của thiết bị nhận. Trên Windows, chọn màn hình hoặc cửa sổ để chia sẻ.
+
+Luồng truyền màn hình đến được chấp nhận tự động. Trên PC này, nội dung phát sẽ mở toàn màn hình; nhấn Enter hoặc F để bật/tắt chế độ toàn màn hình và Esc để thoát chế độ này. Dừng truyền màn hình từ thiết bị gửi.
+
+PC này tạm dừng nhận trong khi gửi và tiếp tục nhận sau khi nhấn Dừng.
+
+Cho phép RedrainCast đi qua Tường lửa Windows trên mạng Riêng tư đáng tin cậy của bạn. Việc truyền màn hình không được xác thực hay mã hóa; không cho phép truy cập từ internet.</value><comment>Keep RedrainCast, Windows, Android, IP, Enter, F and Esc identifiers. Preserve paragraphs. Send and Stop refer to localized buttons.</comment></data>
+  <data name="HelpSupport" xml:space="preserve"><value>Trợ giúp và hỗ trợ</value></data>
+  <data name="PrivacyPolicy" xml:space="preserve"><value>Chính sách quyền riêng tư</value></data>
+  <data name="TrustedNetworkTitle" xml:space="preserve"><value>Kết nối trên mạng cục bộ đáng tin cậy</value></data>
+  <data name="PickerInstructions" xml:space="preserve"><value>Chọn một ô. Chỉ bắt đầu chia sẻ khi bạn nhấn Gửi.
+Bản xem trước trực tiếp chỉ chạy tại máy và chỉ khi trình chọn này đang mở.</value></data>
+  <data name="Windows" xml:space="preserve"><value>Cửa sổ</value><comment>Plural application windows, not the Windows operating system brand.</comment></data>
+  <data name="Displays" xml:space="preserve"><value>Màn hình</value></data>
+  <data name="PreviewPending" xml:space="preserve"><value>Đang chờ bản xem trước</value></data>
+  <data name="CurrentlySelected" xml:space="preserve"><value>Đang được chọn</value></data>
+  <data name="SelectedSourceHelp" xml:space="preserve"><value>{0}, đang được chọn</value><comment>{0} original source name.</comment></data>
+  <data name="NoSources" xml:space="preserve"><value>Không có nguồn khả dụng.</value></data>
+  <data name="CannotSelectSource" xml:space="preserve"><value>Không thể chọn nguồn này. Hãy chọn nguồn khác.</value></data>
+  <data name="LivePreview" xml:space="preserve"><value>Xem trước trực tiếp</value></data>
+  <data name="PreviewUnavailable" xml:space="preserve"><value>Không có bản xem trước. Bạn vẫn có thể chọn nguồn này.</value></data>
+  <data name="PreviewsUnavailable" xml:space="preserve"><value>Không có bản xem trước. Bạn vẫn có thể chọn nguồn.</value></data>
+  <data name="ReceiverPhaseStarting" xml:space="preserve"><value>ĐANG KHỞI ĐỘNG BỘ NHẬN</value></data>
+  <data name="ReceiverPhaseReady" xml:space="preserve"><value>SẴN SÀNG NHẬN</value></data>
+  <data name="ReceiverPhaseConnecting" xml:space="preserve"><value>ĐANG KẾT NỐI</value></data>
+  <data name="ReceiverPhaseNoNetwork" xml:space="preserve"><value>KHÔNG CÓ KẾT NỐI MẠNG</value></data>
+  <data name="ReceiverPhaseDiscoveryUnavailable" xml:space="preserve"><value>KHÔNG THỂ KHÁM PHÁ THIẾT BỊ MẠNG</value></data>
+  <data name="ReceiverPhaseError" xml:space="preserve"><value>ĐÃ DỪNG PHÁT</value></data>
+  <data name="ReceiverPhaseUnavailable" xml:space="preserve"><value>BỘ NHẬN KHÔNG KHẢ DỤNG</value></data>
+  <data name="ReceiverPhaseStopped" xml:space="preserve"><value>ĐÃ ĐÓNG BỘ NHẬN</value></data>
+  <data name="ReceiverUnavailable" xml:space="preserve"><value>Bộ nhận không khả dụng</value></data>
+  <data name="PlaybackStopped" xml:space="preserve"><value>Đã dừng phát</value></data>
+  <data name="ReceiverStartFailed" xml:space="preserve"><value>Không thể mở trình lắng nghe kết nối của bộ nhận. Kiểm tra quyền truy cập mạng rồi mở lại ứng dụng này.</value></data>
+  <data name="ReceiverUnsafe" xml:space="preserve"><value>Bộ nhận không thể tiếp tục hoạt động an toàn. Đóng rồi mở lại ứng dụng này.</value></data>
+  <data name="ReceiverDiscoveryWarning" xml:space="preserve"><value>Chức năng khám phá thiết bị tự động có thể không khả dụng. Hãy nhập thủ công địa chỉ của PC này trên thiết bị gửi.</value></data>
+  <data name="ReceiverAddressLookupStopped" xml:space="preserve"><value>Đã dừng tra cứu địa chỉ mạng. Kiểm tra kết nối mạng của PC này rồi đóng và mở lại bộ nhận để thử lại.</value></data>
+  <data name="ReceiverDiscoveryStopped" xml:space="preserve"><value>Đã dừng khám phá thiết bị tự động và cập nhật địa chỉ. Bạn có thể thử nhập thủ công địa chỉ đang hiển thị hoặc mở lại bộ nhận để khởi động lại chức năng khám phá thiết bị.</value></data>
+  <data name="ReceiverWindowLayoutFailed" xml:space="preserve"><value>Không thể điều chỉnh cửa sổ cho phù hợp với màn hình này. Hãy thử di chuyển hoặc mở lại cửa sổ.</value></data>
+  <data name="ReceiverUnsupportedConfig" xml:space="preserve"><value>Các cài đặt đó không được hỗ trợ. Chọn bộ mã hóa, độ phân giải và tốc độ khung hình được hỗ trợ trên thiết bị gửi rồi thử lại.</value></data>
+  <data name="ReceiverDecoderFailed" xml:space="preserve"><value>Đã dừng phát video. Khởi động lại việc truyền màn hình; nếu lỗi lặp lại, hãy thử bộ mã hóa khác hoặc độ phân giải thấp hơn.</value></data>
+  <data name="ReceiverAudioFailed" xml:space="preserve"><value>Đã dừng phát âm thanh. Kiểm tra thiết bị đầu ra âm thanh của Windows rồi khởi động lại việc truyền màn hình.</value></data>
+  <data name="ReceiverCongestion" xml:space="preserve"><value>Việc phát không theo kịp. Hãy thử giảm độ phân giải, tốc độ khung hình hoặc tốc độ bit trên thiết bị gửi.</value></data>
+  <data name="ReceiverTimeout" xml:space="preserve"><value>Thiết bị gửi ngừng phản hồi hoặc không thể bắt đầu phát. Hãy bắt đầu truyền màn hình lại từ thiết bị gửi.</value></data>
+  <data name="ReceiverVersion" xml:space="preserve"><value>Cập nhật cả hai ứng dụng rồi thử kết nối lại.</value></data>
+  <data name="ReceiverSenderError" xml:space="preserve"><value>Thiết bị gửi báo lỗi. Kiểm tra màn hình của thiết bị đó rồi bắt đầu truyền màn hình lại.</value></data>
+  <data name="ReceiverUnexpected" xml:space="preserve"><value>Việc truyền màn hình dừng đột ngột. Khởi động lại từ thiết bị gửi; nếu lỗi lặp lại, hãy đóng rồi mở lại bộ nhận.</value></data>
+  <data name="StatisticsTitle" xml:space="preserve"><value>Thống kê phát</value></data>
+  <data name="StatisticsConnections" xml:space="preserve"><value>KẾT NỐI &amp; HÀNG ĐỢI</value></data>
+  <data name="StatisticsVideo" xml:space="preserve"><value>LUỒNG VIDEO</value></data>
+  <data name="StatisticsAudioSync" xml:space="preserve"><value>ÂM THANH &amp; ĐỒNG BỘ</value></data>
+  <data name="StatisticsColumnChannel" xml:space="preserve"><value>Kênh</value></data>
+  <data name="StatisticsColumnQueued" xml:space="preserve"><value>Đang chờ</value></data>
+  <data name="StatisticsColumnSpan" xml:space="preserve"><value>Thời lượng</value></data>
+  <data name="StatisticsColumnLastActivity" xml:space="preserve"><value>Hoạt động cuối</value></data>
+  <data name="StatisticsColumnRTT" xml:space="preserve"><value>RTT</value><comment>Round-trip time.</comment></data>
+  <data name="StatisticsClockNote" xml:space="preserve"><value>Độ lệch dương = video đi trước · Độ lệch đỉnh quan sát được dùng mẫu 1-Hz.</value></data>
+  <data name="StatisticsCompactClockNote" xml:space="preserve"><value>PTS nguồn: + = video đi trước; đỉnh lấy mẫu 1 Hz; không phải độ trễ đầu cuối</value><comment>PTS = presentation timestamp. Keep timing semantics and + sign.</comment></data>
+  <data name="StatisticsLatencyNote" xml:space="preserve"><value>Dấu thời gian nguồn · không phải độ trễ đầu cuối</value></data>
+  <data name="StatisticsQueueNote" xml:space="preserve"><value>Hàng đợi dữ liệu mã hóa: gói đang chờ · tổng: theo chu kỳ/thế hệ</value></data>
+  <data name="Statistics_receivedFps" xml:space="preserve"><value>FPS nhận</value></data>
+  <data name="Statistics_decodedFps" xml:space="preserve"><value>FPS giải mã</value></data>
+  <data name="Statistics_presentedFps" xml:space="preserve"><value>FPS xuất hình</value></data>
+  <data name="Statistics_recentSkippedPercent" xml:space="preserve"><value>Bỏ qua · gần đây</value><comment>Recent sampled percentage, not a cumulative count or network packet loss.</comment></data>
+  <data name="Statistics_videoCodec" xml:space="preserve"><value>Bộ mã hóa</value></data>
+  <data name="Statistics_encodedSize" xml:space="preserve"><value>Kích thước mã hóa</value></data>
+  <data name="Statistics_captureLimit" xml:space="preserve"><value>Giới hạn thu hình</value><comment>Requested maximum FPS, not observed frames per second.</comment></data>
+  <data name="Statistics_canvasSize" xml:space="preserve"><value>Bề mặt bộ nhận</value><comment>Physical pixel size of receiver surface, not DIP.</comment></data>
+  <data name="Statistics_rotation" xml:space="preserve"><value>Góc xoay</value></data>
+  <data name="Statistics_videoBitrate" xml:space="preserve"><value>Tốc độ bit video</value></data>
+  <data name="Statistics_configuredVideoBitrate" xml:space="preserve"><value>Tốc độ bit đã cấu hình</value></data>
+  <data name="Statistics_networkLoss" xml:space="preserve"><value>Mất gói mạng</value></data>
+  <data name="Statistics_audioCodec" xml:space="preserve"><value>Định dạng âm thanh</value></data>
+  <data name="Statistics_audioBitrate" xml:space="preserve"><value>Tốc độ bit âm thanh</value></data>
+  <data name="Statistics_pcmBufferTarget" xml:space="preserve"><value>Bộ đệm PCM / mục tiêu</value><comment>Current PCM buffer and target durations in milliseconds. Preserve PCM identifier.</comment></data>
+  <data name="Statistics_devicePadding" xml:space="preserve"><value>Đệm âm thanh thiết bị</value></data>
+  <data name="Statistics_insertedSilence" xml:space="preserve"><value>Khoảng lặng đã chèn</value></data>
+  <data name="Statistics_discardedPcm" xml:space="preserve"><value>PCM đã loại bỏ</value></data>
+  <data name="Statistics_avSkew" xml:space="preserve"><value>Độ lệch A/V</value><comment>Video source PTS minus played-source audio PTS, milliseconds. Positive means video ahead; not end-to-end latency.</comment></data>
+  <data name="Statistics_peakObservedSkew" xml:space="preserve"><value>Đỉnh lệch ghi nhận</value><comment>Maximum absolute skew from 1-Hz overlay samples; not a native high-frequency maximum.</comment></data>
+  <data name="Statistics_decodedTotal" xml:space="preserve"><value>Đã giải mã</value></data>
+  <data name="Statistics_presentedTotal" xml:space="preserve"><value>Đã xuất hình</value></data>
+  <data name="Statistics_skippedTotal" xml:space="preserve"><value>Đã bỏ qua</value></data>
+  <data name="Statistics_state" xml:space="preserve"><value>Trạng thái</value></data>
+  <data name="Statistics_generation" xml:space="preserve"><value>Thế hệ</value></data>
+  <data name="Statistics_playbackEpoch" xml:space="preserve"><value>Chu kỳ phát</value><comment>Native playback-instance/rebuild epoch, not Audio epoch. Preserve this distinction.</comment></data>
+  <data name="Statistics_occluded" xml:space="preserve"><value>Bị che khuất</value><comment>Whether playback surface is covered/occluded.</comment></data>
+  <data name="ChannelVideo" xml:space="preserve"><value>Video</value></data>
+  <data name="ChannelAudio" xml:space="preserve"><value>Âm thanh</value></data>
+  <data name="ChannelControl" xml:space="preserve"><value>Điều khiển</value></data>
+  <data name="NotAvailable" xml:space="preserve"><value>N/A</value></data>
+  <data name="Off" xml:space="preserve"><value>Tắt</value></data>
+  <data name="Recovering" xml:space="preserve"><value>Đang khôi phục</value></data>
+  <data name="Playing" xml:space="preserve"><value>Đang phát</value></data>
+  <data name="Yes" xml:space="preserve"><value>Có</value></data>
+  <data name="No" xml:space="preserve"><value>Không</value></data>
+  <data name="UnitMilliseconds" xml:space="preserve"><value>ms</value><comment>Milliseconds. Short overlay unit; do not change magnitude.</comment></data>
+  <data name="UnitMegabits" xml:space="preserve"><value>Mbps</value><comment>Megabits per second, not megabytes.</comment></data>
+  <data name="UnitPixels" xml:space="preserve"><value>px</value></data>
+  <data name="UnitFrames" xml:space="preserve"><value>FPS</value><comment>Frames per second.</comment></data>
+  <data name="UnitBytes" xml:space="preserve"><value>B</value><comment>Bytes, not bits.</comment></data>
+  <data name="PreparingCapture" xml:space="preserve"><value>Đang chuẩn bị thu hình</value></data>
+  <data name="InitializingCapture" xml:space="preserve"><value>Đang khởi tạo thu hình</value></data>
+  <data name="Negotiating" xml:space="preserve"><value>Đang thương lượng</value></data>
+  <data name="PlaybackOptionUnavailable" xml:space="preserve"><value>Thống kê phát yêu cầu thiết bị nhận tương thích; việc truyền màn hình vẫn tiếp tục mà không có lớp phủ thống kê.</value></data>
+  <data name="ChooseSourceFailed" xml:space="preserve"><value>Không thể chọn màn hình hoặc cửa sổ. Hãy chọn nguồn khác hoặc thử lại.</value></data>
+  <data name="ReceiverBusy" xml:space="preserve"><value>Thiết bị nhận đó đang bận.</value></data>
+  <data name="ChooseOtherDevice" xml:space="preserve"><value>Chọn thiết bị khác, không phải bộ nhận của chính PC này.</value></data>
+  <data name="IncomingAlreadyStarted" xml:space="preserve"><value>Một luồng truyền màn hình đến đã bắt đầu.</value></data>
+  <data name="SendingFailed" xml:space="preserve"><value>Không thể chia sẻ màn hình. Kiểm tra địa chỉ và kết nối mạng của thiết bị nhận rồi thử lại.</value></data>
+  <data name="CopyFailed" xml:space="preserve"><value>Không thể sao chép địa chỉ. Hãy thử lại.</value></data>
+  <data name="DisplaySource" xml:space="preserve"><value>Màn hình {0} ({1} × {2})</value><comment>{0} display number, {1}/{2} invariant pixel width/height. Do not change source identity.</comment></data>
+  <data name="ChooseSourceFirst" xml:space="preserve"><value>Chọn màn hình hoặc cửa sổ trước khi gửi.</value></data>
+  <data name="SettingsUnavailable" xml:space="preserve"><value>Không thể đọc cài đặt của thiết bị thu hình. Kiểm tra nguồn rồi mở lại cài đặt.</value></data>
+  <data name="SavedSettingsFailed" xml:space="preserve"><value>Không thể tải cài đặt đã lưu; đang dùng cài đặt chia sẻ mặc định.</value></data>
+  <data name="StatisticsUnavailable" xml:space="preserve"><value>Thống kê phát không khả dụng; vẫn có thể tiếp tục truyền màn hình mà không có lớp phủ thống kê.</value></data>
+  <data name="SourceChanged" xml:space="preserve"><value>Nguồn thu hình đã thay đổi trong khi đọc danh sách bộ mã hóa. Mở lại cài đặt hoặc thử lại thao tác Lưu.</value></data>
+  <data name="ChooseDifferentWindow" xml:space="preserve"><value>Chọn cửa sổ khác hoặc một màn hình, không phải cửa sổ chính của ứng dụng này.</value></data>
+</root>

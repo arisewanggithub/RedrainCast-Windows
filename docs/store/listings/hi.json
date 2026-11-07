@@ -1,0 +1,48 @@
+{
+  "locale": "hi",
+  "productName": "RedrainCast",
+  "description": "भरोसेमंद स्थानीय नेटवर्क पर अपने Windows PC और संगत RedrainCast डिवाइस के बीच स्क्रीन या विंडो शेयर करें।\n\nRedrainCast एक ही नेटिव Windows ऐप में स्क्रीन भेजने और प्राप्त करने की सुविधाएँ देता है। शेयर करने के लिए डिस्प्ले या विंडो चुनें, आस-पास का रिसीवर चुनें और कास्ट करना शुरू करें। आप रिसीवर पर दिखाए गए IP पते और पोर्ट का इस्तेमाल करके सीधे भी कनेक्ट कर सकते हैं।\n\nस्क्रीन के साथ आउटपुट ऑडियो शेयर करें, कैप्चर की सीमाएँ और वीडियो की गुणवत्ता समायोजित करें तथा संगत रिसीवर पर चाहें तो प्लेबैक के आँकड़े देखें। आने वाले कास्ट फ़ुलस्क्रीन दृश्य में खुलते हैं। शेयर करना बंद करने पर रिसीवर की विंडो अपनी पिछली स्थिति में लौट आती है।\n\nआवश्यकताएँ\n- ARM64 या x64 पर Windows 11 संस्करण 22H2 या बाद का संस्करण।\n- दूसरे डिवाइस पर संगत RedrainCast ऐप होना चाहिए। इनमें समर्थित Windows और Android डिवाइस शामिल हैं। RedrainCast सामान्य Miracast या Google Cast रिसीवर नहीं है।\n- भरोसेमंद स्थानीय नेटवर्क और समर्थित हार्डवेयर वीडियो एन्कोडिंग/डिकोडिंग। कोडेक की उपलब्धता डिवाइस पर निर्भर करती है।\n\nनेटवर्क और गोपनीयता से जुड़ी महत्वपूर्ण जानकारी\nरिसीवर उपलब्ध रहने पर आने वाले कास्ट अपने-आप स्वीकार किए जाते हैं। RedrainCast का इस्तेमाल केवल भरोसेमंद नेटवर्क पर और उन डिवाइस के साथ करें जिन पर आपको भरोसा है। स्थानीय कास्टिंग के स्क्रीन और ऑडियो ट्रैफ़िक तथा डिवाइस खोज में न तो प्रमाणीकरण होता है, न ही एन्क्रिप्शन। किसी खाते या क्लाउड रिले का इस्तेमाल नहीं होता। मानक ऐप आपकी स्क्रीन या ऑडियो को फ़ाइलों में रिकॉर्ड नहीं करता।",
+  "whatsNew": "",
+  "productFeatures": [
+    "एक ही नेटिव Windows ऐप में स्क्रीन भेजें और प्राप्त करें।",
+    "चुना हुआ डिस्प्ले या विंडो शेयर करें।",
+    "आस-पास के रिसीवर खोजें या IP पते और पोर्ट से कनेक्ट करें।",
+    "Windows और Android पर संगत RedrainCast ऐप के साथ कास्ट करें।",
+    "स्क्रीन के साथ आउटपुट ऑडियो भेजें।",
+    "अधिकतम कैप्चर आकार, फ़्रेम दर, बिटरेट और समर्थित वीडियो कोडेक समायोजित करें।",
+    "संगत रिसीवर पर चाहें तो प्लेबैक के आँकड़े देखें।",
+    "Windows की लाइट, डार्क और हाई-कॉन्ट्रास्ट थीम के साथ फ़ुलस्क्रीन में कास्ट प्राप्त करें।"
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "भरोसेमंद स्थानीय नेटवर्क पर संगत Windows और Android डिवाइस के बीच अपनी स्क्रीन या विंडो शेयर करें और चाहें तो ऑडियो भी भेजें।",
+  "keywords": [
+    "स्क्रीन शेयरिंग",
+    "स्क्रीन कास्टिंग",
+    "स्थानीय नेटवर्क",
+    "विंडो शेयरिंग",
+    "स्क्रीन रिसीवर",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/hi/01-home.png", "caption": "स्क्रीन भेजें और प्राप्त करें।", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/hi/02-sharing-settings.png", "caption": "शेयरिंग सेटिंग्स", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

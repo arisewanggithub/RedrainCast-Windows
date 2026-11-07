@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using ScrcpyReceive.Core;
 using Xunit;
 
@@ -9,8 +10,46 @@ namespace ScrcpyReceive.Tests;
 
 public sealed class ListenerTests
 {
+    [Fact]
+    public async Task IdleDiagnosticsDoNotInventAnActiveSession()
+    {
+        await using var server = Server();
+        server.Start(false);
+        Assert.Equal("session=none", server.Diagnostics);
+    }
+
     private static ReceiverServer Server(IPlaybackFactory? factory = null) =>
         new("Test receiver", factory ?? new UnavailablePlaybackFactory(), _ => { }, 0, IPAddress.Loopback);
+
+    [Fact]
+    public async Task QueuedMediaDoesNotBlockThreeTcpStop()
+    {
+        var presenting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var factory = new TestFactory();
+        factory.Playback.OnPresent = async (_, token) =>
+        {
+            presenting.TrySetResult();
+            await Task.Delay(Timeout.Infinite, token);
+        };
+        await using var server = new ReceiverServer("Synthetic test", factory,
+            _ => { }, 0, IPAddress.Loopback);
+        server.Start(false);
+        using var peer = await ConnectAsync(server);
+        await HelloAsync(peer);
+        await RequestAsync(peer);
+        Assert.Equal(PacketType.SessionAccept, (await ReadAsync(peer)).Type);
+        await SendAsync(peer, QueueAndTrackTests.Configuration());
+        Assert.Equal(PacketType.StreamReady, (await ReadAsync(peer)).Type);
+        await SendAsync(peer, QueueAndTrackTests.Media(100));
+        await presenting.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await SendAsync(peer, QueueAndTrackTests.Media(200));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (server.Statistics!.Video.Packets < 2) await Task.Delay(5, timeout.Token);
+        Assert.Empty(factory.Playback.Presented);
+        await SendAsync(peer, Packet.Control(PacketType.Stop, 1, new { reason = "test complete" }));
+        Assert.Equal(PacketType.SessionEnd, (await ReadAsync(peer)).Type);
+        while (server.IsBusy) await Task.Delay(5, timeout.Token);
+    }
 
     private sealed class TestClient : TcpClient
     {
@@ -64,6 +103,86 @@ public sealed class ListenerTests
     private static async Task RequestAsync(TcpClient client, long session = 1, bool audio = false)
     {
         await SendAsync(client, Packet.Control(PacketType.SessionRequest, session, RequestTests.Settings(audio)));
+    }
+
+    [Theory]
+    [InlineData(90)]
+    [InlineData(120)]
+    [InlineData(240)]
+    public async Task HighFpsAdmissionStopAndReconnectKeepTheExactRequest(int fps)
+    {
+        var factory = new TestFactory { FreshAfterFirstOpen = true };
+        await using var server = Server(factory);
+        server.Start(false);
+        for (var session = 1; session <= 2; session++)
+        {
+            using var peer = await ConnectAsync(server);
+            await HelloAsync(peer);
+            var settings = System.Text.Json.JsonSerializer.SerializeToNode(RequestTests.Settings(false))!;
+            settings["video"]!["maxFps"] = fps;
+            await SendAsync(peer, Packet.Control(PacketType.SessionRequest, session, settings));
+            Assert.Equal(PacketType.SessionAccept, (await ReadAsync(peer)).Type);
+            Assert.Equal(fps, factory.Requests.Last().VideoProcessingFramesPerSecond);
+            await SendAsync(peer, Packet.Control(PacketType.Stop, session, new { reason = "high FPS test" }));
+            Assert.Equal(PacketType.SessionEnd, (await ReadAsync(peer)).Type);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (server.IsBusy) await Task.Delay(10, timeout.Token);
+            Assert.False(server.IsBusy);
+        }
+        Assert.Equal(2, factory.Opens);
+    }
+
+    [Theory]
+    [InlineData(null, true, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    public async Task RotationRequiresBothPeerOfferAndPlaybackSupport(bool? offer, bool supported, bool expected)
+    {
+        var factory = new TestFactory { SupportsVideoRotation = supported };
+        await using var server = Server(factory);
+        server.Start(false);
+        using var client = await ConnectAsync(server);
+        var hello = new Dictionary<string, object>
+        {
+            ["role"] = "sender", ["versions"] = new[] { 3 }, ["name"] = "Android rotation test"
+        };
+        if (offer is { } offered) hello["videoRotation"] = offered;
+        await SendAsync(client, Packet.Control(PacketType.Hello, 0, hello));
+        var response = (await ReadAsync(client)).Object();
+        Assert.Equal(expected, response.TryGetProperty("videoRotation", out var value) && value.GetBoolean());
+        await RequestAsync(client);
+        Assert.Equal(PacketType.SessionAccept, (await ReadAsync(client)).Type);
+        await SendAsync(client, QueueAndTrackTests.Configuration());
+        Assert.Equal(PacketType.StreamReady, (await ReadAsync(client)).Type);
+        await SendAsync(client, QueueAndTrackTests.Media(100) with { Flags = 3 });
+        if (expected)
+        {
+            await SendAsync(client, QueueAndTrackTests.Media(100) with { Flags = 6 });
+            await factory.Playback.TwoPresented.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(new[] { 90, 270 }, factory.Playback.Rotations.ToArray());
+            Assert.Equal(new[] { 100L, 100L }, factory.Playback.Presented.ToArray());
+            await SendAsync(client, Packet.Control(PacketType.Stop, 1, new { reason = "test" }));
+            Assert.Equal(PacketType.SessionEnd, (await ReadAsync(client)).Type);
+        }
+        else
+        {
+            Assert.Equal(PacketType.Error, (await ReadAsync(client)).Type);
+            Assert.Empty(factory.Playback.Presented);
+        }
+    }
+
+    [Theory]
+    [InlineData("true")]
+    [InlineData(1)]
+    public async Task MalformedRotationCapabilityIsRejected(object capability)
+    {
+        await using var server = Server(new TestFactory { SupportsVideoRotation = true });
+        server.Start(false);
+        using var client = await ConnectAsync(server);
+        await SendAsync(client, Packet.Control(PacketType.Hello, 0,
+            new { role = "sender", versions = new[] { 3 }, name = "Test", videoRotation = capability }));
+        Assert.Equal(PacketType.Reject, (await ReadAsync(client)).Type);
     }
 
     [Fact]
@@ -227,6 +346,38 @@ public sealed class ListenerTests
         Assert.Equal(PacketType.SessionEnd, (await ReadAsync(client)).Type);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BufferedStopAfterAcceptanceRetiresTracksWithoutFatalPlaybackError(bool audio)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            var factory = new TestFactory();
+            await using var server = Server(factory);
+            server.Start(false);
+            using var client = new TcpClient { NoDelay = true };
+            await client.ConnectAsync(IPAddress.Loopback, server.Port, timeout.Token);
+            await HelloAsync(client);
+            using var packets = new MemoryStream();
+            await Wire.WriteAsync(packets, Packet.Control(PacketType.SessionRequest, 1, RequestTests.Settings(audio)),
+                timeout.Token);
+            await Wire.WriteAsync(packets, Packet.Control(PacketType.Stop, 1, new { reason = "cancel before tracks start" }),
+                timeout.Token);
+            await client.GetStream().WriteAsync(packets.ToArray(), timeout.Token);
+            Assert.Equal(PacketType.SessionAccept, (await Wire.ReadAsync(client.GetStream(), timeout.Token)).Type);
+            var ended = await Wire.ReadAsync(client.GetStream(), timeout.Token);
+            Assert.Equal(PacketType.SessionEnd, ended.Type);
+            Assert.Equal("cancel before tracks start", JsonObject.Text(ended.Object(), "reason", 1024));
+            Assert.True(factory.Playback.Disposed);
+            Assert.Equal(1, factory.Playback.DisposeCalls);
+            Assert.Empty(factory.Playback.Configured);
+            Assert.Empty(factory.Playback.Presented);
+            Assert.Equal(0, await client.GetStream().ReadAsync(new byte[1], timeout.Token));
+        }
+    }
+
     [Fact]
     public async Task UnacknowledgedReceiverStopClosesWithinTwoSecondBudget()
     {
@@ -283,6 +434,50 @@ public sealed class ListenerTests
         await client.GetStream().WriteAsync("SC"u8.ToArray());
         await Task.WhenAll(server.DisposeAsync().AsTask(), server.DisposeAsync().AsTask())
             .WaitAsync(TimeSpan.FromSeconds(3));
+    }
+
+    [Fact]
+    public async Task AbortDoesNotHoldTheClientLockWhileWaitingForTheServerGate()
+    {
+        await using var server = Server(new TestFactory());
+        server.Start(false);
+        using var peer = await ConnectAsync(server);
+        await HelloAsync(peer);
+        await RequestAsync(peer);
+        Assert.Equal(PacketType.SessionAccept, (await ReadAsync(peer)).Type);
+        static object Field(object target, string name) =>
+            target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(target)!;
+        var connection = Field(server, "active");
+        var clientLock = Field(connection, "client");
+        var serverGate = Field(server, "gate");
+        var abort = connection.GetType().GetMethod("Abort")!.CreateDelegate<Action>(connection);
+        using var entered = new ManualResetEventSlim();
+        Exception? abortFailure = null;
+        var thread = new Thread(() =>
+        {
+            entered.Set();
+            try { abort(); }
+            catch (Exception error) { abortFailure = error; }
+        }) { IsBackground = true };
+        var clientLockAvailable = false;
+        try
+        {
+            lock (serverGate)
+            {
+                thread.Start();
+                Assert.True(entered.Wait(TimeSpan.FromSeconds(2)), "Abort thread did not start.");
+                Assert.True(SpinWait.SpinUntil(() => (thread.ThreadState & System.Threading.ThreadState.WaitSleepJoin) != 0,
+                    TimeSpan.FromSeconds(2)), "Abort did not reach the held server gate.");
+                clientLockAvailable = Monitor.TryEnter(clientLock, TimeSpan.FromMilliseconds(200));
+                if (clientLockAvailable) Monitor.Exit(clientLock);
+            }
+        }
+        finally
+        {
+            Assert.True(thread.Join(TimeSpan.FromSeconds(2)), "Abort did not retire after releasing the server gate.");
+        }
+        Assert.Null(abortFailure);
+        Assert.True(clientLockAvailable, "Abort held the client lock while waiting for the server gate, reversing shutdown's lock order.");
     }
 
     [Fact]
@@ -472,6 +667,232 @@ public sealed class ListenerTests
         finally { release.TrySetResult(); }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MediaEofDrainsCurrentSessionFatalOrNormalStopBeforeClosingControl(bool fatal)
+    {
+        var notices = new ConcurrentQueue<ReceiverNotice>();
+        var factory = new TestFactory();
+        await using var server = new ReceiverServer("Test", factory, notices.Enqueue, 0, IPAddress.Loopback);
+        server.Start(false);
+        using var peer = await ConnectAsync(server);
+        await HelloAsync(peer);
+        await RequestAsync(peer);
+        Assert.Equal(PacketType.SessionAccept, (await ReadAsync(peer)).Type);
+        peer.Video.Client.Shutdown(SocketShutdown.Send);
+        var watch = Stopwatch.StartNew();
+        await Task.Delay(350);
+        await SendAsync(peer, Packet.Control(fatal ? PacketType.Error : PacketType.Stop, 1,
+            fatal ? (object)new { code = "CAPTURE_FAILED", message = "Exact sender terminal message", fatal = true }
+                : new { reason = "normal sender stop" }));
+        if (!fatal) Assert.Equal(PacketType.SessionEnd, (await ReadAsync(peer)).Type);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        Assert.Equal(0, await peer.GetStream().ReadAsync(new byte[1], timeout.Token));
+        while (server.IsBusy) await Task.Delay(10, timeout.Token);
+        Assert.True(factory.Playback.Disposed);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2));
+        Assert.DoesNotContain(notices, notice => notice.State == "PROTOCOL");
+        if (fatal)
+            Assert.Contains(notices, notice => notice.State == "Sender error" &&
+                notice.Detail.Contains("CAPTURE_FAILED: Exact sender terminal message"));
+    }
+
+    [Fact]
+    public async Task HandledPlaybackFatalRetiresMediaAndPlaybackBeforeFinalControlClose()
+    {
+        var factory = new TestFactory();
+        var disposing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        factory.Playback.OnPresent = (_, _) => throw new IOException("Synthetic decoder failure");
+        factory.Playback.OnDispose = async () =>
+        {
+            disposing.TrySetResult();
+            await release.Task;
+        };
+        await using var server = Server(factory);
+        server.Start(false);
+        using var peer = await ConnectAsync(server);
+        await HelloAsync(peer);
+        await RequestAsync(peer);
+        Assert.Equal(PacketType.SessionAccept, (await ReadAsync(peer)).Type);
+        await SendAsync(peer, QueueAndTrackTests.Configuration());
+        Assert.Equal(PacketType.StreamReady, (await ReadAsync(peer)).Type);
+        await SendAsync(peer, QueueAndTrackTests.Media(0));
+        var error = await ReadAsync(peer);
+        Assert.Equal(PacketType.Error, error.Type);
+        Assert.Equal("DECODER_FAILED", JsonObject.Text(error.Object(), "code"));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+        try
+        {
+            await disposing.Task.WaitAsync(timeout.Token);
+            Assert.Equal(0, await peer.Video.GetStream().ReadAsync(new byte[1], timeout.Token));
+            Assert.Equal(0, await peer.Audio.GetStream().ReadAsync(new byte[1], timeout.Token));
+            var controlEof = peer.GetStream().ReadAsync(new byte[1], timeout.Token).AsTask();
+            await Task.Delay(100, timeout.Token);
+            Assert.False(controlEof.IsCompleted);
+            release.TrySetResult();
+            Assert.Equal(0, await controlEof);
+        }
+        finally { release.TrySetResult(); }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task StalledPlaybackRetirementHasOneBoundedBudgetAndClosesAllSockets(bool remoteStop)
+    {
+        var factory = new TestFactory();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        factory.Playback.OnDispose = async () => await release.Task;
+        await using var server = Server(factory);
+        server.Start(false);
+        using var peer = await ConnectAsync(server);
+        await HelloAsync(peer);
+        await RequestAsync(peer);
+        Assert.Equal(PacketType.SessionAccept, (await ReadAsync(peer)).Type);
+        var watch = Stopwatch.StartNew();
+        await SendAsync(peer, Packet.Control(remoteStop ? PacketType.Stop : PacketType.Error, 1,
+            remoteStop ? (object)new { reason = "normal stop" }
+                : new { code = "CAPTURE_FAILED", message = "Synthetic sender failure", fatal = true }));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+        try
+        {
+            if (remoteStop)
+            {
+                var error = await ReadAsync(peer);
+                Assert.Equal(PacketType.Error, error.Type);
+                Assert.Equal("TIMEOUT", JsonObject.Text(error.Object(), "code"));
+            }
+            Assert.Equal(0, await peer.GetStream().ReadAsync(new byte[1], timeout.Token));
+            Assert.Equal(0, await peer.Video.GetStream().ReadAsync(new byte[1], timeout.Token));
+            Assert.Equal(0, await peer.Audio.GetStream().ReadAsync(new byte[1], timeout.Token));
+            Assert.InRange(watch.Elapsed.TotalSeconds, 1.8, 3.2);
+        }
+        finally { release.TrySetResult(); }
+    }
+
+    [Fact]
+    public async Task TruncatedMediaHeaderIsARealProtocolFailureNotProvisionalEof()
+    {
+        await using var server = Server(new TestFactory());
+        server.Start(false);
+        using var peer = await ConnectAsync(server);
+        await HelloAsync(peer);
+        await RequestAsync(peer);
+        Assert.Equal(PacketType.SessionAccept, (await ReadAsync(peer)).Type);
+        var watch = Stopwatch.StartNew();
+        await peer.Video.GetStream().WriteAsync(new byte[] { 0x53 });
+        peer.Video.Client.Shutdown(SocketShutdown.Send);
+        Assert.Equal(PacketType.Error, (await ReadAsync(peer)).Type);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(1));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TimedOutRetirementOwnsResourcesUntilTheLastCallbackFinishes(bool blockDisposal)
+    {
+        var notices = new ConcurrentQueue<ReceiverNotice>();
+        var pending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var blocked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var callbackFinished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var leasesDisposed = 0;
+        var factory = new TestFactory { FreshAfterFirstOpen = true };
+        Action probe = () => { };
+        if (blockDisposal) factory.Playback.OnDispose = BlockAsync;
+        else factory.Playback.OnPresent = (_, _) => BlockAsync();
+        await using var server = new ReceiverServer("Test", factory, notice =>
+        {
+            notices.Enqueue(notice);
+            if (notice.State == "Cleanup pending") pending.TrySetResult();
+        }, 0, IPAddress.Loopback, () => new TestLease(() => Interlocked.Increment(ref leasesDisposed)));
+        server.Start(false);
+        using var peer = await ConnectAsync(server);
+        await HelloAsync(peer);
+        await RequestAsync(peer);
+        Assert.Equal(PacketType.SessionAccept, (await ReadAsync(peer)).Type);
+        var connection = Field(server, "active");
+        var writer = (SemaphoreSlim)Field(connection, "writer");
+        var transport = (CancellationTokenSource)Field(connection, "cancellation");
+        var playbackCancellation = (CancellationTokenSource)Field(connection, "playbackCancellation");
+        var signals = (SemaphoreSlim[])Field(Field(connection, "queue"), "signals");
+        probe = () =>
+        {
+            _ = writer.AvailableWaitHandle;
+            _ = transport.Token;
+            _ = playbackCancellation.Token;
+            foreach (var signal in signals) _ = signal.AvailableWaitHandle;
+        };
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        if (!blockDisposal)
+        {
+            await SendAsync(peer, QueueAndTrackTests.Configuration());
+            Assert.Equal(PacketType.StreamReady, (await ReadAsync(peer)).Type);
+            await SendAsync(peer, QueueAndTrackTests.Media(0));
+            await blocked.Task.WaitAsync(timeout.Token);
+        }
+        var watch = Stopwatch.StartNew();
+        await SendAsync(peer, Packet.Control(PacketType.Error, 1,
+            new { code = "CAPTURE_FAILED", message = "Synthetic sender terminal failure", fatal = true }));
+        try
+        {
+            await blocked.Task.WaitAsync(timeout.Token);
+            Assert.Equal(0, await peer.Video.GetStream().ReadAsync(new byte[1], timeout.Token));
+            Assert.Equal(0, await peer.Audio.GetStream().ReadAsync(new byte[1], timeout.Token));
+            Assert.Equal(0, await peer.GetStream().ReadAsync(new byte[1], timeout.Token));
+            await pending.Task.WaitAsync(timeout.Token);
+            Assert.InRange(watch.Elapsed.TotalSeconds, 1.8, 3.5);
+            probe();
+            Assert.Equal(0, Volatile.Read(ref leasesDisposed));
+            Assert.Equal(blockDisposal ? 1 : 0, factory.Playback.DisposeCalls);
+            Assert.True(server.IsBusy);
+            var disposingResources = (Task)Field(connection, "resourceDisposal");
+            Assert.False(disposingResources.IsCompleted);
+            release.TrySetResult();
+            await callbackFinished.Task.WaitAsync(timeout.Token);
+            await disposingResources.WaitAsync(timeout.Token);
+            Assert.Equal(1, factory.Playback.DisposeCalls);
+            Assert.Equal(1, Volatile.Read(ref leasesDisposed));
+            Assert.Throws<ObjectDisposedException>(() => _ = writer.AvailableWaitHandle);
+            Assert.Throws<ObjectDisposedException>(() => _ = transport.Token);
+            Assert.Throws<ObjectDisposedException>(() => _ = playbackCancellation.Token);
+            foreach (var signal in signals)
+                Assert.Throws<ObjectDisposedException>(() => _ = signal.AvailableWaitHandle);
+            Assert.False(server.IsBusy);
+            Assert.Contains(notices, notice => notice.State == "Cleanup failed" &&
+                notice.Detail.Contains("origin=connection-retirement"));
+            Assert.Contains(notices, notice => notice.State == "Cleanup complete");
+            Assert.DoesNotContain(notices, notice => notice.Detail.Contains("ObjectDisposedException"));
+
+            using var next = await ConnectAsync(server);
+            await HelloAsync(next);
+            await RequestAsync(next, session: 2);
+            Assert.Equal(PacketType.SessionAccept, (await ReadAsync(next)).Type);
+            await SendAsync(next, Packet.Control(PacketType.Stop, 2, new { reason = "next session" }));
+            Assert.Equal(PacketType.SessionEnd, (await ReadAsync(next)).Type);
+            Assert.Equal(1, factory.Playback.DisposeCalls);
+        }
+        finally { release.TrySetResult(); }
+
+        async ValueTask BlockAsync()
+        {
+            blocked.TrySetResult();
+            await release.Task;
+            try { probe(); callbackFinished.TrySetResult(); }
+            catch (Exception error) { callbackFinished.TrySetException(error); throw; }
+        }
+
+        static object Field(object target, string name) =>
+            target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(target)!;
+    }
+
+    private sealed class TestLease(Action dispose) : IDisposable
+    {
+        public void Dispose() => dispose();
+    }
+
     [Fact]
     public void DiscoveryMatchesPairedContractWithoutHostOrCodes()
     {
@@ -498,13 +919,17 @@ public sealed class ListenerTests
 
     private sealed class TestFactory : IPlaybackFactory
     {
+        public bool FreshAfterFirstOpen { get; init; }
+        public bool SupportsVideoRotation { get; init; }
         public string Description => "TEST ONLY - no real rendering.";
         public TestPlayback Playback { get; } = new();
         public int Opens { get; private set; }
+        public ConcurrentQueue<CastRequest> Requests { get; } = new();
         public ValueTask<IPlayback> OpenAsync(CastRequest request, CancellationToken cancellationToken)
         {
+            Requests.Enqueue(request);
             Opens++;
-            return ValueTask.FromResult<IPlayback>(Playback);
+            return ValueTask.FromResult<IPlayback>(FreshAfterFirstOpen && Opens > 1 ? new TestPlayback() : Playback);
         }
     }
 
@@ -668,6 +1093,7 @@ public sealed class ListenerTests
 
     private sealed class TestPlayback : IPlayback, IVideoPlaybackProgress
     {
+        public int DisposeCalls;
         public bool Disposed { get; private set; }
         public bool SuppressCurrentPresentation { get; set; }
         public bool HasPresentedVideo => !SuppressCurrentPresentation && !Presented.IsEmpty;
@@ -681,6 +1107,7 @@ public sealed class ListenerTests
         }
         public ConcurrentBag<uint> Configured { get; } = [];
         public ConcurrentQueue<long> Presented { get; } = [];
+        public ConcurrentQueue<int> Rotations { get; } = [];
         public TaskCompletionSource TwoPresented { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public ValueTask ConfigureAsync(Packet configuration, CancellationToken cancellationToken)
         {
@@ -690,11 +1117,13 @@ public sealed class ListenerTests
         public async ValueTask PresentAsync(Packet media, CancellationToken cancellationToken)
         {
             if (OnPresent is not null) await OnPresent(media, cancellationToken);
+            Rotations.Enqueue(media.VideoRotationDegrees);
             Presented.Enqueue(media.PtsUs);
             if (Presented.Count == 2) TwoPresented.TrySetResult();
         }
         public ValueTask DisposeAsync()
         {
+            Interlocked.Increment(ref DisposeCalls);
             Disposed = true;
             return OnDispose?.Invoke() ?? ValueTask.CompletedTask;
         }

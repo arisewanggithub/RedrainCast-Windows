@@ -1,0 +1,48 @@
+{
+  "locale": "ko",
+  "productName": "RedrainCast",
+  "description": "신뢰할 수 있는 로컬 네트워크에서 Windows PC와 호환되는 RedrainCast 장치 간에 화면이나 창을 공유하세요.\n\nRedrainCast는 보내기와 받기 기능을 하나로 통합한 Windows 네이티브 앱입니다. 공유할 디스플레이나 창을 선택한 후 주변 수신 장치를 선택하면 화면 전송을 시작할 수 있습니다. 수신 장치에 표시된 IP 주소와 포트를 사용해 직접 연결할 수도 있습니다.\n\n화면과 함께 출력 오디오를 공유하고, 캡처 상한과 비디오 품질을 조정하고, 호환되는 수신 장치에서 필요에 따라 재생 통계를 확인하세요. 수신한 화면은 전체 화면으로 열립니다. 공유를 중지하면 수신 장치의 창이 이전 상태로 돌아갑니다.\n\n시스템 요구 사항\n- ARM64 또는 x64 기반 Windows 11 버전 22H2 이상이 필요합니다.\n- 상대 장치에 호환되는 RedrainCast 앱이 필요하며, 지원되는 Windows 및 Android 장치에서 사용할 수 있습니다. RedrainCast는 범용 Miracast 또는 Google Cast 수신 앱이 아닙니다.\n- 신뢰할 수 있는 로컬 네트워크와 지원되는 하드웨어 비디오 인코딩 및 디코딩 기능이 필요합니다. 사용 가능한 코덱은 장치에 따라 다릅니다.\n\n중요한 네트워크 및 개인정보 보호 안내\n수신 기능을 사용할 수 있는 동안에는 들어오는 화면 전송이 자동으로 수락됩니다. 신뢰할 수 있는 네트워크와 장치에서만 RedrainCast를 사용하세요. 로컬 화면 및 오디오 전송 트래픽과 장치 검색에는 인증이 적용되지 않으며 암호화되지도 않습니다. 계정이나 클라우드 중계는 사용하지 않습니다. 기본 앱은 화면이나 오디오를 파일로 녹화하거나 녹음하지 않습니다.",
+  "whatsNew": "",
+  "productFeatures": [
+    "하나의 Windows 네이티브 앱에서 화면을 보내고 받으세요.",
+    "선택한 디스플레이나 창을 공유하세요.",
+    "주변 수신 장치를 찾거나 IP 주소와 포트로 연결하세요.",
+    "Windows 및 Android의 호환되는 RedrainCast 앱과 화면을 주고받으세요.",
+    "화면과 함께 출력 오디오를 보내세요.",
+    "최대 캡처 크기, 프레임 속도, 비트 전송률 및 지원되는 비디오 코덱을 조정하세요.",
+    "호환되는 수신 장치에서 필요에 따라 재생 통계를 확인하세요.",
+    "Windows의 밝은 테마, 어두운 테마 및 고대비 테마를 지원하며 전체 화면으로 수신하세요."
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "신뢰할 수 있는 로컬 네트워크에서 호환되는 Windows 및 Android 장치 간에 화면이나 창을 공유하세요. 필요에 따라 오디오도 함께 전송할 수 있습니다.",
+  "keywords": [
+    "화면 공유",
+    "화면 전송",
+    "로컬 네트워크",
+    "창 공유",
+    "화면 수신",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/ko/01-home.png", "caption": "화면을 보내고 받으세요.", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/ko/02-sharing-settings.png", "caption": "공유 설정", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

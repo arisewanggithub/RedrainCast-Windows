@@ -1,0 +1,70 @@
+{
+  "status": "ready-for-owner-review",
+  "ownerApproval": "pending",
+  "storeUpload": "not performed",
+  "localeCount": 22,
+  "screenshotCount": 44,
+  "screenshotsPerLocale": 2,
+  "pages": ["home", "sharing-settings"],
+  "locales": [
+    "ar", "de", "en-US", "es", "fr", "hi", "id", "it", "ja", "ko", "ms",
+    "nl", "pl", "pt-BR", "ru", "sv", "th", "tr", "uk", "vi", "zh-Hans", "zh-Hant"
+  ],
+  "assetDirectory": "../../../assets/store/screenshots",
+  "homeFile": "<locale>/01-home.png",
+  "sharingSettingsFile": "<locale>/02-sharing-settings.png",
+  "manifest": "manifest.json",
+  "nativePhysicalDimensions": { "width": 1902, "height": 1431 },
+  "rasterizationScale": 1.5,
+  "totalPngBytes": 5744232,
+  "sourceApp": "artifacts/v0.1.20-localization/candidate-20261107-003701-preferred-languages/win-arm64/RedrainCast.App.exe",
+  "sourceAppDllSha256": "0483A838EC05A166E80F069FE6639BE38D6017EACCFE637920EA553D8C2C0D32",
+  "captureMethod": "Exact own-HWND Windows Graphics Capture, unscaled native frames, real WinUI Home and ContentDialog.",
+  "fixture": "Artifact-only copy of current sources; existing isolated localization path, injected preferred-language reader, synthetic demo names and RFC 5737 addresses.",
+  "safetyGate": {
+    "passed": true,
+    "acPower": "Online",
+    "inputDesktop": "Default",
+    "visibleNonminimizedForeground": true,
+    "activeCaptureWorkers": 0,
+    "establishedAppPeerConnections": 0,
+    "correctOwnPidHwndVisibleNonminimizedCheckedBeforeEveryCapture": true,
+    "inputInjected": false
+  },
+  "validation": {
+    "pngSignaturesDimensionsSizesAndHashes": 44,
+    "distinctHomeSettingsPairs": 22,
+    "nativeTextBoundsChecks": 44,
+    "nativeTextBoundsIssues": 0,
+    "nativeSettingsLabelsIncludingSaveCancelVerified": 22,
+    "agentVisualReview": "All 44 actual images in contact sheets; full-size en-US, ar, de, hi, th and zh-Hans representatives.",
+    "captionSource": "Exact existing HomeTagline and SharingSettings resources, at most 200 characters.",
+    "personalContentObserved": false,
+    "ownerReview": "pending"
+  },
+  "execution": {
+    "ownedCapturePid": 19940,
+    "ownedCaptureProcessExited": true,
+    "forcedTermination": false,
+    "productionSourceFilesRehashedUnchanged": 177,
+    "correctedCandidateUnchanged": true,
+    "newShippingCliOrFeature": false,
+    "desktopOrOtherWindowCaptured": false,
+    "captureSourceEnumeratedOrOpened": false,
+    "sourcePickerOpened": false,
+    "mediaEncoderAudioOrNetworkCastStarted": false,
+    "osProfileOrLanguageChanged": false,
+    "settingsLoadedOrWritten": false,
+    "userAppsTouched": false,
+    "commitPushInstallSignOrUploadPerformed": false
+  },
+  "previousAttempt": {
+    "status": "blocked at that time",
+    "evidence": "artifacts/store-capture-20261107-0118/previous-preparation-status.json",
+    "resolution": "New explicit authorization permitted the artifact-only isolated UI capture harness; earlier blocker evidence was preserved, not reclassified as a successful capture."
+  },
+  "remainingReview": [
+    "Owner approval of prepared localized screenshots before upload.",
+    "Final packaged-app and physical casting acceptance remain separate; these UI captures do not establish native-picker, runtime audio or interoperability acceptance."
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "locale": "pt-BR",
+  "productName": "RedrainCast",
+  "description": "Compartilhe uma tela ou janela entre seu PC com Windows e dispositivos compatíveis com o RedrainCast em uma rede local confiável.\n\nO RedrainCast reúne envio e recepção em um único aplicativo nativo do Windows. Escolha uma tela ou janela para compartilhar, selecione um receptor próximo e inicie a transmissão. Você também pode se conectar diretamente usando o endereço IP e a porta exibidos pelo receptor.\n\nCompartilhe o áudio de saída junto com a tela, ajuste os limites de captura e a qualidade do vídeo e veja estatísticas opcionais de reprodução em receptores compatíveis. As transmissões recebidas abrem em tela cheia. Ao parar o compartilhamento, a janela do receptor volta ao estado anterior.\n\nRequisitos\n- Windows 11 versão 22H2 ou posterior em ARM64 ou x64.\n- Um aplicativo RedrainCast compatível no outro dispositivo, incluindo dispositivos Windows e Android com suporte. O RedrainCast não é um receptor genérico de Miracast ou Google Cast.\n- Uma rede local confiável e suporte à codificação e decodificação de vídeo por hardware. A disponibilidade dos codecs depende do dispositivo.\n\nInformações importantes sobre rede e privacidade\nAs transmissões recebidas são aceitas automaticamente enquanto o receptor está disponível. Use o RedrainCast somente em redes e com dispositivos em que você confia. Nem o tráfego de transmissão local de tela e áudio nem a descoberta de dispositivos são autenticados ou criptografados. Não há uso de conta nem retransmissão pela nuvem. O aplicativo padrão não grava sua tela ou áudio em arquivos.",
+  "whatsNew": "",
+  "productFeatures": [
+    "Envie e receba telas em um único aplicativo nativo do Windows.",
+    "Compartilhe uma tela ou janela selecionada.",
+    "Encontre receptores próximos ou conecte-se usando um endereço IP e uma porta.",
+    "Transmita com aplicativos RedrainCast compatíveis no Windows e no Android.",
+    "Envie o áudio de saída junto com a tela.",
+    "Ajuste o tamanho máximo de captura, a taxa de quadros, a taxa de bits e o codec de vídeo compatível.",
+    "Veja estatísticas opcionais de reprodução em receptores compatíveis.",
+    "Receba transmissões em tela cheia com os temas claro, escuro e de alto contraste do Windows."
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "Compartilhe sua tela ou uma janela, com áudio opcional, entre dispositivos Windows e Android compatíveis em uma rede local confiável.",
+  "keywords": [
+    "compartilhamento de tela",
+    "transmissão de tela",
+    "rede local",
+    "compartilhamento de janela",
+    "receptor de tela",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/pt-BR/01-home.png", "caption": "Envie e receba telas.", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/pt-BR/02-sharing-settings.png", "caption": "Configurações de compartilhamento", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

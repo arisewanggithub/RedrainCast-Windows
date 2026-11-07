@@ -1,0 +1,48 @@
+{
+  "locale": "vi",
+  "productName": "RedrainCast",
+  "description": "Chia sẻ màn hình hoặc cửa sổ giữa PC Windows của bạn và các thiết bị RedrainCast tương thích trên mạng cục bộ đáng tin cậy.\n\nRedrainCast kết hợp chức năng gửi và nhận trong một ứng dụng gốc dành cho Windows. Chọn màn hình hoặc cửa sổ để chia sẻ, chọn một thiết bị nhận ở gần và bắt đầu truyền màn hình. Bạn cũng có thể kết nối trực tiếp bằng địa chỉ IP và cổng hiển thị trên thiết bị nhận.\n\nChia sẻ âm thanh đầu ra cùng với màn hình, điều chỉnh giới hạn thu hình và chất lượng video, đồng thời xem số liệu thống kê phát nếu muốn trên các thiết bị nhận tương thích. Luồng truyền đến sẽ mở ở chế độ toàn màn hình. Khi dừng chia sẻ, cửa sổ trên thiết bị nhận sẽ trở về trạng thái trước đó.\n\nYêu cầu\n- Windows 11 phiên bản 22H2 trở lên trên ARM64 hoặc x64.\n- Ứng dụng RedrainCast tương thích trên thiết bị còn lại, bao gồm các thiết bị Windows và Android được hỗ trợ. RedrainCast không phải là thiết bị nhận Miracast hoặc Google Cast đa dụng.\n- Mạng cục bộ đáng tin cậy và phần cứng hỗ trợ mã hóa/giải mã video. Các bộ mã hóa và giải mã khả dụng tùy thuộc vào thiết bị.\n\nThông tin quan trọng về mạng và quyền riêng tư\nLuồng truyền đến được tự động chấp nhận khi thiết bị nhận sẵn sàng. Chỉ sử dụng RedrainCast trên mạng và với các thiết bị mà bạn tin tưởng. Cả lưu lượng truyền màn hình và âm thanh trên mạng cục bộ lẫn hoạt động khám phá thiết bị đều không được xác thực và không được mã hóa. Không sử dụng tài khoản hay dịch vụ chuyển tiếp qua đám mây. Ứng dụng tiêu chuẩn không ghi màn hình hoặc âm thanh của bạn vào tệp.",
+  "whatsNew": "",
+  "productFeatures": [
+    "Gửi và nhận màn hình trong một ứng dụng gốc dành cho Windows.",
+    "Chia sẻ màn hình hoặc cửa sổ đã chọn.",
+    "Tìm thiết bị nhận ở gần hoặc kết nối bằng địa chỉ IP và cổng.",
+    "Truyền màn hình với các ứng dụng RedrainCast tương thích trên Windows và Android.",
+    "Gửi âm thanh đầu ra cùng với màn hình.",
+    "Điều chỉnh kích thước thu hình tối đa, tốc độ khung hình, tốc độ bit và bộ mã hóa video được hỗ trợ.",
+    "Tùy chọn xem số liệu thống kê phát trên các thiết bị nhận tương thích.",
+    "Nhận ở chế độ toàn màn hình với các giao diện sáng, tối và tương phản cao của Windows."
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "Chia sẻ màn hình hoặc cửa sổ, kèm âm thanh nếu muốn, giữa các thiết bị Windows và Android tương thích trên mạng cục bộ đáng tin cậy.",
+  "keywords": [
+    "chia sẻ màn hình",
+    "truyền màn hình",
+    "mạng cục bộ",
+    "chia sẻ cửa sổ",
+    "nhận màn hình",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/vi/01-home.png", "caption": "Gửi và nhận màn hình.", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/vi/02-sharing-settings.png", "caption": "Cài đặt chia sẻ", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

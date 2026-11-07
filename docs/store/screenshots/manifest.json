@@ -1,0 +1,2360 @@
+{
+    "schemaVersion":  1,
+    "status":  "prepared-owner-review-pending",
+    "product":  "RedrainCast",
+    "version":  "0.1.20",
+    "localeCount":  22,
+    "screenshotCount":  44,
+    "screenshotsPerLocale":  2,
+    "totalPngBytes":  5744232,
+    "generatedUtc":  "2026-11-07T09:24:32.8487410Z",
+    "source":  {
+                   "correctedCandidate":  "artifacts/v0.1.20-localization/candidate-20261107-003701-preferred-languages/win-arm64/RedrainCast.App.exe",
+                   "candidateExeSha256":  "60D81713358BF5EFCC9B7A29B180CEA8FAD38696E18D6F61961644518DEEB4E2",
+                   "candidateAppDllSha256":  "0483A838EC05A166E80F069FE6639BE38D6017EACCFE637920EA553D8C2C0D32",
+                   "candidatePriSha256":  "430DADD3C8377AA56A6F3254B86C7C2D20590ABF0C750619A7A334A38CEC576F",
+                   "artifactOnlyFixtureAppDllSha256":  "B0638B7E4D5313FD0612DA7B827C21B2D765783C6FBD3913483587B940E5D265",
+                   "artifactOnlyFixturePriSha256":  "430DADD3C8377AA56A6F3254B86C7C2D20590ABF0C750619A7A334A38CEC576F",
+                   "artifactOnlyFixtureSendMediaDllSha256":  "BE7A585B3D40E6240F722524E5B13DAC2A58C32A2ACB00B280166BD342C070F6",
+                   "sourceSnapshot":  "Current working tree copied before capture; all source files rehashed unchanged after capture.",
+                   "sourceSnapshotFileCount":  177,
+                   "resourceCatalogs":  [
+                                            {
+                                                "locale":  "ar",
+                                                "file":  "src/RedrainCast.App/Strings/ar/Resources.resw",
+                                                "sha256":  "97111DAE0640C2B73EEED5C9FB9943865445E71ACF606AEFD0C8CF77C06ABDFA",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "de",
+                                                "file":  "src/RedrainCast.App/Strings/de/Resources.resw",
+                                                "sha256":  "33DFC24FA6357B757140306D8F7A2CC9B76C354E714E86B529737296BDC436C4",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "en-US",
+                                                "file":  "src/RedrainCast.App/Strings/en-US/Resources.resw",
+                                                "sha256":  "A24CA7CE928AE3FE46BE98A4E871BC2CC64C1E247514D440E2BD315D91D84F13",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "es",
+                                                "file":  "src/RedrainCast.App/Strings/es/Resources.resw",
+                                                "sha256":  "2E4ED267690274EC24A769E96A6887B3531C37C2B7CC31310F927C9E9BE6ABE8",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "fr",
+                                                "file":  "src/RedrainCast.App/Strings/fr/Resources.resw",
+                                                "sha256":  "CA590C23E8ADEFAFE7DD7C8B65F4343569C08153F1323F5EE541822E407AE300",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "hi",
+                                                "file":  "src/RedrainCast.App/Strings/hi/Resources.resw",
+                                                "sha256":  "94CCDEC484575288F69B727DDD2AFBF7BE7B455A6151E3F8BCED38754EB47B55",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "id",
+                                                "file":  "src/RedrainCast.App/Strings/id/Resources.resw",
+                                                "sha256":  "716309031790258D1FB512F107A27EC71D1F8149D93879222AC1A95D8D7B64DC",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "it",
+                                                "file":  "src/RedrainCast.App/Strings/it/Resources.resw",
+                                                "sha256":  "D90F52172224EE93ED9EB3F10216F739E2F3647310F0DB3A12A6D8A61FE8BAFF",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "ja",
+                                                "file":  "src/RedrainCast.App/Strings/ja/Resources.resw",
+                                                "sha256":  "362AB5E652F29A69A9C273ACC30FB6A72E7733A5D9835964768CEF16CEA27F24",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "ko",
+                                                "file":  "src/RedrainCast.App/Strings/ko/Resources.resw",
+                                                "sha256":  "17658C9712CBB2E3C2A74D8CF39297B1ABAF963844F3CE82B0F1A548CB30DAD4",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "ms",
+                                                "file":  "src/RedrainCast.App/Strings/ms/Resources.resw",
+                                                "sha256":  "640490EB91D01DECECC7074CA11C2D455C1D0F203F1864E559D994EBA59F22E9",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "nl",
+                                                "file":  "src/RedrainCast.App/Strings/nl/Resources.resw",
+                                                "sha256":  "A468249BBBAA0F0BCFF53B0D7FCD216BA378E7B336E745B80F60F74D82E07660",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "pl",
+                                                "file":  "src/RedrainCast.App/Strings/pl/Resources.resw",
+                                                "sha256":  "3935FFBB0A3D5EADA713FFD4D8D200DD6CE36B2638C40EB5DA7C5D1045DC112E",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "pt-BR",
+                                                "file":  "src/RedrainCast.App/Strings/pt-BR/Resources.resw",
+                                                "sha256":  "ACF076BE920CBA71FCDF75823D0989674B40198B3552E1E3FD97F8A14CFD45BE",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "ru",
+                                                "file":  "src/RedrainCast.App/Strings/ru/Resources.resw",
+                                                "sha256":  "F5517F1B5B4E6156E591132960F17E4AF0FFD86DE58B92542DDE2296B051C484",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "sv",
+                                                "file":  "src/RedrainCast.App/Strings/sv/Resources.resw",
+                                                "sha256":  "0900F027ABC4A649637F98176DAA08F3E819143E2AFBFD309FE7EB98C24562BC",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "th",
+                                                "file":  "src/RedrainCast.App/Strings/th/Resources.resw",
+                                                "sha256":  "1E17A5E744107054008A7D7A5F3B03193B9548A173C9F0D71FFB048FB7947508",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "tr",
+                                                "file":  "src/RedrainCast.App/Strings/tr/Resources.resw",
+                                                "sha256":  "212A04E9E2CAD6FD48EE60B0231E454F540225E238FEFE4D20884BCD5C81BE1B",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "uk",
+                                                "file":  "src/RedrainCast.App/Strings/uk/Resources.resw",
+                                                "sha256":  "9C5D9DC771872B192457B16AD408BEC71678693C2CC3B4C15125608D6387E1D2",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "vi",
+                                                "file":  "src/RedrainCast.App/Strings/vi/Resources.resw",
+                                                "sha256":  "4906B7DDD902BC7C959089B2425B22C968E6FA4869F7EC1CB9E8C82FFB307104",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "zh-Hans",
+                                                "file":  "src/RedrainCast.App/Strings/zh-Hans/Resources.resw",
+                                                "sha256":  "FF5F908A9B266472F6D4809F15904A062A40D8DBE860C7DF60F1544BCBCD315E",
+                                                "keys":  184
+                                            },
+                                            {
+                                                "locale":  "zh-Hant",
+                                                "file":  "src/RedrainCast.App/Strings/zh-Hant/Resources.resw",
+                                                "sha256":  "60A8AD1ED418E2FC95D9D943C454D3A3EF41EC8785E1502AEB21A75A599361A0",
+                                                "keys":  184
+                                            }
+                                        ],
+                   "fixtureOnlyChanges":  [
+                                              {
+                                                  "file":  "src/RedrainCast.App/App.xaml.cs",
+                                                  "sha256":  "39EC1D3161CE56BCAE97E5B3F1F1CC07EA15D7EC841BB210475B246E274E24A3"
+                                              },
+                                              {
+                                                  "file":  "src/RedrainCast.App/MainWindow.xaml.cs",
+                                                  "sha256":  "7B9C4A74BEE153FCD25668B1260E029D9A276A537166AB638039988810D5B9DB"
+                                              },
+                                              {
+                                                  "file":  "src/RedrainCast.App/StoreCaptureFixture.cs",
+                                                  "sha256":  "88F2094A9FED142DBB63B68AC64E9FA66CB237EC37A70A9364B13FFDB239C21C"
+                                              },
+                                              {
+                                                  "file":  "src/ScrcpySend.Media/CaptureThumbnail.cs",
+                                                  "sha256":  "EB086A09651D6322B366FDFB9CB627496BEE07AADFF071F12BC79F63633E757F"
+                                              }
+                                          ],
+                   "fixtureOnlyChangeSummary":  [
+                                                    "New fixture-only launch branch constructs MainWindow(isolated: true) with injected preferred languages.",
+                                                    "Replace device/server name with generic fixture name before first activation.",
+                                                    "Reuse actual production Home XAML, localization context and ShowSharingSettingsDialogAsync with existing synthetic CodecSelection.",
+                                                    "Add bounded capture orchestration and exact-own-HWND full-resolution WGC read in the artifact copy only."
+                                                ],
+                   "shippingSourcesChanged":  false,
+                   "correctedCandidateChanged":  false,
+                   "newShippingCliOrFeature":  false,
+                   "internalArtifactEvidence":  "artifacts/store-capture-20261107-0118"
+               },
+    "capture":  {
+                    "method":  "Windows.Graphics.Capture exact same-process HWND; unscaled full-resolution BGRA frame encoded directly as PNG",
+                    "fixture":  "Artifact-only copy of actual production WinUI XAML and localization fixture, injected preferred-language reader",
+                    "preferredLanguageSource":  "Injected per-fixture preferred-language reader, as used by LocalizationSelfTest; actual compiled MRT resources.",
+                    "ownWindowPid":  19940,
+                    "theme":  "Dark, requested only on fixture WindowRoot",
+                    "inputInjected":  false,
+                    "windowRequestedPhysicalSize":  {
+                                                        "height":  1440,
+                                                        "width":  1920
+                                                    },
+                    "capturedNativePhysicalSize":  {
+                                                       "height":  1431,
+                                                       "width":  1902
+                                                   },
+                    "sizeNote":  "Exact WGC item size excludes invisible nonclient resize margins; no bitmap crop, resize, upscaling or postprocessing.",
+                    "alphaNote":  "Native rounded-window edge alpha retained. Opaque/nonblank checks sample the interior with a nine-pixel inset; pixels are not modified.",
+                    "syntheticData":  {
+                                          "pc":  "RedrainCast PC",
+                                          "peer":  "RedrainCast Android",
+                                          "source":  "Display 1 (1920x1080)",
+                                          "localAddress":  "192.0.2.10:50432",
+                                          "peerAddress":  "192.0.2.20:50432",
+                                          "addressStandard":  "RFC 5737 documentation-only",
+                                          "sourceOpened":  false,
+                                          "peerConnected":  false,
+                                          "discoveredOnNetwork":  false,
+                                          "actualLoopbackListener":  true
+                                      },
+                    "desktopCaptured":  false,
+                    "otherWindowsCaptured":  false,
+                    "sourcePickerOpened":  false,
+                    "captureSourceEnumeratedOrOpened":  false,
+                    "hardwareEncoderStarted":  false,
+                    "audioStarted":  false,
+                    "networkCastStarted":  false,
+                    "settingsLoadedOrWritten":  false,
+                    "osProfileOrLanguageChanged":  false,
+                    "userAppsTouched":  false
+                },
+    "validation":  {
+                       "passed":  true,
+                       "pngSignaturesChecked":  44,
+                       "nativeSizeAndByteLimitsChecked":  44,
+                       "sha256Verified":  44,
+                       "distinctHomeSettingsPairs":  22,
+                       "uniqueImageHashes":  44,
+                       "nativeTextBoundsChecks":  44,
+                       "nativeTextBoundsIssues":  0,
+                       "compiledLocalizedKeys":  4048,
+                       "actualDialogTitleSaveCancelAndAllSettingsLabelsVerified":  22,
+                       "nativeGlyphMeasurement":  "Nonzero rendered native TextBlock measurements; full-size representative review and all-locale contact sheets, not a font coverage certification.",
+                       "agentVisualReview":  "All 44 actual captures reviewed in four internal contact sheets; full-size en-US, ar, de, hi, th and zh-Hans representatives.",
+                       "agentVisualReviewFindings":  "No blank frames, identical Home/settings pairs, missing dialogs, clipped settings/buttons, obvious tofu or identifying content observed.",
+                       "ownerReview":  "pending",
+                       "storeUpload":  "not performed",
+                       "packagedAppAndPhysicalCastingAcceptance":  "not established by these assets",
+                       "gate":  {
+                                    "existingAppPids":  [
+                                                            null
+                                                        ],
+                                    "establishedAppConnections":  0,
+                                    "activeWorkers":  0,
+                                    "userWindowsTouched":  false,
+                                    "utc":  "2026-11-07T09:20:31.2217652Z",
+                                    "inputInjected":  false,
+                                    "osSettingsChanged":  false,
+                                    "visibleForeground":  true,
+                                    "inputDesktop":  "Default",
+                                    "sourceWindowValidation":  "Each capture checks exact own HWND/PID, visibility, nonminimized, isolated idle state.",
+                                    "acPower":  true,
+                                    "passed":  true
+                                },
+                       "cleanup":  {
+                                       "forcedTermination":  false,
+                                       "ownedPid":  19940,
+                                       "ownedProcessExited":  true,
+                                       "userWindowsTouched":  false,
+                                       "existingPids":  [
+                                                            null
+                                                        ],
+                                       "exitCode":  0
+                                   }
+                   },
+    "screenshots":  [
+                        {
+                            "locale":  "ar",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/ar/01-home.png",
+                            "listing":  "../listings/ar.json",
+                            "caption":  "أرسل الشاشات واستقبلها.",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  99024,
+                            "sha256":  "092B9BD2C318F7B252C09F20F5B8F26763C30294DBA9A1D391AC01E8566E736D",
+                            "nativeUiLanguage":  "ar",
+                            "mrtLanguageQualifier":  "AR",
+                            "homeFlowDirection":  "RightToLeft",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "جاهز",
+                            "sourceLabel":  "⁦Display 1⁩ (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "ar",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  117,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "ar",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/ar/02-sharing-settings.png",
+                            "listing":  "../listings/ar.json",
+                            "caption":  "إعدادات المشاركة",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  126556,
+                            "sha256":  "F5D384855FF8554AEB88B6520FF66946945B59E89CF931355116A8B8954BE491",
+                            "nativeUiLanguage":  "ar",
+                            "mrtLanguageQualifier":  "AR",
+                            "homeFlowDirection":  "RightToLeft",
+                            "dialogFlowDirection":  "RightToLeft",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "جاهز",
+                            "sourceLabel":  "⁦Display 1⁩ (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "ar",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  164,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  14,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "de",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/de/01-home.png",
+                            "listing":  "../listings/de.json",
+                            "caption":  "Bildschirme senden und empfangen.",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  127504,
+                            "sha256":  "40EC8F4C65030A3D20C880549CBBBFDAB7287CFEA16522811F73FE78E32D368C",
+                            "nativeUiLanguage":  "de",
+                            "mrtLanguageQualifier":  "DE",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "BEREIT",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "de",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  115,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "de",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/de/02-sharing-settings.png",
+                            "listing":  "../listings/de.json",
+                            "caption":  "Freigabeeinstellungen",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  156000,
+                            "sha256":  "2ABC058B92DC69A587A785261759D806188CC2D7576FCDE33CADCF4CC44AB30B",
+                            "nativeUiLanguage":  "de",
+                            "mrtLanguageQualifier":  "DE",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "BEREIT",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "de",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  168,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  0,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "en-US",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/en-US/01-home.png",
+                            "listing":  "../listings/en-US.json",
+                            "caption":  "Send and receive screens.",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  114388,
+                            "sha256":  "D00B28A568CED3BEFD1121AB01D9C35FBFD9B1CAE4E44788B559A4FEE075D4D6",
+                            "nativeUiLanguage":  "en-US",
+                            "mrtLanguageQualifier":  "EN-US",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "READY",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "en-US",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  115,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "en-US",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/en-US/02-sharing-settings.png",
+                            "listing":  "../listings/en-US.json",
+                            "caption":  "Sharing settings",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  142999,
+                            "sha256":  "0F58A48846A89B32654402F251CC1A5C76488C38106C77D73593FEEC11B11B75",
+                            "nativeUiLanguage":  "en-US",
+                            "mrtLanguageQualifier":  "EN-US",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "READY",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "en-US",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  163,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  14,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "es",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/es/01-home.png",
+                            "listing":  "../listings/es.json",
+                            "caption":  "Envíe y reciba pantallas.",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  118464,
+                            "sha256":  "30EF1C49F8095D2F4C76650FAF2585578F0BA1A2CF5AC7931535C04D0BB6F2D2",
+                            "nativeUiLanguage":  "es",
+                            "mrtLanguageQualifier":  "ES",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "LISTO",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "es",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  116,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "es",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/es/02-sharing-settings.png",
+                            "listing":  "../listings/es.json",
+                            "caption":  "Configuración para compartir",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  150383,
+                            "sha256":  "6C8514F36026670FDC0E806EAD16D389DAA9F1C1BD332501D1C389DDB1D25C7E",
+                            "nativeUiLanguage":  "es",
+                            "mrtLanguageQualifier":  "ES",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "LISTO",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "es",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  174,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  0,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "fr",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/fr/01-home.png",
+                            "listing":  "../listings/fr.json",
+                            "caption":  "Partagez et recevez des écrans.",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  123608,
+                            "sha256":  "7E009CC89D78EF662BC293C9B030509E1EEED80EC9B08879593AE9EEC26D6475",
+                            "nativeUiLanguage":  "fr",
+                            "mrtLanguageQualifier":  "FR",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "PRÊT",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "fr",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  118,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "fr",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/fr/02-sharing-settings.png",
+                            "listing":  "../listings/fr.json",
+                            "caption":  "Paramètres de partage",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  155806,
+                            "sha256":  "D7E31A27475CFCD3645B60CDCF9C3D345CC5B4E9A4104EF2D1F568F76CB43700",
+                            "nativeUiLanguage":  "fr",
+                            "mrtLanguageQualifier":  "FR",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "PRÊT",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "fr",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  179,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  0,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "hi",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/hi/01-home.png",
+                            "listing":  "../listings/hi.json",
+                            "caption":  "स्क्रीन भेजें और प्राप्त करें।",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  117924,
+                            "sha256":  "DA7D77535265F88B109F639A1BC158131698B0459E5F45F866CFC7E436DF7840",
+                            "nativeUiLanguage":  "hi",
+                            "mrtLanguageQualifier":  "HI",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "तैयार",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "hi",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  117,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "hi",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/hi/02-sharing-settings.png",
+                            "listing":  "../listings/hi.json",
+                            "caption":  "शेयरिंग सेटिंग्स",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  148895,
+                            "sha256":  "E715BE535AA553DC257FE62064E4F19FDEFBAC781DE826E8CAD99C5C9E1E8A74",
+                            "nativeUiLanguage":  "hi",
+                            "mrtLanguageQualifier":  "HI",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "तैयार",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "hi",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  163,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  14,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "id",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/id/01-home.png",
+                            "listing":  "../listings/id.json",
+                            "caption":  "Kirim dan terima layar.",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  111002,
+                            "sha256":  "DD6BF138F2DA724DAD92F82FA0B11AAC7F506665917B1301CF6875B9966AA8FA",
+                            "nativeUiLanguage":  "id",
+                            "mrtLanguageQualifier":  "ID",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "SIAP",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "id",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  125,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "id",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/id/02-sharing-settings.png",
+                            "listing":  "../listings/id.json",
+                            "caption":  "Pengaturan berbagi",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  137945,
+                            "sha256":  "BC6BA49C008D54590B9E316D6C5E022D7719C2595061B75E2331A721FF15CDF3",
+                            "nativeUiLanguage":  "id",
+                            "mrtLanguageQualifier":  "ID",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "SIAP",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "id",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  174,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  0,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "it",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/it/01-home.png",
+                            "listing":  "../listings/it.json",
+                            "caption":  "Invia e ricevi schermate.",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  118524,
+                            "sha256":  "27987B4669EC6BC715975790BFAE365A155770015A08CF3D30A6E67DB89B3B4B",
+                            "nativeUiLanguage":  "it",
+                            "mrtLanguageQualifier":  "IT",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "PRONTO",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "it",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  123,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "it",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/it/02-sharing-settings.png",
+                            "listing":  "../listings/it.json",
+                            "caption":  "Impostazioni di condivisione",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  147179,
+                            "sha256":  "C319D1B4417018FB2694B82E911975DB60574C8C5219BA50EEE3CECB01616C87",
+                            "nativeUiLanguage":  "it",
+                            "mrtLanguageQualifier":  "IT",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "PRONTO",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "it",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  173,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  0,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "ja",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/ja/01-home.png",
+                            "listing":  "../listings/ja.json",
+                            "caption":  "画面を送信・受信。",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  112721,
+                            "sha256":  "CAAFDA0890620D25DCF1CEBF70F799ABFF0A05EFC2A0717CAE57D3D10D3DC71B",
+                            "nativeUiLanguage":  "ja",
+                            "mrtLanguageQualifier":  "JA",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "準備完了",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "ja",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  107,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "ja",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/ja/02-sharing-settings.png",
+                            "listing":  "../listings/ja.json",
+                            "caption":  "共有設定",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  138086,
+                            "sha256":  "D905B7C472A06BB068F6C3D36E1382C372499ECED61328638189824CF86ADC06",
+                            "nativeUiLanguage":  "ja",
+                            "mrtLanguageQualifier":  "JA",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "準備完了",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "ja",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  141,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  0,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "ko",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/ko/01-home.png",
+                            "listing":  "../listings/ko.json",
+                            "caption":  "화면을 보내고 받으세요.",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  98402,
+                            "sha256":  "37F4AF1A466DC090C76D03B7F373EA7EF638C15A88BB148D2CD7D38728760590",
+                            "nativeUiLanguage":  "ko",
+                            "mrtLanguageQualifier":  "KO",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "준비됨",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "ko",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  102,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "ko",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/ko/02-sharing-settings.png",
+                            "listing":  "../listings/ko.json",
+                            "caption":  "공유 설정",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  122474,
+                            "sha256":  "3DE0D876D750010F17C33D5B3297E14304EDC9F76D4E683DA98D6AA1B856814B",
+                            "nativeUiLanguage":  "ko",
+                            "mrtLanguageQualifier":  "KO",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "준비됨",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "ko",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  154,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  14,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "ms",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/ms/01-home.png",
+                            "listing":  "../listings/ms.json",
+                            "caption":  "Hantar dan terima skrin.",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  116002,
+                            "sha256":  "ED2EC49222C878AC994FD9656C27C012001FCD20403F4E0C90143E41BC78413F",
+                            "nativeUiLanguage":  "ms",
+                            "mrtLanguageQualifier":  "MS",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "SEDIA",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "ms",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  119,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "ms",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/ms/02-sharing-settings.png",
+                            "listing":  "../listings/ms.json",
+                            "caption":  "Tetapan perkongsian",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  141017,
+                            "sha256":  "7F67DBACA35B311EEDA2F9AD81B4FC49AD6D2AD055DC6E02FEEE3DDABAF0B877",
+                            "nativeUiLanguage":  "ms",
+                            "mrtLanguageQualifier":  "MS",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "SEDIA",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "ms",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  170,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  0,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "nl",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/nl/01-home.png",
+                            "listing":  "../listings/nl.json",
+                            "caption":  "Schermen verzenden en ontvangen.",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  124384,
+                            "sha256":  "8336FCD85A478DBC20B27B188D8FC7732FE95BFA68C18EAA0C1B9BF544E36A19",
+                            "nativeUiLanguage":  "nl",
+                            "mrtLanguageQualifier":  "NL",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "GEREED",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "nl",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  120,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "nl",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/nl/02-sharing-settings.png",
+                            "listing":  "../listings/nl.json",
+                            "caption":  "Instellingen voor delen",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  152169,
+                            "sha256":  "794B563596F32D6087D2B909356A366A07A00AC6121F6D4F9CAC715FD82A589E",
+                            "nativeUiLanguage":  "nl",
+                            "mrtLanguageQualifier":  "NL",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "GEREED",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "nl",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  168,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  14,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "pl",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/pl/01-home.png",
+                            "listing":  "../listings/pl.json",
+                            "caption":  "Wysyłaj i odbieraj obraz ekranu.",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  134655,
+                            "sha256":  "D8499C84DAF0BF179BAB9EEC7F748F9CD58EC426F73597DBE6248E1576008944",
+                            "nativeUiLanguage":  "pl",
+                            "mrtLanguageQualifier":  "PL",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "GOTOWOŚĆ",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "pl",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  124,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "pl",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/pl/02-sharing-settings.png",
+                            "listing":  "../listings/pl.json",
+                            "caption":  "Ustawienia udostępniania",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  163481,
+                            "sha256":  "C6DEA2A29621E37A8806FABDB9596168B4FB8460693F1B56B977A27867CBADFF",
+                            "nativeUiLanguage":  "pl",
+                            "mrtLanguageQualifier":  "PL",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "GOTOWOŚĆ",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "pl",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  177,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  14,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "pt-BR",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/pt-BR/01-home.png",
+                            "listing":  "../listings/pt-BR.json",
+                            "caption":  "Envie e receba telas.",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  119880,
+                            "sha256":  "C4DDDF627C20D9BC7901D239409DC8A6D5CCD9DEE5DB1C8E5B313606596D0F01",
+                            "nativeUiLanguage":  "pt-BR",
+                            "mrtLanguageQualifier":  "PT-BR",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "PRONTO",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "pt-BR",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  115,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "pt-BR",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/pt-BR/02-sharing-settings.png",
+                            "listing":  "../listings/pt-BR.json",
+                            "caption":  "Configurações de compartilhamento",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  151033,
+                            "sha256":  "44DBB620CA06715A8ACACB799EF63101A0AEEA35E14B20CC084B3603558C3CC9",
+                            "nativeUiLanguage":  "pt-BR",
+                            "mrtLanguageQualifier":  "PT-BR",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "PRONTO",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "pt-BR",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  176,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  0,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "ru",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/ru/01-home.png",
+                            "listing":  "../listings/ru.json",
+                            "caption":  "Передавайте и принимайте изображение экрана.",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  121293,
+                            "sha256":  "EA9E86034975340AB6793DA384207280D2B2D01B076F21348DCD4D82A454C080",
+                            "nativeUiLanguage":  "ru",
+                            "mrtLanguageQualifier":  "RU",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "ГОТОВО",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "ru",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  123,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "ru",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/ru/02-sharing-settings.png",
+                            "listing":  "../listings/ru.json",
+                            "caption":  "Настройки трансляции",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  149437,
+                            "sha256":  "C1655DB15AAF81C4D66F766EB5C5FB3BDE14F7D674C8DACD5CC209581C207E43",
+                            "nativeUiLanguage":  "ru",
+                            "mrtLanguageQualifier":  "RU",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "ГОТОВО",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "ru",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  171,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  0,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "sv",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/sv/01-home.png",
+                            "listing":  "../listings/sv.json",
+                            "caption":  "Skicka och ta emot skärminnehåll.",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  119587,
+                            "sha256":  "0F5A68505A307AC62E52A2F18E5C7246906776444422153674041EB39CDD032E",
+                            "nativeUiLanguage":  "sv",
+                            "mrtLanguageQualifier":  "SV",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "REDO",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "sv",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  117,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "sv",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/sv/02-sharing-settings.png",
+                            "listing":  "../listings/sv.json",
+                            "caption":  "Delningsinställningar",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  152052,
+                            "sha256":  "1C611D60FE8A9382B2F9E4EFC36946CAF336C76DFCF3CA0E1BB1227D7A87CD86",
+                            "nativeUiLanguage":  "sv",
+                            "mrtLanguageQualifier":  "SV",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "REDO",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "sv",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  172,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  14,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "th",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/th/01-home.png",
+                            "listing":  "../listings/th.json",
+                            "caption":  "ส่งและรับภาพหน้าจอ",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  116116,
+                            "sha256":  "C3633EA51DC4B4C49EFA53CB8DA5078C9CE37BBEBF3184C0B886131731DE5139",
+                            "nativeUiLanguage":  "th",
+                            "mrtLanguageQualifier":  "TH",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "พร้อม",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "th",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  119,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "th",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/th/02-sharing-settings.png",
+                            "listing":  "../listings/th.json",
+                            "caption":  "การตั้งค่าการแชร์",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  142338,
+                            "sha256":  "F0D8C77480CC2982EB625CDA5B987FFA98C5454182F14D3D1C0E1B5EE9DCD3F1",
+                            "nativeUiLanguage":  "th",
+                            "mrtLanguageQualifier":  "TH",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "พร้อม",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "th",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  178,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  0,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "tr",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/tr/01-home.png",
+                            "listing":  "../listings/tr.json",
+                            "caption":  "Ekran gönderin ve alın.",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  111482,
+                            "sha256":  "9A893D5DD18E7FDAECC6C7613B1BBD408A80B8D1E88A92F6253E792E93A2064F",
+                            "nativeUiLanguage":  "tr",
+                            "mrtLanguageQualifier":  "TR",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "HAZIR",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "tr",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  118,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "tr",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/tr/02-sharing-settings.png",
+                            "listing":  "../listings/tr.json",
+                            "caption":  "Paylaşım ayarları",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  138214,
+                            "sha256":  "7EFD205ECFB16835A04659F36750FF66E1D62C3DD8FFB0741803E2256DECAFF5",
+                            "nativeUiLanguage":  "tr",
+                            "mrtLanguageQualifier":  "TR",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "HAZIR",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "tr",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  165,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  14,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "uk",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/uk/01-home.png",
+                            "listing":  "../listings/uk.json",
+                            "caption":  "Транслюйте та приймайте зображення екрана.",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  125159,
+                            "sha256":  "81670EF37E99D9D27B90E4E0DDDF1D047EC02023FF4B5195ADA61AA8133FF03F",
+                            "nativeUiLanguage":  "uk",
+                            "mrtLanguageQualifier":  "UK",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "ГОТОВО",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "uk",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  122,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "uk",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/uk/02-sharing-settings.png",
+                            "listing":  "../listings/uk.json",
+                            "caption":  "Налаштування трансляції",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  149596,
+                            "sha256":  "EA33E685D16C559B8A2F94832BAC73B16B032B79113E5308F72C4EF80E073AEB",
+                            "nativeUiLanguage":  "uk",
+                            "mrtLanguageQualifier":  "UK",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "ГОТОВО",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "uk",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  175,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  0,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "vi",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/vi/01-home.png",
+                            "listing":  "../listings/vi.json",
+                            "caption":  "Gửi và nhận màn hình.",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  121909,
+                            "sha256":  "66D571857A9F704917D92C96BDBE83367D36CCBA9B9CE4E67D0A4B23EAD0AECB",
+                            "nativeUiLanguage":  "vi",
+                            "mrtLanguageQualifier":  "VI",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "SẴN SÀNG",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "vi",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  116,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "vi",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/vi/02-sharing-settings.png",
+                            "listing":  "../listings/vi.json",
+                            "caption":  "Cài đặt chia sẻ",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  144897,
+                            "sha256":  "4101B9D0F9C01E3888945F1382D325F09851A742F7C11B3D37FF6E8C6812B36F",
+                            "nativeUiLanguage":  "vi",
+                            "mrtLanguageQualifier":  "VI",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "SẴN SÀNG",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "vi",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  161,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  14,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "zh-Hans",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/zh-Hans/01-home.png",
+                            "listing":  "../listings/zh-Hans.json",
+                            "caption":  "发送与接收屏幕画面。",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  107192,
+                            "sha256":  "3BE91C098F0909217B511FBEE5296E2C7AB6F79DC8D38A98C9BDA13C47C9150C",
+                            "nativeUiLanguage":  "zh-Hans",
+                            "mrtLanguageQualifier":  "ZH-HANS",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "已就绪",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "zh-Hans",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  100,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "zh-Hans",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/zh-Hans/02-sharing-settings.png",
+                            "listing":  "../listings/zh-Hans.json",
+                            "caption":  "共享设置",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  131900,
+                            "sha256":  "E7B965E99DFDA03580F4D534DFC81CA8DF744421C1DA257770C5EAB16DC09976",
+                            "nativeUiLanguage":  "zh-Hans",
+                            "mrtLanguageQualifier":  "ZH-HANS",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "已就绪",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "zh-Hans",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  146,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  0,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "zh-Hant",
+                            "page":  "home",
+                            "file":  "../../../assets/store/screenshots/zh-Hant/01-home.png",
+                            "listing":  "../listings/zh-Hant.json",
+                            "caption":  "傳送與接收畫面。",
+                            "captionResourceKey":  "HomeTagline",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  108591,
+                            "sha256":  "02DC118792480365BAFA39778EF50047B8254E14143B4C2713582E5377E783AF",
+                            "nativeUiLanguage":  "zh-Hant",
+                            "mrtLanguageQualifier":  "ZH-HANT",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  null,
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "已就緒",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  false,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  28,
+                                                     "requiredVisibleResourceKeys":  [
+
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "zh-Hant",
+                                                    "page":  "home",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  103,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  29,
+                                                    "maxChannel":  255
+                                                }
+                        },
+                        {
+                            "locale":  "zh-Hant",
+                            "page":  "sharing-settings",
+                            "file":  "../../../assets/store/screenshots/zh-Hant/02-sharing-settings.png",
+                            "listing":  "../listings/zh-Hant.json",
+                            "caption":  "分享設定",
+                            "captionResourceKey":  "SharingSettings",
+                            "deviceFamily":  "Desktop",
+                            "width":  1902,
+                            "height":  1431,
+                            "bytes":  133964,
+                            "sha256":  "8A9A68D79C993FDC5F5856DC22EE7AD46993CE8F97BFEFD4D6502C39DDE98F7F",
+                            "nativeUiLanguage":  "zh-Hant",
+                            "mrtLanguageQualifier":  "ZH-HANT",
+                            "homeFlowDirection":  "LeftToRight",
+                            "dialogFlowDirection":  "LeftToRight",
+                            "rasterizationScale":  1.5,
+                            "nativeClientWidthDip":  1265.3333740234375,
+                            "nativeClientHeightDip":  922.6666870117188,
+                            "readiness":  "已就緒",
+                            "sourceLabel":  "Display 1 (1920 x 1080)",
+                            "receiverName":  "RedrainCast PC",
+                            "version":  "RedrainCast · v0.1.20",
+                            "settingsDialogOpen":  true,
+                            "nativeTextBounds":  {
+                                                     "issues":  [
+
+                                                                ],
+                                                     "measured":  16,
+                                                     "requiredVisibleResourceKeys":  [
+                                                                                         "SharingSettings",
+                                                                                         "Save",
+                                                                                         "Cancel",
+                                                                                         "MaximumDimension",
+                                                                                         "MaximumFPS",
+                                                                                         "VideoBitrate",
+                                                                                         "VideoCodec",
+                                                                                         "ReceiverOrientation",
+                                                                                         "SendAudio",
+                                                                                         "ShowStatistics"
+                                                                                     ]
+                                                 },
+                            "pixelValidation":  {
+                                                    "locale":  "zh-Hant",
+                                                    "page":  "sharing-settings",
+                                                    "sampleInsetPixels":  9,
+                                                    "sampledColors":  147,
+                                                    "opaqueSampleRatio":  1,
+                                                    "minChannel":  14,
+                                                    "maxChannel":  255
+                                                }
+                        }
+                    ]
+}

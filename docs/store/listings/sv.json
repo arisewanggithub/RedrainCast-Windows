@@ -1,0 +1,48 @@
+{
+  "locale": "sv",
+  "productName": "RedrainCast",
+  "description": "Dela en skärm eller ett fönster mellan din Windows-dator och kompatibla RedrainCast-enheter på ett betrott lokalt nätverk.\n\nRedrainCast förenar sändning och mottagning i en enda app utvecklad specifikt för Windows. Välj en bildskärm eller ett fönster att dela, välj en mottagare i närheten och starta skärmöverföringen. Du kan också ansluta direkt med den IP-adress och port som visas på mottagaren.\n\nDela ljudet som spelas upp tillsammans med skärmbilden, justera gränserna för bildinsamling och videokvaliteten och visa uppspelningsstatistik på kompatibla mottagare om du vill. Inkommande skärmöverföringar öppnas i helskärm. När delningen stoppas återgår mottagarens fönster till sitt tidigare läge.\n\nKrav\n- Windows 11 version 22H2 eller senare på ARM64 eller x64.\n- En kompatibel RedrainCast-app på den andra enheten, till exempel en Windows- eller Android-enhet som stöds. RedrainCast är inte en allmän mottagare för Miracast eller Google Cast.\n- Ett betrott lokalt nätverk samt maskinvarukodning och maskinvaruavkodning av video som stöds. Vilka kodekar som är tillgängliga beror på enheten.\n\nViktig information om nätverk och integritet\nInkommande skärmöverföringar accepteras automatiskt medan mottagaren är tillgänglig. Använd RedrainCast endast på nätverk och med enheter som du litar på. Varken den lokala skärm- och ljudtrafiken eller identifieringen av enheter i nätverket är autentiserad eller krypterad. Appen använder varken konto eller molnbaserad vidarebefordran. Standardappen spelar inte in din skärm eller ditt ljud till filer.",
+  "whatsNew": "",
+  "productFeatures": [
+    "Skicka och ta emot skärminnehåll i en och samma app utvecklad specifikt för Windows.",
+    "Dela en vald bildskärm eller ett valt fönster.",
+    "Hitta mottagare i närheten eller anslut med en IP-adress och port.",
+    "Överför skärminnehåll med kompatibla RedrainCast-appar på Windows och Android.",
+    "Skicka ljudet som spelas upp tillsammans med skärmbilden.",
+    "Justera maximal bildstorlek vid bildinsamling, bildfrekvens, bithastighet och välj en videokodek som stöds.",
+    "Visa uppspelningsstatistik på kompatibla mottagare om du vill.",
+    "Ta emot i helskärm med ljusa och mörka Windows-teman samt Windows-teman med hög kontrast."
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "Dela din skärm eller ett fönster, med eller utan ljud, mellan kompatibla Windows- och Android-enheter på ett betrott lokalt nätverk.",
+  "keywords": [
+    "skärmdelning",
+    "skärmöverföring",
+    "lokalt nätverk",
+    "fönsterdelning",
+    "skärmmottagare",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/sv/01-home.png", "caption": "Skicka och ta emot skärminnehåll.", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/sv/02-sharing-settings.png", "caption": "Delningsinställningar", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

@@ -7,9 +7,16 @@ public interface IVideoSource : IAsyncDisposable
     string EncoderName { get; }
     int Width { get; }
     int Height { get; }
+    // Preparation may allocate resources, but must not capture before receiver acceptance.
+    ValueTask PrepareAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
     IAsyncEnumerable<EncodedVideo> ReadFramesAsync(CancellationToken cancellationToken);
 }
 
+public interface IRecoverableVideoSource : IVideoSource
+{
+    bool SupportsStreamRecovery { get; }
+    ValueTask RequestKeyFrameAsync(CancellationToken token);
+}
 public sealed class VideoQueue(int maxBytes = 8 * 1024 * 1024)
 {
     private readonly Queue<EncodedVideo> frames = [];

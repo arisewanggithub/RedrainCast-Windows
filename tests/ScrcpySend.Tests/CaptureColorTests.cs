@@ -60,4 +60,36 @@ public sealed class CaptureColorTests
         Assert.False(CaptureColor.Sdr.Hdr);
         Assert.Equal(1, CaptureColor.Sdr.WhiteScale);
     }
+
+    [Theory]
+    [InlineData(0, 1000, null, 1000f)]
+    [InlineData(180, 0, 180f, null)]
+    [InlineData(float.NaN, float.PositiveInfinity, null, null)]
+    [InlineData(180, 1000, 180f, 1000f)]
+    public void MissingDisplayMetadataPreservesHdrAndEachKnownValue(float white, float peak,
+        float? expectedWhite, float? expectedPeak)
+    {
+        var color = CaptureColor.FromHdrDisplayMetadata(white, peak);
+        color.Validate();
+        Assert.True(color.Hdr);
+        Assert.Equal(expectedWhite, color.SdrWhiteNits);
+        Assert.Equal(expectedPeak, color.PeakNits);
+        Assert.InRange(ToneMapTables.Sample(new Vector3(12.5f), 1000).X, 0, 1);
+    }
+
+    [Fact]
+    public void UnknownMetadataIsNotFabricatedForDiagnostics()
+    {
+        var color = new CaptureColor(true);
+        color.Validate();
+        Assert.Null(color.SdrWhiteNits);
+        Assert.Null(color.PeakNits);
+        Assert.Contains("unknown", color.LuminanceDescription);
+        Assert.Throws<InvalidOperationException>(() => color.WhiteScale);
+        Assert.Throws<InvalidOperationException>(() => color.PeakScale);
+        var json = System.Text.Json.JsonSerializer.Serialize(color);
+        Assert.Contains("\"Hdr\":true", json);
+        Assert.Contains("\"SdrWhiteNits\":null", json);
+        Assert.Contains("\"PeakNits\":null", json);
+    }
 }

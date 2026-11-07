@@ -1,0 +1,15 @@
+<Project>
+  <Target Name="PrepareVersionedApplicationManifest" BeforeTargets="CoreCompile"
+          Condition="'$(ApplicationManifest)' != '' And '$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <_VersionedApplicationManifest>$(IntermediateOutputPath)versioned.app.manifest</_VersionedApplicationManifest>
+    </PropertyGroup>
+    <Copy SourceFiles="$(ApplicationManifest)" DestinationFiles="$(_VersionedApplicationManifest)"/>
+    <XmlPoke XmlInputPath="$(_VersionedApplicationManifest)"
+             Query="/*[local-name()='assembly']/*[local-name()='assemblyIdentity']/@version"
+             Value="$(AssemblyVersion)"/>
+    <PropertyGroup>
+      <ApplicationManifest>$(_VersionedApplicationManifest)</ApplicationManifest>
+    </PropertyGroup>
+  </Target>
+</Project>

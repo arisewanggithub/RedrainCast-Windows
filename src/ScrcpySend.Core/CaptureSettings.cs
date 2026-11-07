@@ -1,10 +1,12 @@
 using System.Globalization;
 using System.Text.Json;
+using RedrainCast.Protocol;
 
 namespace ScrcpySend.Core;
 
 public sealed record CaptureSettings(int MaxSize = 1920, int MaxFps = 60, int VideoBitrate = 8_000_000,
-    bool EnableAudio = false, string ReceiverOrientation = "auto", string VideoCodec = "h264")
+    bool EnableAudio = false, string ReceiverOrientation = "auto", string VideoCodec = "h264",
+    bool ShowPlaybackStatistics = false)
 {
     public static IReadOnlyList<int> FpsPresets { get; } = Array.AsReadOnly<int>([15, 24, 25, 30, 48, 50, 60, 90, 120]);
 
@@ -32,7 +34,8 @@ public sealed record CaptureSettings(int MaxSize = 1920, int MaxFps = 60, int Vi
     }
 
     public static CaptureInput ParseInput(string maximumDimension, string bitrateMbps, int? fps,
-        string receiverOrientation, CultureInfo culture, string videoCodec = "h264", bool enableAudio = false)
+        string receiverOrientation, CultureInfo culture, string videoCodec = "h264", bool enableAudio = false,
+        bool showPlaybackStatistics = false)
     {
         string? dimensionError = null, bitrateError = null, fpsError = null;
         if (!int.TryParse(maximumDimension.Trim(), NumberStyles.None, culture, out var size) || size is < 64 or > 3840)
@@ -47,13 +50,13 @@ public sealed record CaptureSettings(int MaxSize = 1920, int MaxFps = 60, int Vi
         CaptureSettings? settings = null;
         if (dimensionError == null && bitrateError == null && fpsError == null)
         {
-            settings = new(size, fps!.Value, (int)(mbps * 1_000_000), enableAudio, receiverOrientation, videoCodec);
+            settings = new(size, fps!.Value, (int)(mbps * 1_000_000), enableAudio, receiverOrientation, videoCodec, showPlaybackStatistics);
             settings.Validate();
         }
         return new(settings, dimensionError, bitrateError, fpsError);
     }
 
-    public object Request(string hardwareEncoder)
+    public object Request(string hardwareEncoder, ReceiverOptions? effectiveOptions = null)
     {
         Validate();
         var request = new Dictionary<string, object>
@@ -67,6 +70,8 @@ public sealed record CaptureSettings(int MaxSize = 1920, int MaxFps = 60, int Vi
             ["receiverOrientation"] = ReceiverOrientation,
             ["audio"] = new { enabled = EnableAudio, codec = "raw", encoder = "", bitrate = 1_536_000, source = "output", codecOptions = "" }
         };
+        if (effectiveOptions?.PlaybackStats == true)
+            request["receiverOptions"] = ReceiverOptionProtocol.WireValue(effectiveOptions);
         return request;
     }
 

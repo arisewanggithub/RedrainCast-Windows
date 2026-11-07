@@ -66,4 +66,31 @@ public sealed class ReceiveDiagnosticsTests
         Assert.Throws<ArgumentOutOfRangeException>(() => diagnostics.Received(Media(1, 0), -1));
         Assert.Throws<ArgumentOutOfRangeException>(() => diagnostics.Handled(-1));
     }
+
+    [Fact]
+    public void SlowArrivalRetainsSchedulingContextAtItsMaximumGap()
+    {
+        long at = 0;
+        var diagnostics = new ReceiveDiagnostics(() => at);
+        diagnostics.Received(Media(2, 0), 0);
+        at = 328;
+        diagnostics.Received(Media(2, 10000), 328);
+        var peak = diagnostics.Diagnostics;
+        Assert.Contains("gapMaxMs=328 readMaxMs=328 gapScheduling=[processors=", peak);
+        Assert.Contains("pending=", peak);
+        at = 338;
+        diagnostics.Received(Media(2, 20000), 10);
+        Assert.Contains(peak.Split("gapScheduling=[").Last().Split(']')[0], diagnostics.Diagnostics);
+    }
+
+    [Fact]
+    public void SmallArrivalGapsDoNotPretendToHaveCapturedSchedulingEvidence()
+    {
+        long at = 0;
+        var diagnostics = new ReceiveDiagnostics(() => at);
+        diagnostics.Received(Media(2, 0), 0);
+        at = 20;
+        diagnostics.Received(Media(2, 10000), 20);
+        Assert.Contains("gapScheduling=[below100ms]", diagnostics.Diagnostics);
+    }
 }

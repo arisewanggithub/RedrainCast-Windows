@@ -10,7 +10,7 @@ namespace RedrainCast.App;
 
 public sealed partial class MainWindow
 {
-    internal async Task RunMediaSelfTestAsync(string fixtureFile, string reportFile)
+    internal async Task RunMediaSelfTestAsync(string fixtureFile, string reportFile, bool verifyOcclusion = false)
     {
         string? failure = null;
         long presented = 0;
@@ -18,43 +18,87 @@ public sealed partial class MainWindow
         var hardwareSurfaces = 0;
         var videoOnly = false;
         var enteredFullscreen = false;
+        var exposedBeforePresentation = false;
+        var presentationDiagnostics = "";
+        var occlusionSurvivalVerified = false;
+        var phase = "starting";
         var originalPresenter = AppWindow.Presenter;
         var originalPosition = AppWindow.Position;
         var originalSize = AppWindow.Size;
         var originalWindowState = (originalPresenter as OverlappedPresenter)?.State;
+        var originalAlwaysOnTop = (originalPresenter as OverlappedPresenter)?.IsAlwaysOnTop;
         Task? sender = null;
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         try
         {
+            if (!verifyOcclusion && originalPresenter is OverlappedPresenter testPresenter) testPresenter.IsAlwaysOnTop = true;
+            Activate();
             if (receiver is null) throw new InvalidOperationException("Listener did not start.");
             await using var frames = new SyntheticSource(fixtureFile);
             var audio = new SyntheticAudio(frames.FirstPtsUs);
             var endpoint = new ReceiverEndpoint(IPAddress.Loopback, receiver.Port, "Self-test", false);
             sender = Task.Run(() => new SenderSession().RunAsync(endpoint,
                 new CaptureSettings(MaxFps: 30, VideoCodec: frames.Codec, EnableAudio: true), frames, Diagnostic, stop.Token, audio));
-            while (video.PresentedFrames < 5 || video.PlayedAudioFrames < 4800)
+            phase = verifyOcclusion ? "waiting for decoded video/audio" : "waiting for visible video/audio";
+            while ((verifyOcclusion ? video.DecodedFrames : video.PresentedFrames) < 5 || video.PlayedAudioFrames < 4800)
             {
                 if (sender.IsCompleted) await sender;
                 await Task.Delay(25, stop.Token);
             }
-            presented = video.PresentedFrames;
-            playedAudio = video.PlayedAudioFrames;
-            hardwareSurfaces = video.HardwareSurfaceCount;
-            videoOnly = HomePage.Visibility == Visibility.Collapsed && roles.Role == CastRole.Receiving;
-            enteredFullscreen = AppWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen;
+            if (verifyOcclusion)
+            {
+                AppWindow.Hide();
+                phase = "waiting for DXGI occlusion";
+                using (var occlusionWait = CancellationTokenSource.CreateLinkedTokenSource(stop.Token))
+                {
+                    occlusionWait.CancelAfter(TimeSpan.FromSeconds(3));
+                    try
+                    {
+                        while (!video.IsPresentationSuspended)
+                        {
+                            if (sender.IsCompleted) await sender;
+                            await Task.Delay(25, occlusionWait.Token);
+                        }
+                    }
+                    catch (OperationCanceledException) when (!stop.IsCancellationRequested)
+                    {
+                        throw new NotSupportedException("DXGI continued presenting the hidden test window; occlusion survival could not be verified in this environment.");
+                    }
+                }
+                phase = "verifying eleven-second occlusion survival";
+                var until = Environment.TickCount64 + 11_000;
+                while (Environment.TickCount64 < until)
+                {
+                    if (sender.IsCompleted) await sender;
+                    if (roles.Role != CastRole.Receiving || receiver?.IsBusy != true || !video.IsAttached)
+                        throw new InvalidOperationException("The occluded receiver lost its healthy session.");
+                    await Task.Delay(50, stop.Token);
+                }
+                occlusionSurvivalVerified = video.IsPresentationSuspended && video.DecodedFrames >= 5;
+                if (!occlusionSurvivalVerified)
+                    throw new InvalidOperationException("The test did not retain an explicitly occluded, decoding session beyond ten seconds.");
+                AppWindow.Show();
+            }
+            CaptureMeasurements();
             if (!videoOnly || hardwareSurfaces == 0)
                 throw new InvalidOperationException("Incoming cast did not show hardware-decoded video without the home controls.");
             if (!enteredFullscreen)
                 throw new InvalidOperationException("Incoming playback did not automatically enter fullscreen.");
-            AppWindow.SetPresenter(originalPresenter);
-            Render();
-            if (AppWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen)
-                throw new InvalidOperationException("A manual fullscreen exit was overridden during playback.");
-            AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+            if (!exposedBeforePresentation)
+                throw new InvalidOperationException("The receiver did not expose its decoded video surface before the first presentation.");
+            if (!verifyOcclusion)
+            {
+                AppWindow.SetPresenter(originalPresenter);
+                Render();
+                if (AppWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen)
+                    throw new InvalidOperationException("A manual fullscreen exit was overridden during playback.");
+                AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+            }
         }
-        catch (Exception error) { failure = error.ToString(); }
+        catch (Exception error) { failure = $"{phase}: {error}"; }
         finally
         {
+            CaptureMeasurements();
             stop.Cancel();
             if (sender is not null)
             {
@@ -69,7 +113,7 @@ public sealed partial class MainWindow
             while (roles.Role != CastRole.Idle || video.IsAttached)
                 await Task.Delay(25, cleanup.Token);
             Render();
-            if (HomePage.Visibility != Visibility.Visible || ReadinessTitle.Text != "READY" || video.KeepsDisplayAwake)
+            if (HomePage.Visibility != Visibility.Visible || ReadinessTitle.Text != L("Ready") || video.KeepsDisplayAwake)
                 throw new InvalidOperationException("Ending reception did not restore the ready home and release media resources.");
             if (AppWindow.Presenter.Kind != originalPresenter.Kind ||
                 (AppWindow.Presenter as OverlappedPresenter)?.State != originalWindowState ||
@@ -77,14 +121,36 @@ public sealed partial class MainWindow
                 throw new InvalidOperationException("Ending reception did not restore the previous window presentation, position and size.");
         }
         catch (Exception error) { failure = $"{failure}\nCleanup: {error}"; }
+        try
+        {
+            if (originalPresenter is OverlappedPresenter testPresenter && originalAlwaysOnTop is { } alwaysOnTop)
+                testPresenter.IsAlwaysOnTop = alwaysOnTop;
+            if (verifyOcclusion) AppWindow.Show();
+        }
+        catch (Exception error) { failure = $"{failure}\nWindow test visibility cleanup: {error}"; }
         await File.WriteAllTextAsync(reportFile, JsonSerializer.Serialize(new
         {
             passed = failure is null, failure, presentedFrames = presented, playedAudioFrames = playedAudio, hardwareSurfaces,
-            receivingShowsVideoOnly = videoOnly, restoredReadyHome = ReadinessTitle.Text == "READY",
+            receivingShowsVideoOnly = videoOnly, restoredReadyHome = ReadinessTitle.Text == L("Ready"),
             enteredFullscreen, restoredWindow = AppWindow.Presenter.Kind == originalPresenter.Kind &&
                 AppWindow.Position == originalPosition && AppWindow.Size == originalSize,
+            exposedBeforePresentation, presentationDiagnostics,
+            verifyOcclusion, occlusionSurvivalVerified, presentationVerified = presented >= 5,
             detached = !video.IsAttached, syntheticOnly = true, physicalDeviceTested = false, diagnostics
         }, new JsonSerializerOptions { WriteIndented = true }));
+
+        void CaptureMeasurements()
+        {
+            presented = video.PresentedFrames;
+            playedAudio = video.PlayedAudioFrames;
+            hardwareSurfaces = video.HardwareSurfaceCount;
+            videoOnly = HomePage.Visibility == Visibility.Collapsed && roles.Role == CastRole.Receiving;
+            enteredFullscreen = AppWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen;
+            exposedBeforePresentation = diagnostics.Any(line =>
+                line.Contains("Receiver video surface exposed:", StringComparison.Ordinal) &&
+                line.Contains("presentedFrames=0", StringComparison.Ordinal));
+            presentationDiagnostics = video.PresentationDiagnostics;
+        }
     }
 
     private sealed class SyntheticSource : IVideoSource

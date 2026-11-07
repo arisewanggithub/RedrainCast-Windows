@@ -119,6 +119,7 @@ public sealed unsafe class HardwareDecoder : IDisposable
         // Application-owned displayed, pending and in-progress frames must not exhaust the codec's reference surfaces.
         context->extra_hw_frames = AdditionalHardwareFrames;
         context->flags |= ffmpeg.AV_CODEC_FLAG_LOW_DELAY;
+        context->flags |= ffmpeg.AV_CODEC_FLAG_COPY_OPAQUE;
         context->pkt_timebase = new AVRational { num = 1, den = 1_000_000 };
         context->extradata = (byte*)ffmpeg.av_mallocz((ulong)(configuration.Length + ffmpeg.AV_INPUT_BUFFER_PADDING_SIZE));
         if (context->extradata == null) throw new OutOfMemoryException();
@@ -139,7 +140,7 @@ public sealed unsafe class HardwareDecoder : IDisposable
         {
             var started = Stage("validate");
             var idr = CodecConfiguration.ValidateVideoFrame(codecName, packet.Payload, configurationData);
-            JsonObject.Require(idr == (packet.Flags == 1), $"{codecName} key flag differs from the actual random-access picture.");
+            JsonObject.Require(idr == ((packet.Flags & 1) != 0), $"{codecName} key flag differs from the actual random-access picture.");
             JsonObject.Require(!needsKeyframe || idr, "A new generation must start with a real random-access picture.");
             needsKeyframe = false;
             Measure(ref validationMaxUs, started);
@@ -151,6 +152,8 @@ public sealed unsafe class HardwareDecoder : IDisposable
                 NativeRuntime.Check(ffmpeg.av_new_packet(input, packet.Payload.Length), "Allocate encoded packet");
                 packet.Payload.CopyTo(new Span<byte>(input->data, packet.Payload.Length));
                 input->pts = input->dts = packet.PtsUs;
+                // FFmpeg carries this tag with the decoded picture, including delayed or repeated PTS.
+                input->opaque = (void*)(nuint)(packet.VideoRotationDegrees / 90 + 1);
                 input->flags = idr ? ffmpeg.AV_PKT_FLAG_KEY : 0;
                 Measure(ref copyMaxUs, started);
                 started = Stage("submit");
@@ -207,6 +210,7 @@ public sealed unsafe class HardwareDecoder : IDisposable
                 "Hardware decoder did not allocate the bounded reserved surface pool.", "DECODER_FAILED");
             if (pool->sw_format != AVPixelFormat.AV_PIX_FMT_NV12)
                 throw new NotSupportedException("Only hardware NV12 output is currently supported.");
+            JsonObject.Require((nuint)frame->opaque is >= 1 and <= 4, "Hardware decoder lost the picture's rotation metadata.", "DECODER_FAILED");
             var output = new HardwareFrame(frame);
             frame = null;
             return output;
@@ -250,6 +254,7 @@ public sealed unsafe class HardwareFrame : IDisposable
     public int Width => frame->width;
     public int Height => frame->height;
     public long PtsUs => frame->pts;
+    public int RotationDegrees => checked(((int)(nuint)frame->opaque - 1) * 90);
     public int PrimariesCode => (int)frame->color_primaries;
     public int TransferCode => (int)frame->color_trc;
     public int MatrixCode => (int)frame->colorspace;

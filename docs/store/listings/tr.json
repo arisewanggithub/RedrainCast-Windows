@@ -1,0 +1,48 @@
+{
+  "locale": "tr",
+  "productName": "RedrainCast",
+  "description": "Windows bilgisayarınız ile uyumlu RedrainCast cihazları arasında güvenilir bir yerel ağ üzerinden ekran veya pencere paylaşın.\n\nRedrainCast, Windows için yerel olarak geliştirilmiş tek bir uygulamada gönderme ve alma işlevlerini bir araya getirir. Paylaşmak istediğiniz ekranı veya pencereyi seçin, yakındaki bir alıcıyı seçin ve yayını başlatın. Alıcıda gösterilen IP adresi ve bağlantı noktasını kullanarak doğrudan da bağlanabilirsiniz.\n\nEkranınızla birlikte çıkış sesini paylaşın, yakalama sınırlarını ve video kalitesini ayarlayın ve uyumlu alıcılarda isteğe bağlı oynatma istatistiklerini görüntüleyin. Gelen yayınlar tam ekran görünümünde açılır. Paylaşımı durdurduğunuzda alıcı önceki pencere durumuna döner.\n\nGereksinimler\n- ARM64 veya x64 üzerinde Windows 11 sürüm 22H2 veya üzeri.\n- Diğer cihazda uyumlu bir RedrainCast uygulaması; desteklenen Windows ve Android cihazları buna dahildir. RedrainCast, genel amaçlı bir Miracast veya Google Cast alıcısı değildir.\n- Güvenilir bir yerel ağ ve desteklenen donanım tabanlı video kodlama/kod çözme. Kullanılabilen kodekler cihaza bağlıdır.\n\nÖnemli ağ ve gizlilik bilgileri\nAlıcı kullanılabilir durumdayken gelen yayınlar otomatik olarak kabul edilir. RedrainCast'i yalnızca güvendiğiniz ağlarda ve güvendiğiniz cihazlarla kullanın. Yerel ekran ve ses yayını trafiğinde ve cihaz keşfinde kimlik doğrulama ve şifreleme kullanılmaz. Hesap veya bulut üzerinden aktarım kullanılmaz. Standart uygulama, ekranınızı veya sesinizi dosyalara kaydetmez.",
+  "whatsNew": "",
+  "productFeatures": [
+    "Windows için yerel olarak geliştirilmiş tek bir uygulamada ekran gönderin ve alın.",
+    "Seçtiğiniz bir ekranı veya pencereyi paylaşın.",
+    "Yakındaki alıcıları bulun veya IP adresi ve bağlantı noktası kullanarak bağlanın.",
+    "Windows ve Android üzerindeki uyumlu RedrainCast uygulamalarıyla yayın yapın.",
+    "Ekranınızla birlikte çıkış sesini gönderin.",
+    "En yüksek yakalama boyutunu, kare hızını, bit hızını ve desteklenen video kodeğini ayarlayın.",
+    "Uyumlu alıcılarda isteğe bağlı oynatma istatistiklerini görüntüleyin.",
+    "Windows'un açık, koyu ve yüksek karşıtlık temalarıyla yayınları tam ekranda alın."
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "Uyumlu Windows ve Android cihazları arasında güvenilir bir yerel ağ üzerinden ekranınızı veya bir pencereyi, isteğe bağlı olarak sesle birlikte paylaşın.",
+  "keywords": [
+    "ekran paylaşımı",
+    "ekran yansıtma",
+    "yerel ağ",
+    "pencere paylaşımı",
+    "ekran alıcısı",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/tr/01-home.png", "caption": "Ekran gönderin ve alın.", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/tr/02-sharing-settings.png", "caption": "Paylaşım ayarları", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

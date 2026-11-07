@@ -1,6 +1,26 @@
+using RedrainCast.Protocol;
+
 namespace ScrcpySend.Core;
 
 public sealed record AudioPacket(byte[] Data, long PtsUs);
+
+public static class PcmPackets
+{
+    public static IEnumerable<AudioPacket> Split(AudioPacket packet)
+    {
+        if (packet.Data.Length is 0 or > 262144 || packet.Data.Length % 4 != 0 || packet.PtsUs < 0)
+            throw new ProtocolException("Invalid source stereo s16le audio packet.");
+        var frames = packet.Data.Length / 4;
+        _ = checked(packet.PtsUs + frames * 1_000_000L / RecoveryAudio.Rate);
+        if (frames <= RecoveryAudio.MaximumPacketFrames) { yield return packet; yield break; }
+        for (var offset = 0; offset < frames; offset += RecoveryAudio.MaximumPacketFrames)
+        {
+            var take = Math.Min(RecoveryAudio.MaximumPacketFrames, frames - offset);
+            yield return new(packet.Data.AsSpan(offset * 4, take * 4).ToArray(),
+                checked(packet.PtsUs + offset * 1_000_000L / RecoveryAudio.Rate));
+        }
+    }
+}
 
 public interface IAudioSource : IAsyncDisposable
 {

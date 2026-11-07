@@ -1,10 +1,16 @@
 param(
     [ValidateSet('arm64', 'x64')][string]$Architecture = 'arm64',
     [string]$OutputDirectory,
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.1.6'
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
+    [switch]$NoRestore
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+if (-not $Version) {
+    [xml]$buildProperties = Get-Content -LiteralPath (Join-Path $root 'Directory.Build.props') -Raw
+    $Version = $buildProperties.SelectSingleNode('/Project/PropertyGroup/Version').InnerText
+    if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'Directory.Build.props must specify a three-component release version.' }
+}
 $rid = "win-$Architecture"
 $platform = if ($Architecture -eq 'arm64') { 'ARM64' } else { 'x64' }
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $root "artifacts\$rid" }
@@ -24,10 +30,18 @@ if ($nativeEntries.Count -ne $nativeFiles.Count -or
     @($nativeEntries | Where-Object { $_.PSIsContainer -or $nativeFiles -notcontains $_.Name }).Count -ne 0) {
     throw 'Native inputs must contain only the pinned decoder/audio runtime and its notices.'
 }
-& dotnet publish (Join-Path $root 'src\RedrainCast.App\RedrainCast.App.csproj') -c Release `
+$restoreArguments = @()
+& powershell.exe -NoProfile -STA -File (Join-Path $PSScriptRoot 'Generate-BrandAssets.ps1') -Verify
+if ($LASTEXITCODE -ne 0) { throw 'Brand assets failed validation before publication.' }
+if ($NoRestore) { $restoreArguments = @('--no-restore') }
+& dotnet publish (Join-Path $root 'src\RedrainCast.App\RedrainCast.App.csproj') @restoreArguments -c Release `
     -r $rid "-p:Platform=$platform" --self-contained true "-p:Version=$Version" `
     -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o $OutputDirectory
 if ($LASTEXITCODE -ne 0) { throw 'Self-contained RedrainCast publish failed.' }
+& dotnet publish (Join-Path $root 'src\RedrainCast.CaptureWorker\RedrainCast.CaptureWorker.csproj') @restoreArguments -c Release `
+    -r $rid "-p:Platform=$platform" --self-contained true "-p:Version=$Version" `
+    -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o (Join-Path $OutputDirectory 'capture-worker')
+if ($LASTEXITCODE -ne 0) { throw 'Self-contained capture worker publish failed.' }
 foreach ($file in @('RedrainCast.App.exe', 'RedrainCast.App.pri', 'coreclr.dll', 'Microsoft.UI.Xaml.dll')) {
     if (-not (Test-Path -LiteralPath (Join-Path $OutputDirectory $file))) { throw "Missing runtime/resource: $file" }
 }
@@ -67,5 +81,5 @@ foreach ($packagePath in ($packagePaths | Sort-Object -Unique)) {
         Where-Object { $_.Name -match '(?i)license|notice|copyright|\.nuspec$' } |
         Copy-Item -Destination $destination
 }
-& (Join-Path $PSScriptRoot 'ValidatePublication.ps1') -Architecture $Architecture -PublishedDirectory $OutputDirectory
+& (Join-Path $PSScriptRoot 'ValidatePublication.ps1') -Architecture $Architecture -PublishedDirectory $OutputDirectory -ExpectedVersion "$Version.0"
 Write-Output "Self-contained RedrainCast build: $OutputDirectory"

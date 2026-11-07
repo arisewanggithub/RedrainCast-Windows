@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <!-- Canonical catalog. Preserve indexed placeholders exactly; never translate brand names, codec identifiers, IP addresses, PTS, HWND or protocol identifiers. -->
+  <data name="HomeTagline" xml:space="preserve"><value>Wysyłaj i odbieraj obraz ekranu.</value></data>
+  <data name="AppDescription" xml:space="preserve"><value>Wysyłaj i odbieraj obraz ekranu w zaufanych sieciach lokalnych.</value><comment>Windows package/Start description. RedrainCast is the unchanged application display name.</comment></data>
+  <data name="Settings" xml:space="preserve"><value>Ustawienia</value></data>
+  <data name="SendScreen" xml:space="preserve"><value>Wyślij obraz ekranu</value></data>
+  <data name="SendHint" xml:space="preserve"><value>Wybierz pobliski odbiornik, aby rozpocząć udostępnianie.</value></data>
+  <data name="ChooseSourceHelp" xml:space="preserve"><value>Wybierz ekran lub okno</value></data>
+  <data name="ShareSource" xml:space="preserve"><value>Udostępnij ekran lub okno</value></data>
+  <data name="ChooseSource" xml:space="preserve"><value>Wybierz, co chcesz udostępnić</value></data>
+  <data name="NearbyReceivers" xml:space="preserve"><value>Pobliskie odbiorniki</value></data>
+  <data name="AutoUpdating" xml:space="preserve"><value>Aktualizacja automatyczna</value></data>
+  <data name="LookingForReceivers" xml:space="preserve"><value>Wyszukiwanie odbiorników...</value></data>
+  <data name="ManualConnect" xml:space="preserve"><value>Połącz przez IP : Port</value><comment>IP is a network abbreviation. Preserve the address/port distinction.</comment></data>
+  <data name="ReceiveScreen" xml:space="preserve"><value>Odbieraj obraz ekranu</value></data>
+  <data name="Starting" xml:space="preserve"><value>URUCHAMIANIE</value><comment>Readiness banner.</comment></data>
+  <data name="OpeningListener" xml:space="preserve"><value>Uruchamianie nasłuchiwania...</value></data>
+  <data name="ConnectThisPC" xml:space="preserve"><value>Połącz z tym komputerem</value></data>
+  <data name="AddressHint" xml:space="preserve"><value>Użyj adresu osiągalnego z sieci nadawcy.</value></data>
+  <data name="CopyAddress" xml:space="preserve"><value>Kopiuj adres</value></data>
+  <data name="CopyAddressHelp" xml:space="preserve"><value>Kopiuj IP:Port bez spacji</value></data>
+  <data name="IncomingHint" xml:space="preserve"><value>Przychodzące transmisje otwierają się automatycznie i wypełniają to okno.</value></data>
+  <data name="TrustedNetworkHint" xml:space="preserve"><value>Odbieranie jest wstrzymywane podczas wysyłania obrazu ekranu. Korzystaj tylko z zaufanych sieci.</value></data>
+  <data name="ConnectionHelp" xml:space="preserve"><value>Pomoc dotycząca połączenia</value></data>
+  <data name="Version" xml:space="preserve"><value>RedrainCast · {0}</value><comment>{0} invariant release label (v plus version). Do not translate RedrainCast.</comment></data>
+  <data name="ActionFailed" xml:space="preserve"><value>Nie udało się wykonać czynności</value></data>
+  <data name="TechnicalDetails" xml:space="preserve"><value>Szczegóły techniczne: {0}</value><comment>{0} original technical/OS error, may be English. Do not translate or interpret its contents.</comment></data>
+  <data name="RetryAction" xml:space="preserve"><value>Nie udało się ukończyć czynności. Sprawdź szczegóły i spróbuj ponownie.</value></data>
+  <data name="InvalidAdvertisement" xml:space="preserve"><value>Zignorowano nieprawidłowe ogłoszenie wykrywania</value></data>
+  <data name="DiscoveryUnavailable" xml:space="preserve"><value>Wykrywanie jest niedostępne. Połącz przez IP : Port.</value></data>
+  <data name="DiscoveryUnavailableActive" xml:space="preserve"><value>Wykrywanie jest niedostępne. Aktywny odbiornik pozostaje widoczny powyżej.</value></data>
+  <data name="NoReceivers" xml:space="preserve"><value>Nie znaleziono jeszcze pobliskich odbiorników. Oba urządzenia muszą mieć dostęp do sieci lokalnej.</value></data>
+  <data name="NoReceiversActive" xml:space="preserve"><value>Żadne pobliskie odbiorniki nie zgłaszają swojej dostępności. Aktywny odbiornik jest widoczny powyżej.</value></data>
+  <data name="ReceiverCount" xml:space="preserve"><value>Liczba wykrytych odbiorników: {0}. Aktualizacja automatyczna.</value><comment>{0} integer receiver count. Use a grammatically count-neutral form where needed.</comment></data>
+  <data name="Paused" xml:space="preserve"><value>WSTRZYMANO</value></data>
+  <data name="ConnectingBanner" xml:space="preserve"><value>ŁĄCZENIE</value></data>
+  <data name="Ready" xml:space="preserve"><value>GOTOWOŚĆ</value></data>
+  <data name="PauseReceiveHint" xml:space="preserve"><value>Odbieranie jest wstrzymywane podczas udostępniania obrazu ekranu.</value></data>
+  <data name="PreparingVideo" xml:space="preserve"><value>Przygotowywanie przychodzącego wideo...</value></data>
+  <data name="Listening" xml:space="preserve"><value>Nasłuchiwanie połączeń</value></data>
+  <data name="ConnectNetwork" xml:space="preserve"><value>Połącz się z siecią Wi-Fi lub Ethernet.</value></data>
+  <data name="AddressUnavailableSending" xml:space="preserve"><value>Lokalne adresy odbioru są niedostępne podczas wysyłania.</value></data>
+  <data name="LocalNetwork" xml:space="preserve"><value>Sieć lokalna</value></data>
+  <data name="SourceClosed" xml:space="preserve"><value>Źródło zostało zamknięte. Wybierz źródło ponownie.</value></data>
+  <data name="SourceDimensions" xml:space="preserve"><value>{0} ({1} x {2})</value><comment>{0} original source name, {1}/{2} invariant pixel width/height. Preserve original names.</comment></data>
+  <data name="Connecting" xml:space="preserve"><value>Łączenie...</value></data>
+  <data name="Casting" xml:space="preserve"><value>Transmisja</value></data>
+  <data name="Stopping" xml:space="preserve"><value>Zatrzymywanie...</value></data>
+  <data name="Busy" xml:space="preserve"><value>Zajęty</value></data>
+  <data name="Available" xml:space="preserve"><value>Dostępny</value></data>
+  <data name="Send" xml:space="preserve"><value>Wyślij</value></data>
+  <data name="Stop" xml:space="preserve"><value>Zatrzymaj</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Anuluj</value></data>
+  <data name="Save" xml:space="preserve"><value>Zapisz</value></data>
+  <data name="Close" xml:space="preserve"><value>Zamknij</value></data>
+  <data name="ActionHelp" xml:space="preserve"><value>{0}: {1}</value><comment>Accessible button name: {0} localized action, {1} verbatim peer/source name.</comment></data>
+  <data name="OperationalNotice" xml:space="preserve"><value>Informacja o połączeniu</value></data>
+  <data name="ReceiverAddress" xml:space="preserve"><value>IP : Port odbiornika</value></data>
+  <data name="ConnectReceiver" xml:space="preserve"><value>Połącz z odbiornikiem</value></data>
+  <data name="AddressExample" xml:space="preserve"><value>192.168.1.42 : 50432</value><comment>Keep invariant ASCII example address and port unchanged.</comment></data>
+  <data name="AddressValidation" xml:space="preserve"><value>Wpisz bieżący adres IP typu unicast i port odbiornika w formacie IP : Port, na przykład 192.168.1.42 : 50432. Adresy IPv6 ujmij w nawiasy kwadratowe, na przykład [fe80::1] : 50432. Port musi mieścić się w zakresie od 1 do 65535.</value><comment>Keep network address examples and numeric limits unchanged.</comment></data>
+  <data name="OwnAddress" xml:space="preserve"><value>Wpisz adres innego urządzenia, a nie odbiornika tego komputera.</value></data>
+  <data name="CopiedAddress" xml:space="preserve"><value>Skopiowano {0}</value><comment>{0} invariant IP : Port, never translate.</comment></data>
+  <data name="SharingSettings" xml:space="preserve"><value>Ustawienia udostępniania</value></data>
+  <data name="MaximumDimension" xml:space="preserve"><value>Maksymalny wymiar (64-3840 pikseli)</value></data>
+  <data name="MaximumFPS" xml:space="preserve"><value>Maksymalna częstotliwość przechwytywania (FPS)</value><comment>FPS = frames per second.</comment></data>
+  <data name="VideoBitrate" xml:space="preserve"><value>Przepływność wideo (0.1-100 Mbps)</value><comment>Mbps = megabits per second. Preserve numeric limits.</comment></data>
+  <data name="VideoCodec" xml:space="preserve"><value>Kodek wideo</value></data>
+  <data name="ReceiverOrientation" xml:space="preserve"><value>Orientacja odbiornika</value></data>
+  <data name="Auto" xml:space="preserve"><value>Automatyczna</value></data>
+  <data name="Landscape" xml:space="preserve"><value>Pozioma</value></data>
+  <data name="Portrait" xml:space="preserve"><value>Pionowa</value></data>
+  <data name="SendAudio" xml:space="preserve"><value>Wysyłaj dźwięk do odbiornika (wycisza odtwarzanie lokalne)</value></data>
+  <data name="ShowStatistics" xml:space="preserve"><value>Pokazuj statystyki odtwarzania na odbiorniku</value></data>
+  <data name="SettingsValidation" xml:space="preserve"><value>Wpisz wymiar w pełnych pikselach od 64 do 3840, limit FPS od 1 do 120 i przepływność od {0} do 100 Mbps (do sześciu cyfr po separatorze dziesiętnym). Wybierz obsługiwany kodek i orientację.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
+  <data name="SavedCodecUnavailable" xml:space="preserve"><value>Zapisany kodek jest niedostępny w bieżącym kontekście przechwytywania. Przed zapisaniem wybierz obsługiwany kodek.</value></data>
+  <data name="HelpBody" xml:space="preserve"><value>Otwórz RedrainCast na obu urządzeniach: komputerach z systemem Windows lub zgodnych urządzeniach z systemem Android. Utrzymuj je w tej samej zaufanej sieci lokalnej.
+
+Na urządzeniu nadawcy wybierz pobliski odbiornik i naciśnij Wyślij lub wpisz bieżący adres IP : Port odbiornika. W systemie Windows wybierz ekran lub okno do udostępnienia.
+
+Przychodzące transmisje są akceptowane automatycznie. Na tym komputerze odtwarzanie uruchamia się na pełnym ekranie; Enter lub F przełącza tryb pełnoekranowy, a Esc go wyłącza. Zatrzymaj transmisję na urządzeniu nadawcy.
+
+Ten komputer wstrzymuje odbieranie podczas wysyłania i wznawia je po naciśnięciu Zatrzymaj.
+
+Zezwól aplikacji RedrainCast na komunikację przez Zaporę systemu Windows w zaufanej sieci prywatnej. Transmisja nie jest uwierzytelniana ani szyfrowana; nie udostępniaj jej w internecie.</value><comment>Keep RedrainCast, Windows, Android, IP, Enter, F and Esc identifiers. Preserve paragraphs. Send and Stop refer to localized buttons.</comment></data>
+  <data name="HelpSupport" xml:space="preserve"><value>Pomoc i wsparcie</value></data>
+  <data name="PrivacyPolicy" xml:space="preserve"><value>Polityka prywatności</value></data>
+  <data name="TrustedNetworkTitle" xml:space="preserve"><value>Połącz się w zaufanej sieci lokalnej</value></data>
+  <data name="PickerInstructions" xml:space="preserve"><value>Wybierz kafelek. Udostępnianie rozpocznie się dopiero po naciśnięciu Wyślij.
+Podglądy na żywo są lokalne i działają tylko wtedy, gdy to okno wyboru jest otwarte.</value></data>
+  <data name="Windows" xml:space="preserve"><value>Okna</value><comment>Plural application windows, not the Windows operating system brand.</comment></data>
+  <data name="Displays" xml:space="preserve"><value>Ekrany</value></data>
+  <data name="PreviewPending" xml:space="preserve"><value>Oczekiwanie na podgląd</value></data>
+  <data name="CurrentlySelected" xml:space="preserve"><value>Bieżący wybór</value></data>
+  <data name="SelectedSourceHelp" xml:space="preserve"><value>{0}, bieżący wybór</value><comment>{0} original source name.</comment></data>
+  <data name="NoSources" xml:space="preserve"><value>Brak dostępnych źródeł.</value></data>
+  <data name="CannotSelectSource" xml:space="preserve"><value>Nie można wybrać tego źródła. Wybierz inne źródło.</value></data>
+  <data name="LivePreview" xml:space="preserve"><value>Podgląd na żywo</value></data>
+  <data name="PreviewUnavailable" xml:space="preserve"><value>Podgląd jest niedostępny. Nadal możesz wybrać to źródło.</value></data>
+  <data name="PreviewsUnavailable" xml:space="preserve"><value>Podglądy są niedostępne. Nadal możesz wybrać źródło.</value></data>
+  <data name="ReceiverPhaseStarting" xml:space="preserve"><value>URUCHAMIANIE ODBIORNIKA</value></data>
+  <data name="ReceiverPhaseReady" xml:space="preserve"><value>GOTOWOŚĆ DO ODBIORU</value></data>
+  <data name="ReceiverPhaseConnecting" xml:space="preserve"><value>ŁĄCZENIE</value></data>
+  <data name="ReceiverPhaseNoNetwork" xml:space="preserve"><value>BRAK POŁĄCZENIA Z SIECIĄ</value></data>
+  <data name="ReceiverPhaseDiscoveryUnavailable" xml:space="preserve"><value>WYKRYWANIE W SIECI NIEDOSTĘPNE</value></data>
+  <data name="ReceiverPhaseError" xml:space="preserve"><value>ODTWARZANIE ZATRZYMANE</value></data>
+  <data name="ReceiverPhaseUnavailable" xml:space="preserve"><value>ODBIORNIK NIEDOSTĘPNY</value></data>
+  <data name="ReceiverPhaseStopped" xml:space="preserve"><value>ODBIORNIK ZAMKNIĘTY</value></data>
+  <data name="ReceiverUnavailable" xml:space="preserve"><value>Odbiornik niedostępny</value></data>
+  <data name="PlaybackStopped" xml:space="preserve"><value>Odtwarzanie zatrzymane</value></data>
+  <data name="ReceiverStartFailed" xml:space="preserve"><value>Nie udało się uruchomić nasłuchiwania odbiornika. Sprawdź uprawnienia sieciowe, a następnie otwórz aplikację ponownie.</value></data>
+  <data name="ReceiverUnsafe" xml:space="preserve"><value>Odbiornik nie mógł bezpiecznie kontynuować działania. Zamknij i ponownie otwórz aplikację.</value></data>
+  <data name="ReceiverDiscoveryWarning" xml:space="preserve"><value>Automatyczne wykrywanie może być niedostępne. Wpisz ręcznie adres tego komputera na urządzeniu nadawcy.</value></data>
+  <data name="ReceiverAddressLookupStopped" xml:space="preserve"><value>Wyszukiwanie adresów sieciowych zostało zatrzymane. Sprawdź połączenie sieciowe tego komputera, a następnie zamknij i ponownie otwórz odbiornik, aby spróbować jeszcze raz.</value></data>
+  <data name="ReceiverDiscoveryStopped" xml:space="preserve"><value>Automatyczne wykrywanie i aktualizacje adresów zostały zatrzymane. Możesz spróbować ręcznie użyć wyświetlonego adresu lub ponownie otworzyć odbiornik, aby wznowić wykrywanie.</value></data>
+  <data name="ReceiverWindowLayoutFailed" xml:space="preserve"><value>Nie udało się dopasować okna do tego ekranu. Spróbuj je przenieść lub otworzyć ponownie.</value></data>
+  <data name="ReceiverUnsupportedConfig" xml:space="preserve"><value>Te ustawienia nie są obsługiwane. Wybierz obsługiwany kodek, rozdzielczość i liczbę klatek na sekundę na urządzeniu nadawcy, a następnie spróbuj ponownie.</value></data>
+  <data name="ReceiverDecoderFailed" xml:space="preserve"><value>Odtwarzanie wideo zostało zatrzymane. Uruchom transmisję ponownie; jeśli problem się powtórzy, spróbuj użyć innego kodeka lub niższej rozdzielczości.</value></data>
+  <data name="ReceiverAudioFailed" xml:space="preserve"><value>Odtwarzanie dźwięku zostało zatrzymane. Sprawdź urządzenie wyjściowe w systemie Windows, a następnie uruchom transmisję ponownie.</value></data>
+  <data name="ReceiverCongestion" xml:space="preserve"><value>Odtwarzanie nie nadążało za transmisją. Spróbuj obniżyć rozdzielczość, liczbę klatek na sekundę lub przepływność na urządzeniu nadawcy.</value></data>
+  <data name="ReceiverTimeout" xml:space="preserve"><value>Nadawca przestał odpowiadać lub nie udało się rozpocząć odtwarzania. Uruchom transmisję ponownie na urządzeniu nadawcy.</value></data>
+  <data name="ReceiverVersion" xml:space="preserve"><value>Zaktualizuj obie aplikacje, a następnie spróbuj połączyć się ponownie.</value></data>
+  <data name="ReceiverSenderError" xml:space="preserve"><value>Nadawca zgłosił błąd. Sprawdź jego ekran, a następnie uruchom transmisję ponownie.</value></data>
+  <data name="ReceiverUnexpected" xml:space="preserve"><value>Transmisja została nieoczekiwanie zatrzymana. Uruchom ją ponownie na urządzeniu nadawcy; jeśli problem się powtórzy, zamknij i ponownie otwórz odbiornik.</value></data>
+  <data name="StatisticsTitle" xml:space="preserve"><value>Statystyki odtwarzania</value></data>
+  <data name="StatisticsConnections" xml:space="preserve"><value>POŁĄCZENIA I KOLEJKI</value></data>
+  <data name="StatisticsVideo" xml:space="preserve"><value>STRUMIEŃ WIDEO</value></data>
+  <data name="StatisticsAudioSync" xml:space="preserve"><value>DŹWIĘK I SYNCHRONIZACJA</value></data>
+  <data name="StatisticsColumnChannel" xml:space="preserve"><value>Kanał</value></data>
+  <data name="StatisticsColumnQueued" xml:space="preserve"><value>W kolejce</value></data>
+  <data name="StatisticsColumnSpan" xml:space="preserve"><value>Zakres czasu</value></data>
+  <data name="StatisticsColumnLastActivity" xml:space="preserve"><value>Ostatnia akt.</value></data>
+  <data name="StatisticsColumnRTT" xml:space="preserve"><value>RTT</value><comment>Round-trip time.</comment></data>
+  <data name="StatisticsClockNote" xml:space="preserve"><value>Dodatnia różnica = wideo wyprzedza dźwięk · Maksymalna zaobserwowana różnica bazuje na próbkach 1 Hz.</value></data>
+  <data name="StatisticsCompactClockNote" xml:space="preserve"><value>PTS źródła: + = wideo przed audio; maks. próbek 1 Hz; nie opóźn. całej transmisji</value><comment>PTS = presentation timestamp. Keep timing semantics and + sign.</comment></data>
+  <data name="StatisticsLatencyNote" xml:space="preserve"><value>Źródłowe znaczniki czasu · nie jest to opóźnienie całej transmisji</value></data>
+  <data name="StatisticsQueueNote" xml:space="preserve"><value>Kolejki danych zakodowanych: oczekujące pakiety · sumy: epoka/generacja</value></data>
+  <data name="Statistics_receivedFps" xml:space="preserve"><value>FPS odbioru</value></data>
+  <data name="Statistics_decodedFps" xml:space="preserve"><value>FPS dekodowania</value></data>
+  <data name="Statistics_presentedFps" xml:space="preserve"><value>FPS prezentacji</value></data>
+  <data name="Statistics_recentSkippedPercent" xml:space="preserve"><value>Pominięte · ostatnio</value><comment>Recent sampled percentage, not a cumulative count or network packet loss.</comment></data>
+  <data name="Statistics_videoCodec" xml:space="preserve"><value>Kodek</value></data>
+  <data name="Statistics_encodedSize" xml:space="preserve"><value>Zakodowany rozmiar</value></data>
+  <data name="Statistics_captureLimit" xml:space="preserve"><value>Limit przechw. FPS</value><comment>Requested maximum FPS, not observed frames per second.</comment></data>
+  <data name="Statistics_canvasSize" xml:space="preserve"><value>Powierzchnia odbiornika</value><comment>Physical pixel size of receiver surface, not DIP.</comment></data>
+  <data name="Statistics_rotation" xml:space="preserve"><value>Obrót</value></data>
+  <data name="Statistics_videoBitrate" xml:space="preserve"><value>Przepływność wideo</value></data>
+  <data name="Statistics_configuredVideoBitrate" xml:space="preserve"><value>Ustawiona przepływność</value></data>
+  <data name="Statistics_networkLoss" xml:space="preserve"><value>Straty sieciowe</value></data>
+  <data name="Statistics_audioCodec" xml:space="preserve"><value>Format dźwięku</value></data>
+  <data name="Statistics_audioBitrate" xml:space="preserve"><value>Przepływność dźwięku</value></data>
+  <data name="Statistics_pcmBufferTarget" xml:space="preserve"><value>Bufor PCM / cel</value><comment>Current PCM buffer and target durations in milliseconds. Preserve PCM identifier.</comment></data>
+  <data name="Statistics_devicePadding" xml:space="preserve"><value>Zapełn. buf. urządzenia</value></data>
+  <data name="Statistics_insertedSilence" xml:space="preserve"><value>Wstawiona cisza</value></data>
+  <data name="Statistics_discardedPcm" xml:space="preserve"><value>Odrzucone PCM</value></data>
+  <data name="Statistics_avSkew" xml:space="preserve"><value>Różnica czasu A/V</value><comment>Video source PTS minus played-source audio PTS, milliseconds. Positive means video ahead; not end-to-end latency.</comment></data>
+  <data name="Statistics_peakObservedSkew" xml:space="preserve"><value>Maks. obserw. różnica</value><comment>Maximum absolute skew from 1-Hz overlay samples; not a native high-frequency maximum.</comment></data>
+  <data name="Statistics_decodedTotal" xml:space="preserve"><value>Zdekodowane</value></data>
+  <data name="Statistics_presentedTotal" xml:space="preserve"><value>Zaprezentowane</value></data>
+  <data name="Statistics_skippedTotal" xml:space="preserve"><value>Pominięte</value></data>
+  <data name="Statistics_state" xml:space="preserve"><value>Stan</value></data>
+  <data name="Statistics_generation" xml:space="preserve"><value>Generacja</value></data>
+  <data name="Statistics_playbackEpoch" xml:space="preserve"><value>Epoka odtwarzania</value><comment>Native playback-instance/rebuild epoch, not Audio epoch. Preserve this distinction.</comment></data>
+  <data name="Statistics_occluded" xml:space="preserve"><value>Zasłonięcie</value><comment>Whether playback surface is covered/occluded.</comment></data>
+  <data name="ChannelVideo" xml:space="preserve"><value>Wideo</value></data>
+  <data name="ChannelAudio" xml:space="preserve"><value>Dźwięk</value></data>
+  <data name="ChannelControl" xml:space="preserve"><value>Sterowanie</value></data>
+  <data name="NotAvailable" xml:space="preserve"><value>N/A</value></data>
+  <data name="Off" xml:space="preserve"><value>Wył.</value></data>
+  <data name="Recovering" xml:space="preserve"><value>Przywracanie</value></data>
+  <data name="Playing" xml:space="preserve"><value>Odtwarzanie</value></data>
+  <data name="Yes" xml:space="preserve"><value>Tak</value></data>
+  <data name="No" xml:space="preserve"><value>Nie</value></data>
+  <data name="UnitMilliseconds" xml:space="preserve"><value>ms</value><comment>Milliseconds. Short overlay unit; do not change magnitude.</comment></data>
+  <data name="UnitMegabits" xml:space="preserve"><value>Mbps</value><comment>Megabits per second, not megabytes.</comment></data>
+  <data name="UnitPixels" xml:space="preserve"><value>px</value></data>
+  <data name="UnitFrames" xml:space="preserve"><value>FPS</value><comment>Frames per second.</comment></data>
+  <data name="UnitBytes" xml:space="preserve"><value>B</value><comment>Bytes, not bits.</comment></data>
+  <data name="PreparingCapture" xml:space="preserve"><value>Przygotowywanie przechwytywania</value></data>
+  <data name="InitializingCapture" xml:space="preserve"><value>Inicjowanie przechwytywania</value></data>
+  <data name="Negotiating" xml:space="preserve"><value>Uzgadnianie parametrów</value></data>
+  <data name="PlaybackOptionUnavailable" xml:space="preserve"><value>Statystyki odtwarzania wymagają zgodnego odbiornika; transmisja jest kontynuowana bez nakładki.</value></data>
+  <data name="ChooseSourceFailed" xml:space="preserve"><value>Nie udało się wybrać ekranu lub okna. Wybierz inne źródło lub spróbuj ponownie.</value></data>
+  <data name="ReceiverBusy" xml:space="preserve"><value>Ten odbiornik jest zajęty.</value></data>
+  <data name="ChooseOtherDevice" xml:space="preserve"><value>Wybierz inne urządzenie, a nie odbiornik tego komputera.</value></data>
+  <data name="IncomingAlreadyStarted" xml:space="preserve"><value>Przychodząca transmisja już się rozpoczęła.</value></data>
+  <data name="SendingFailed" xml:space="preserve"><value>Nie udało się udostępnić obrazu ekranu. Sprawdź adres odbiornika i połączenie sieciowe, a następnie spróbuj ponownie.</value></data>
+  <data name="CopyFailed" xml:space="preserve"><value>Nie udało się skopiować adresu. Spróbuj ponownie.</value></data>
+  <data name="DisplaySource" xml:space="preserve"><value>Ekran {0} ({1} × {2})</value><comment>{0} display number, {1}/{2} invariant pixel width/height. Do not change source identity.</comment></data>
+  <data name="ChooseSourceFirst" xml:space="preserve"><value>Przed wysyłaniem wybierz ekran lub okno.</value></data>
+  <data name="SettingsUnavailable" xml:space="preserve"><value>Nie udało się odczytać ustawień urządzenia przechwytującego. Sprawdź źródło, a następnie otwórz ustawienia ponownie.</value></data>
+  <data name="SavedSettingsFailed" xml:space="preserve"><value>Nie udało się wczytać zapisanych ustawień; używane są domyślne ustawienia udostępniania.</value></data>
+  <data name="StatisticsUnavailable" xml:space="preserve"><value>Statystyki odtwarzania są niedostępne; transmisja może być kontynuowana bez nakładki.</value></data>
+  <data name="SourceChanged" xml:space="preserve"><value>Źródło przechwytywania zmieniło się podczas odczytywania dostępnych kodeków. Otwórz ustawienia ponownie lub jeszcze raz naciśnij Zapisz.</value></data>
+  <data name="ChooseDifferentWindow" xml:space="preserve"><value>Wybierz inne okno lub ekran, a nie główne okno tej aplikacji.</value></data>
+</root>

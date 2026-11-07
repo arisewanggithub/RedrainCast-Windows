@@ -4,12 +4,14 @@
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.22621.0</SupportedOSPlatformVersion>
     <UseWinUI>true</UseWinUI>
+    <DefaultLanguage>en-US</DefaultLanguage>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">$(WindowsRuntimeIdentifier)</RuntimeIdentifier>
     <PlatformTarget>$(WindowsArchitecture)</PlatformTarget>
     <Platforms>ARM64;x64</Platforms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\assets\package\RedrainCast.ico</ApplicationIcon>
     <EnableMsixTooling>false</EnableMsixTooling>
     <PublishTrimmed>false</PublishTrimmed>
     <DebugType>none</DebugType>
@@ -19,12 +21,25 @@
     <Description>Send and receive screens on your local network.</Description>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="..\..\assets\package\RedrainCast.ico" Link="Assets\RedrainCast.ico"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"/>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.5"/>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654"/>
     <ProjectReference Include="..\RedrainCast.Core\RedrainCast.Core.csproj"/>
     <ProjectReference Include="..\ScrcpyReceive.Media\ScrcpyReceive.Media.csproj"/>
     <ProjectReference Include="..\ScrcpySend.Media\ScrcpySend.Media.csproj"/>
+    <ProjectReference Include="..\RedrainCast.CaptureWorker\RedrainCast.CaptureWorker.csproj" ReferenceOutputAssembly="false"/>
   </ItemGroup>
+  <Target Name="CopyCaptureWorkerForDevelopment" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
+    <MSBuild Projects="..\RedrainCast.CaptureWorker\RedrainCast.CaptureWorker.csproj" Targets="GetCaptureWorkerFiles"
+             Properties="Configuration=$(Configuration);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier)">
+      <Output TaskParameter="TargetOutputs" ItemName="_CaptureWorkerFiles"/>
+    </MSBuild>
+    <Error Condition="'@(_CaptureWorkerFiles)' == ''" Text="The capture worker build returned no runtime files."/>
+    <Copy SourceFiles="@(_CaptureWorkerFiles)"
+          DestinationFiles="@(_CaptureWorkerFiles->'$(TargetDir)capture-worker\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"/>
+  </Target>
   <Target Name="ValidateArchitecture" BeforeTargets="PrepareForBuild">
     <Error Condition="'$(RuntimeIdentifier)' != 'win-arm64' And '$(RuntimeIdentifier)' != 'win-x64'" Text="Only win-arm64 and win-x64 are supported."/>
     <Error Condition="('$(Platform)' == 'x64' And '$(RuntimeIdentifier)' != 'win-x64') Or ('$(Platform)' == 'ARM64' And '$(RuntimeIdentifier)' != 'win-arm64')" Text="Platform and RuntimeIdentifier must match."/>

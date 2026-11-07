@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using ScrcpySend.Core;
 using SharpGen.Runtime;
 using Vortice.Direct3D11;
+using Vortice.DXGI;
 using Vortice.MediaFoundation;
 using static Vortice.MediaFoundation.MediaFactory;
 
@@ -19,15 +20,39 @@ public sealed class HardwareEncoder : IDisposable
     private readonly IMFMediaEventGenerator events;
     private readonly IMFDXGIDeviceManager manager;
     private readonly CaptureSettings settings;
-    private int inputRequests;
+    private readonly Action<string>? diagnostic;
+    private readonly EncoderSampleAccounting? samples;
+    private readonly EncoderInputFlow inputFlow = new();
     private int outputRequests;
-    private int inFlight;
+    private int needInputEvents;
+    private int haveOutputEvents;
+    private int inputBufferLengthBefore;
+    private int inputBufferLength;
+    private int inputBufferMaximum;
+    private long firstInputTime = -1;
+    private long lastInputTime;
+    private int droppedFrames;
+    private int emptyOutputSamples;
+    private long lastDropWarningAt;
     private bool started;
     private bool disposed;
     private byte[] configuration = [];
     public string Name { get; }
     public int Width { get; }
     public int Height { get; }
+    public uint VendorId { get; }
+    public int DroppedFrames => Volatile.Read(ref droppedFrames);
+    public int EmptyOutputSamples => Volatile.Read(ref emptyOutputSamples);
+    internal (int Before, int Current, int Maximum) InputBufferLengths => (
+        Volatile.Read(ref inputBufferLengthBefore), Volatile.Read(ref inputBufferLength), Volatile.Read(ref inputBufferMaximum));
+    public string Diagnostics => $"encoder={Name}; gpuVendor=0x{VendorId:X4}, " +
+        $"requestedCompatibility={(EncoderCompatibility.ForVendor(VendorId).Count == 0 ? "default" : "CameraRecord/BFrames=0")}; " +
+        $"needInputEvents={Volatile.Read(ref needInputEvents)}, " +
+        $"haveOutputEvents={Volatile.Read(ref haveOutputEvents)}, inputRequests={inputFlow.InputRequests}, " +
+        $"outputRequests={Volatile.Read(ref outputRequests)}, inFlight={inputFlow.InFlight}, droppedInputs={DroppedFrames}, " +
+        $"emptyOutputSamples={EmptyOutputSamples}; " +
+        $"inputBufferLengthBefore={InputBufferLengths.Before}, inputBufferLength={InputBufferLengths.Current}, inputBufferMaximum={InputBufferLengths.Maximum}; " +
+        $"firstInputTime100ns={Interlocked.Read(ref firstInputTime)}, lastInputTime100ns={Interlocked.Read(ref lastInputTime)}";
 
     public static IReadOnlyList<string> EnumerateNames(string codec = "h264")
     {
@@ -53,12 +78,20 @@ public sealed class HardwareEncoder : IDisposable
         new RegisterTypeInfo { GuidMajorType = VideoMajorType, GuidSubtype = VideoFormatGuids.NV12 },
         new RegisterTypeInfo { GuidMajorType = VideoMajorType, GuidSubtype = Subtype(codec) });
 
-    public HardwareEncoder(ID3D11Device device, int width, int height, CaptureSettings settings)
+    public HardwareEncoder(ID3D11Device device, int width, int height, CaptureSettings settings, Action<string>? diagnostic = null)
     {
         settings.Validate();
         this.settings = settings;
+        this.diagnostic = diagnostic;
         Width = width;
         Height = height;
+        using (var dxgi = device.QueryInterface<IDXGIDevice>())
+        using (var adapter = dxgi.GetAdapter())
+            VendorId = adapter.Description.VendorId;
+        EncoderCompatibility.ValidateCapture(VendorId, false, settings.VideoCodec);
+        if (EncoderSampleAccounting.Supports(VendorId, settings.VideoCodec))
+            samples = new EncoderSampleAccounting();
+        diagnostic?.Invoke("Capture worker bootstrap: starting Media Foundation.");
         MFStartup(false).CheckError();
         IMFActivateCollection? candidates = null;
         IMFTransform? selected = null;
@@ -67,12 +100,14 @@ public sealed class HardwareEncoder : IDisposable
         IMFActivate? selectedActivation = null;
         try
         {
+            diagnostic?.Invoke($"Capture worker bootstrap: enumerating hardware {settings.VideoCodec} encoders.");
             candidates = Enumerate(settings.VideoCodec);
             selectedActivation = candidates.FirstOrDefault()
                 ?? throw new NotSupportedException($"No native hardware {settings.VideoCodec} encoder supports NV12 input. Software encoding is not allowed.");
             Name = selectedActivation.GetString(TransformAttributeKeys.MftFriendlyNameAttribute);
             if (selectedActivation.GetString(TransformAttributeKeys.MftEnumHardwareUrlAttribute).Length == 0)
                 throw new NotSupportedException("Encoder has no hardware registration.");
+            diagnostic?.Invoke($"Capture worker bootstrap: activating hardware encoder {Name}.");
             selected = selectedActivation.ActivateObject<IMFTransform>();
             using var attributes = selected.Attributes;
             if (attributes.GetUInt32(TransformAttributeKeys.TransformAsync) != 1 ||
@@ -84,13 +119,25 @@ public sealed class HardwareEncoder : IDisposable
             selected.ProcessMessage(TMessageType.MessageSetD3DManager, (nuint)deviceManager.NativePointer);
             using var outputType = MediaType(Subtype(settings.VideoCodec), width, height, settings.MaxFps);
             outputType.Set(MediaTypeAttributeKeys.AvgBitrate, (uint)settings.VideoBitrate).CheckError();
-            outputType.Set(MediaTypeAttributeKeys.Mpeg2Profile, settings.VideoCodec switch { "h264" => 66u, "h265" => 1u, _ => 0u }).CheckError();
+            if (EncoderCompatibility.OutputProfile(settings.VideoCodec) is { } profile)
+                outputType.Set(MediaTypeAttributeKeys.Mpeg2Profile, profile).CheckError();
+            diagnostic?.Invoke("Capture worker bootstrap: setting hardware encoder output type.");
             selected.SetOutputType(0, outputType, 0);
             using var inputType = MediaType(VideoFormatGuids.NV12, width, height, settings.MaxFps);
+            diagnostic?.Invoke("Capture worker bootstrap: setting hardware encoder input type.");
             selected.SetInputType(0, inputType, 0);
             using (var actualOutput = selected.GetOutputCurrentType(0)) ValidateFormat(actualOutput, width, height, settings.MaxFps);
             using (var actualInput = selected.GetInputCurrentType(0)) ValidateFormat(actualInput, width, height, settings.MaxFps);
-            using (var codec = new CodecControl(selected)) codec.Configure();
+            using (var codec = new CodecControl(selected))
+            {
+                diagnostic?.Invoke("Capture worker bootstrap: configuring hardware encoder controls.");
+                try { codec.Configure(VendorId); }
+                catch (COMException error)
+                {
+                    throw new NotSupportedException($"Hardware encoder {Name} (GPU vendor 0x{VendorId:X4}) rejected required " +
+                        $"low-latency/compatibility settings. {error.Message}", error);
+                }
+            }
             generator = selected.QueryInterface<IMFMediaEventGenerator>();
             activations = candidates;
             activation = selectedActivation;
@@ -172,8 +219,8 @@ public sealed class HardwareEncoder : IDisposable
                 item.Status.CheckError();
                 switch (item.EventType)
                 {
-                    case MediaEventTypes.TransformNeedInput: inputRequests++; break;
-                    case MediaEventTypes.TransformHaveOutput: outputRequests++; break;
+                    case MediaEventTypes.TransformNeedInput: inputFlow.InputRequested(); needInputEvents++; break;
+                    case MediaEventTypes.TransformHaveOutput: outputRequests++; haveOutputEvents++; break;
                     case MediaEventTypes.Error: throw new IOException("Hardware encoder reported an error.");
                 }
             }
@@ -182,20 +229,55 @@ public sealed class HardwareEncoder : IDisposable
 
     public bool CanAcceptInput
     {
-        get { PollEvents(); return inputRequests > 0 && inFlight < 4; }
+        // Each METransformNeedInput event permits one input, even before the first output.
+        get { PollEvents(); return inputFlow.CanAcceptInput; }
     }
 
     public void Submit(ID3D11Texture2D texture, long pts100ns)
     {
         if (!started || !CanAcceptInput) throw new InvalidOperationException("Encoder is not ready for input.");
         using var sample = MFCreateSample();
+        SubmitCore(texture, pts100ns, sample);
+    }
+
+    internal void RequestKeyFrame()
+    {
+        using var control = new CodecControl(transform);
+        control.RequestKeyFrame();
+    }
+
+    internal void Submit(GpuSurfacePool.Lease lease, long pts100ns)
+    {
+        if (!started || !CanAcceptInput) throw new InvalidOperationException("Encoder is not ready for input.");
+        MFCreateTrackedSample(out var tracked).CheckError();
+        using (tracked)
+        using (var sample = tracked.QueryInterface<IMFSample>())
+        {
+            lease.Track(tracked);
+            SubmitCore(lease.Texture, pts100ns, sample);
+        }
+    }
+
+    private void SubmitCore(ID3D11Texture2D texture, long pts100ns, IMFSample sample)
+    {
+        samples?.ValidateSubmission(pts100ns);
         using var buffer = MFCreateDXGISurfaceBuffer(typeof(ID3D11Texture2D).GUID, texture, 0, false);
+        inputBufferLengthBefore = buffer.CurrentLength;
+        inputBufferMaximum = buffer.MaxLength;
+        if (inputBufferMaximum <= 0) throw new IOException("Hardware input surface has no buffer capacity.");
+        // Qualcomm and other MFTs require a valid-byte count even for GPU-backed buffers.
+        buffer.CurrentLength = inputBufferMaximum;
+        inputBufferLength = buffer.CurrentLength;
+        if (inputBufferLength != inputBufferMaximum)
+            throw new IOException("Hardware input surface did not retain its valid buffer length.");
         sample.AddBuffer(buffer);
         sample.SampleTime = pts100ns;
         sample.SampleDuration = 10_000_000L / settings.MaxFps;
         transform.ProcessInput(0, sample, 0);
-        inputRequests--;
-        inFlight++;
+        Interlocked.CompareExchange(ref firstInputTime, pts100ns, -1);
+        Interlocked.Exchange(ref lastInputTime, pts100ns);
+        inputFlow.InputSubmitted();
+        samples?.Submitted(pts100ns);
     }
 
     public IReadOnlyList<EncodedVideo> TakeOutput()
@@ -210,25 +292,41 @@ public sealed class HardwareEncoder : IDisposable
             if (!provides)
             {
                 if (info.Size <= 0 || info.Size > 4 * 1024 * 1024)
-                    throw new IOException("Hardware encoder requested an invalid output buffer.");
+                    throw new IOException($"Hardware encoder requested an invalid output buffer: bytes={info.Size}, flags={info.Flags}, codec={settings.VideoCodec}.");
                 data.Sample = MFCreateSample();
                 using var buffer = MFCreateAlignedMemoryBuffer(info.Size, Math.Max(0, info.Alignment - 1));
                 data.Sample.AddBuffer(buffer);
             }
             try
             {
-                var result = transform.ProcessOutput(ProcessOutputFlags.None, 1, ref data, out _);
+                var result = transform.ProcessOutput(ProcessOutputFlags.None, 1, ref data, out var outputStatus);
                 if (result.Code == NeedMoreInput) { outputRequests = 0; break; }
                 result.CheckError();
                 outputRequests--;
-                if (data.Sample == null) throw new IOException("Hardware encoder produced no output sample.");
-                if (--inFlight < 0) throw new IOException("Hardware encoder produced output without a submitted input.");
+                if (data.Sample == null)
+                    throw new IOException($"Hardware encoder produced no output sample: codec={settings.VideoCodec}, sampleStatus={data.Status}, transformStatus={outputStatus}.");
                 using var buffer = data.Sample.ConvertToContiguousBuffer();
-                buffer.Lock(out var pointer, out _, out var length);
+                buffer.Lock(out var pointer, out var maximumLength, out var length);
                 byte[] bytes;
                 try
                 {
-                    if (length is <= 0 or > 4 * 1024 * 1024) throw new IOException("Invalid hardware output size.");
+                    if (length == 0 && samples is not null)
+                    {
+                        var flags = (OutputStreamInfoFlags)info.Flags;
+                        var completion = samples.CompleteEmpty(VendorId, settings.VideoCodec,
+                            new(length, maximumLength, (int)data.Status, (int)outputStatus, result.Code,
+                                provides, flags.HasFlag(OutputStreamInfoFlags.OutputStreamWholeSamples),
+                                flags.HasFlag(OutputStreamInfoFlags.OutputStreamSingleSamplePerBuffer),
+                                CallerAllocated: !provides, Timestamp100ns: ReadOutputTimestamp(data.Sample)));
+                        RecordCompletion(completion, empty: true);
+                        continue;
+                    }
+                    if (length is <= 0 or > 4 * 1024 * 1024)
+                        throw new IOException($"Invalid hardware output size: bytes={length}, capacity={maximumLength}, allowed=1..4194304, " +
+                            $"codec={settings.VideoCodec}, result=0x{unchecked((uint)result.Code):X8}, sampleStatus={data.Status}, transformStatus={outputStatus}, " +
+                            $"streamFlags={(OutputStreamInfoFlags)info.Flags}, allocatedByCaller={!provides}, " +
+                            $"outputTime100ns={DescribeOutputTime(data.Sample)}, lastInputTime100ns={Interlocked.Read(ref lastInputTime)}.");
+                    CompleteSample(ReadOutputTimestamp(data.Sample));
                     bytes = new byte[length];
                     Marshal.Copy(pointer, bytes, 0, length);
                 }
@@ -258,6 +356,44 @@ public sealed class HardwareEncoder : IDisposable
             }
         }
         return output;
+    }
+
+    private static string DescribeOutputTime(IMFSample sample)
+    {
+        try { return sample.SampleTime.ToString(System.Globalization.CultureInfo.InvariantCulture); }
+        catch (SharpGenException error) { return $"unavailable(HRESULT=0x{unchecked((uint)error.ResultCode.Code):X8})"; }
+    }
+
+    internal static long ReadOutputTimestamp(IMFSample sample)
+    {
+        try { return sample.SampleTime; }
+        catch (SharpGenException error)
+        {
+            throw new IOException($"Hardware encoder output has no readable source timestamp: " +
+                $"HRESULT=0x{unchecked((uint)error.ResultCode.Code):X8}.", error);
+        }
+    }
+
+    private void CompleteSample(long timestamp)
+    {
+        if (timestamp < 0) throw new IOException("Hardware encoder produced a negative output timestamp.");
+        var completion = samples?.Complete(timestamp, empty: false) ?? (Completed: 1, Dropped: 0);
+        RecordCompletion(completion, empty: false);
+    }
+
+    private void RecordCompletion((int Completed, int Dropped) completion, bool empty)
+    {
+        for (var index = 0; index < completion.Completed; index++) inputFlow.OutputProduced();
+        if (empty) Interlocked.Increment(ref emptyOutputSamples);
+        if (completion.Dropped == 0) return;
+        var count = Interlocked.Add(ref droppedFrames, completion.Dropped);
+        var now = Environment.TickCount64;
+        if (count == completion.Dropped || now - lastDropWarningAt >= 5000)
+        {
+            lastDropWarningAt = now;
+            diagnostic?.Invoke($"Encoder warning: {Name} skipped {count} input frame(s), including empty/no-payload or unreported dropped samples. " +
+                "Empty data was not sent; casting continues with valid encoded frames.");
+        }
     }
 
     public void Dispose()

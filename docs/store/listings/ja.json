@@ -1,0 +1,48 @@
+{
+  "locale": "ja",
+  "productName": "RedrainCast",
+  "description": "信頼できるローカルネットワーク上で、Windows PC と RedrainCast 対応デバイスの間で画面やウィンドウを共有できます。\n\nRedrainCast は、送信と受信の機能を 1 つにまとめた Windows ネイティブアプリです。共有するディスプレイまたはウィンドウを選び、近くの受信先を選択して、画面の送信を開始できます。受信先に表示されている IP アドレスとポートを指定して、直接接続することもできます。\n\n画面と一緒に出力音声を共有し、画面取得の上限や映像の品質を調整できます。対応する受信先では、必要に応じて再生統計も表示できます。受信した画面は全画面表示で開きます。共有を停止すると、受信側のウィンドウは共有前の状態に戻ります。\n\n動作要件\n- ARM64 または x64 の Windows 11 バージョン 22H2 以降。\n- 接続先のデバイスにも、互換性のある RedrainCast アプリが必要です。対応する Windows および Android デバイスで利用できます。RedrainCast は、汎用の Miracast または Google Cast 受信アプリではありません。\n- 信頼できるローカルネットワークと、対応するハードウェアによる映像のエンコード・デコード機能が必要です。利用できるコーデックはデバイスによって異なります。\n\nネットワークとプライバシーに関する重要な情報\n受信機能が利用可能な間は、送られてきた画面の共有が自動的に受け入れられます。RedrainCast は、信頼できるネットワークとデバイスでのみ使用してください。ローカルネットワーク上の画面・音声の送受信とデバイスの自動検出は、いずれも認証も暗号化もされません。アカウントやクラウド中継は使用しません。標準のアプリは、画面や音声をファイルに記録しません。",
+  "whatsNew": "",
+  "productFeatures": [
+    "1 つの Windows ネイティブアプリで画面を送信・受信。",
+    "選択したディスプレイまたはウィンドウを共有。",
+    "近くの受信先を検索するか、IP アドレスとポートを指定して接続。",
+    "Windows と Android の互換性のある RedrainCast アプリと画面を送受信。",
+    "画面と一緒に出力音声を送信。",
+    "画面取得の最大サイズ、フレームレート、ビットレート、対応する映像コーデックを調整。",
+    "対応する受信先で、必要に応じて再生統計を表示。",
+    "全画面表示での受信と、Windows のライト、ダーク、ハイコントラストのテーマに対応。"
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "信頼できるローカルネットワーク上で、互換性のある Windows デバイスと Android デバイスの間で画面やウィンドウを共有。必要に応じて音声も一緒に送信できます。",
+  "keywords": [
+    "画面共有",
+    "スクリーンキャスト",
+    "ローカルネットワーク",
+    "ウィンドウ共有",
+    "画面受信",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/ja/01-home.png", "caption": "画面を送信・受信。", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/ja/02-sharing-settings.png", "caption": "共有設定", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "locale": "pl",
+  "productName": "RedrainCast",
+  "description": "Udostępniaj obraz ekranu lub okna między komputerem z systemem Windows a zgodnymi urządzeniami z aplikacją RedrainCast w zaufanej sieci lokalnej.\n\nRedrainCast łączy wysyłanie i odbieranie w jednej natywnej aplikacji dla systemu Windows. Wybierz ekran lub okno do udostępnienia, wskaż pobliski odbiornik i rozpocznij transmisję. Możesz też połączyć się bezpośrednio, korzystając z adresu IP i portu wyświetlanych przez odbiornik.\n\nPrzesyłaj dźwięk wyjściowy wraz z obrazem ekranu, dostosowuj limity przechwytywania i jakość wideo oraz włączaj statystyki odtwarzania na zgodnych odbiornikach. Przychodzące transmisje otwierają się w widoku pełnoekranowym. Zatrzymaj udostępnianie, aby przywrócić poprzedni stan okna odbiornika.\n\nWymagania\n- System Windows 11 w wersji 22H2 lub nowszej na architekturze ARM64 lub x64.\n- Zgodna aplikacja RedrainCast na drugim urządzeniu, w tym na obsługiwanych urządzeniach z systemem Windows lub Android. RedrainCast nie jest uniwersalnym odbiornikiem Miracast ani Google Cast.\n- Zaufana sieć lokalna i obsługa sprzętowego kodowania i dekodowania wideo. Dostępność kodeków zależy od urządzenia.\n\nWażne informacje o sieci i prywatności\nPrzychodzące transmisje są akceptowane automatycznie, gdy odbiornik jest dostępny. Korzystaj z RedrainCast wyłącznie w sieciach i z urządzeniami, którym ufasz. Ani lokalna transmisja obrazu ekranu i dźwięku, ani wykrywanie urządzeń nie są uwierzytelniane ani szyfrowane. Aplikacja nie korzysta z konta ani z pośrednictwa chmury. Standardowa aplikacja nie zapisuje obrazu ekranu ani dźwięku do plików.",
+  "whatsNew": "",
+  "productFeatures": [
+    "Wysyłaj i odbieraj obraz ekranu w jednej natywnej aplikacji dla systemu Windows.",
+    "Udostępniaj obraz wybranego ekranu lub okna.",
+    "Wyszukuj pobliskie odbiorniki lub łącz się za pomocą adresu IP i portu.",
+    "Przesyłaj obraz między zgodnymi aplikacjami RedrainCast w systemach Windows i Android.",
+    "Wysyłaj dźwięk wyjściowy wraz z obrazem ekranu.",
+    "Dostosowuj maksymalny rozmiar przechwytywanego obrazu, liczbę klatek na sekundę, przepływność i obsługiwany kodek wideo.",
+    "Włączaj statystyki odtwarzania na zgodnych odbiornikach.",
+    "Odbieraj obraz na pełnym ekranie z jasnymi i ciemnymi motywami systemu Windows oraz motywami o wysokim kontraście."
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "Udostępniaj obraz ekranu lub okna, opcjonalnie z dźwiękiem, między zgodnymi urządzeniami z systemami Windows i Android w zaufanej sieci lokalnej.",
+  "keywords": [
+    "udostępnianie ekranu",
+    "przesyłanie obrazu",
+    "sieć lokalna",
+    "udostępnianie okna",
+    "odbiór obrazu",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/pl/01-home.png", "caption": "Wysyłaj i odbieraj obraz ekranu.", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/pl/02-sharing-settings.png", "caption": "Ustawienia udostępniania", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

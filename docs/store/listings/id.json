@@ -1,0 +1,48 @@
+{
+  "locale": "id",
+  "productName": "RedrainCast",
+  "description": "Bagikan layar atau jendela antara PC Windows Anda dan perangkat RedrainCast yang kompatibel melalui jaringan lokal tepercaya.\n\nRedrainCast menggabungkan fungsi pengiriman dan penerimaan dalam satu aplikasi asli Windows. Pilih layar atau jendela yang ingin dibagikan, pilih penerima di sekitar, lalu mulai siaran layar. Anda juga dapat terhubung langsung menggunakan alamat IP dan port yang ditampilkan di penerima.\n\nBagikan audio keluaran bersama layar Anda, sesuaikan batas tangkapan dan kualitas video, serta tampilkan statistik pemutaran opsional pada penerima yang kompatibel. Siaran layar masuk terbuka dalam tampilan layar penuh. Hentikan berbagi untuk mengembalikan jendela penerima ke keadaan sebelumnya.\n\nPersyaratan\n- Windows 11 versi 22H2 atau yang lebih baru pada ARM64 atau x64.\n- Aplikasi RedrainCast yang kompatibel di perangkat lain, termasuk perangkat Windows dan Android yang didukung. RedrainCast bukan penerima umum untuk Miracast atau Google Cast.\n- Jaringan lokal tepercaya serta dukungan perangkat keras untuk pengodean dan pendekodean video. Ketersediaan kodek bergantung pada perangkat.\n\nInformasi penting tentang jaringan dan privasi\nSiaran layar masuk diterima secara otomatis selama penerima tersedia. Gunakan RedrainCast hanya di jaringan dan dengan perangkat yang Anda percayai. Lalu lintas siaran layar dan audio lokal serta penemuan perangkat tidak diautentikasi dan tidak dienkripsi. Tidak ada akun atau relai cloud yang digunakan. Aplikasi standar tidak merekam layar atau audio Anda ke berkas.",
+  "whatsNew": "",
+  "productFeatures": [
+    "Kirim dan terima layar dalam satu aplikasi asli Windows.",
+    "Bagikan layar atau jendela yang dipilih.",
+    "Temukan penerima di sekitar atau hubungkan menggunakan alamat IP dan port.",
+    "Siarkan layar dengan aplikasi RedrainCast yang kompatibel di Windows dan Android.",
+    "Kirim audio keluaran bersama layar Anda.",
+    "Sesuaikan ukuran maksimum tangkapan, laju frame, bitrate, dan kodek video yang didukung.",
+    "Tampilkan statistik pemutaran opsional pada penerima yang kompatibel.",
+    "Terima siaran dalam layar penuh dengan tema Windows terang, gelap, dan kontras tinggi."
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "Bagikan layar atau jendela Anda, dengan audio opsional, antara perangkat Windows dan Android yang kompatibel melalui jaringan lokal tepercaya.",
+  "keywords": [
+    "berbagi layar",
+    "siaran layar",
+    "jaringan lokal",
+    "berbagi jendela",
+    "penerima layar",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/id/01-home.png", "caption": "Kirim dan terima layar.", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/id/02-sharing-settings.png", "caption": "Pengaturan berbagi", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

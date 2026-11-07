@@ -1,0 +1,48 @@
+{
+  "locale": "uk",
+  "productName": "RedrainCast",
+  "description": "Транслюйте екран або вікно між ПК з Windows і сумісними пристроями з RedrainCast у довіреній локальній мережі.\n\nRedrainCast поєднує надсилання та приймання трансляцій в одній програмі, створеній спеціально для Windows. Виберіть дисплей або вікно для трансляції, виберіть приймач поблизу та почніть трансляцію. Ви також можете підключитися напряму, використовуючи IP-адресу й порт, показані на приймачі.\n\nПередавайте звук, що відтворюється на пристрої, разом із зображенням екрана, налаштовуйте обмеження захоплення та якість відео й за бажанням переглядайте статистику відтворення на сумісних приймачах. Вхідні трансляції відкриваються в повноекранному режимі. Коли ви зупиняєте трансляцію, вікно приймача повертається до попереднього стану.\n\nВимоги\n- Windows 11 версії 22H2 або новішої на ARM64 або x64.\n- Сумісна програма RedrainCast на іншому пристрої, зокрема на підтримуваних пристроях із Windows та Android. RedrainCast не є універсальним приймачем Miracast або Google Cast.\n- Довірена локальна мережа та підтримуване апаратне кодування й декодування відео. Доступність кодеків залежить від пристрою.\n\nВажлива інформація про мережу та конфіденційність\nВхідні трансляції приймаються автоматично, поки приймач доступний. Використовуйте RedrainCast лише в мережах і з пристроями, яким ви довіряєте. Для локального трафіку трансляції екрана й звуку та виявлення пристроїв не застосовуються автентифікація та шифрування. Обліковий запис і хмарний ретранслятор не використовуються. Стандартна програма не записує зображення екрана або звук у файли.",
+  "whatsNew": "",
+  "productFeatures": [
+    "Надсилайте та приймайте трансляції екрана в одній програмі, створеній спеціально для Windows.",
+    "Транслюйте вибраний дисплей або вікно.",
+    "Знаходьте приймачі поблизу або підключайтеся за IP-адресою та портом.",
+    "Транслюйте за допомогою сумісних програм RedrainCast на Windows та Android.",
+    "Передавайте звук, що відтворюється на пристрої, разом із зображенням екрана.",
+    "Налаштовуйте максимальний розмір захоплення, частоту кадрів, бітрейт і підтримуваний відеокодек.",
+    "За бажанням переглядайте статистику відтворення на сумісних приймачах.",
+    "Приймайте трансляції в повноекранному режимі зі світлою, темною та висококонтрастними темами Windows."
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "Транслюйте екран або вікно, за бажанням зі звуком, між сумісними пристроями з Windows та Android у довіреній локальній мережі.",
+  "keywords": [
+    "трансляція екрана",
+    "передавання екрана",
+    "локальна мережа",
+    "трансляція вікна",
+    "приймач екрана",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/uk/01-home.png", "caption": "Транслюйте та приймайте зображення екрана.", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/uk/02-sharing-settings.png", "caption": "Налаштування трансляції", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "locale": "th",
+  "productName": "RedrainCast",
+  "description": "แชร์ภาพหน้าจอหรือหน้าต่างระหว่างพีซี Windows ของคุณกับอุปกรณ์ที่ใช้ RedrainCast รุ่นที่เข้ากันได้ผ่านเครือข่ายภายในที่เชื่อถือได้\n\nRedrainCast รวมการส่งและรับภาพหน้าจอไว้ในแอปเดียวที่พัฒนาสำหรับ Windows โดยเฉพาะ เลือกจอแสดงผลหรือหน้าต่างที่ต้องการแชร์ เลือกเครื่องรับที่อยู่ใกล้เคียง แล้วเริ่มส่งภาพ หรือเชื่อมต่อโดยตรงด้วยที่อยู่ IP และพอร์ตที่แสดงบนเครื่องรับ\n\nแชร์เสียงที่เล่นจากอุปกรณ์ไปพร้อมกับภาพหน้าจอ ปรับขีดจำกัดการจับภาพและคุณภาพวิดีโอ และเลือกดูสถิติการเล่นบนเครื่องรับที่รองรับ ภาพที่ส่งเข้ามาจะเปิดในมุมมองเต็มหน้าจอ เมื่อหยุดแชร์ หน้าต่างของเครื่องรับจะกลับสู่สถานะเดิมก่อนเริ่มรับภาพ\n\nข้อกำหนด\n- Windows 11 เวอร์ชัน 22H2 ขึ้นไป บน ARM64 หรือ x64\n- แอป RedrainCast รุ่นที่เข้ากันได้บนอุปกรณ์อีกเครื่อง ซึ่งรวมถึงอุปกรณ์ Windows และ Android ที่รองรับ RedrainCast ไม่ใช่เครื่องรับ Miracast หรือ Google Cast ทั่วไป\n- เครือข่ายภายในที่เชื่อถือได้ และฮาร์ดแวร์ที่รองรับการเข้ารหัสและถอดรหัสวิดีโอ ตัวแปลงสัญญาณที่ใช้งานได้ขึ้นอยู่กับอุปกรณ์\n\nข้อมูลสำคัญเกี่ยวกับเครือข่ายและความเป็นส่วนตัว\nเครื่องรับจะยอมรับการส่งภาพที่เข้ามาโดยอัตโนมัติขณะพร้อมรับ ใช้ RedrainCast เฉพาะบนเครือข่ายและกับอุปกรณ์ที่คุณเชื่อถือเท่านั้น การรับส่งข้อมูลภาพหน้าจอและเสียงผ่านเครือข่ายภายใน รวมถึงการค้นหาอุปกรณ์ ไม่มีการยืนยันตัวตนและไม่มีการเข้ารหัสลับ ไม่ใช้บัญชีหรือบริการส่งต่อผ่านคลาวด์ แอปมาตรฐานจะไม่บันทึกภาพหน้าจอหรือเสียงของคุณเป็นไฟล์",
+  "whatsNew": "",
+  "productFeatures": [
+    "ส่งและรับภาพหน้าจอในแอปเดียวที่พัฒนาสำหรับ Windows โดยเฉพาะ",
+    "แชร์จอแสดงผลหรือหน้าต่างที่เลือก",
+    "ค้นหาเครื่องรับที่อยู่ใกล้เคียง หรือเชื่อมต่อด้วยที่อยู่ IP และพอร์ต",
+    "ส่งภาพร่วมกับแอป RedrainCast รุ่นที่เข้ากันได้บน Windows และ Android",
+    "ส่งเสียงที่เล่นจากอุปกรณ์ไปพร้อมกับภาพหน้าจอ",
+    "ปรับขนาดการจับภาพสูงสุด อัตราเฟรม บิตเรต และตัวแปลงสัญญาณวิดีโอที่รองรับ",
+    "เลือกดูสถิติการเล่นบนเครื่องรับที่รองรับ",
+    "รับภาพแบบเต็มหน้าจอ พร้อมธีม Windows แบบสว่าง มืด และความเปรียบต่างสูง"
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "แชร์ภาพหน้าจอหรือหน้าต่าง และเลือกแชร์เสียงร่วมด้วย ระหว่างอุปกรณ์ Windows และ Android ที่เข้ากันได้ผ่านเครือข่ายภายในที่เชื่อถือได้",
+  "keywords": [
+    "แชร์หน้าจอ",
+    "ส่งภาพหน้าจอ",
+    "เครือข่ายภายใน",
+    "แชร์หน้าต่าง",
+    "รับภาพหน้าจอ",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/th/01-home.png", "caption": "ส่งและรับภาพหน้าจอ", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/th/02-sharing-settings.png", "caption": "การตั้งค่าการแชร์", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

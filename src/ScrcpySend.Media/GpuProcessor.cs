@@ -2,6 +2,7 @@ using Vortice;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using ScrcpySend.Core;
+using SharpGen.Runtime;
 
 namespace ScrcpySend.Media;
 
@@ -16,6 +17,14 @@ internal sealed class GpuProcessor : IDisposable
     private readonly int width;
     private readonly int height;
     private readonly HdrToneMapper? toneMapper;
+    private long convertedFrames;
+    private long allocatedTextures;
+    private ID3D11VideoProcessorInputView? cachedInput;
+    private nint cachedSource;
+    private readonly Dictionary<nint, ID3D11VideoProcessorOutputView> cachedOutputs = [];
+    public string Diagnostics => $"conversionFrames={Interlocked.Read(ref convertedFrames)}, " +
+        $"nv12TexturesAllocated={Interlocked.Read(ref allocatedTextures)}, " +
+        $"nv12NominalBytesPerTexture={checked((long)width * height * 3 / 2)} (allocation count is cumulative, not live)";
 
     public GpuProcessor(ID3D11Device device, int inputWidth, int inputHeight, int outputWidth, int outputHeight, int fps, bool hdr = false)
     {
@@ -67,24 +76,41 @@ internal sealed class GpuProcessor : IDisposable
 
     public ID3D11Texture2D Convert(ID3D11Texture2D source, int sourceWidth, int sourceHeight, CaptureColor? color = null)
     {
-        if (toneMapper is not null)
-            source = toneMapper.Convert(source, color ?? throw new ArgumentException("HDR conversion requires display color metadata."));
-        else if (source.Description.Format != Format.B8G8R8A8_UNorm)
-            throw new ArgumentException("SDR conversion requires BGRA8 capture.");
         var output = device.CreateTexture2D(new Texture2DDescription(Format.NV12, (uint)width, (uint)height,
             1, 1, BindFlags.RenderTarget));
+        Interlocked.Increment(ref allocatedTextures);
+        try { ConvertInto(source, sourceWidth, sourceHeight, output, color, cacheViews: false); return output; }
+        catch { output.Dispose(); throw; }
+    }
+
+    internal void ConvertInto(ID3D11Texture2D source, int sourceWidth, int sourceHeight, ID3D11Texture2D output,
+        CaptureColor? color = null, bool cacheViews = true)
+    {
+        var operation = "HDR tone mapping";
+        ID3D11VideoProcessorInputView? inputView = null;
+        ID3D11VideoProcessorOutputView? outputView = null;
         try
         {
-            using var inputView = videoDevice.CreateVideoProcessorInputView(source, enumerator, new()
+            if (toneMapper is not null)
+                source = toneMapper.Convert(source, color ?? throw new ArgumentException("HDR conversion requires display color metadata."));
+            else if (source.Description.Format != Format.B8G8R8A8_UNorm)
+                throw new ArgumentException("SDR conversion requires BGRA8 capture.");
+            operation = "creating video processor input view";
+            if (cacheViews && (cachedInput is null || cachedSource != source.NativePointer))
             {
-                ViewDimension = VideoProcessorInputViewDimension.Texture2D,
-                Texture2D = new() { MipSlice = 0, ArraySlice = 0 }
-            });
-            using var outputView = videoDevice.CreateVideoProcessorOutputView(output, enumerator, new()
+                cachedInput?.Dispose();
+                cachedInput = null;
+                cachedSource = source.NativePointer;
+                cachedInput = CreateInput(source);
+            }
+            inputView = cacheViews ? cachedInput! : CreateInput(source);
+            operation = "creating video processor output view";
+            if (cacheViews && !cachedOutputs.TryGetValue(output.NativePointer, out outputView))
             {
-                ViewDimension = VideoProcessorOutputViewDimension.Texture2D,
-                Texture2D = new() { MipSlice = 0 }
-            });
+                outputView = CreateOutput(output);
+                cachedOutputs.Add(output.NativePointer, outputView);
+            }
+            if (!cacheViews) outputView = CreateOutput(output);
             var scale = Math.Min((double)width / sourceWidth, (double)height / sourceHeight);
             var fitWidth = (int)(sourceWidth * scale) & ~1;
             var fitHeight = (int)(sourceHeight * scale) & ~1;
@@ -92,16 +118,41 @@ internal sealed class GpuProcessor : IDisposable
             var y = (height - fitHeight) / 2 & ~1;
             videoContext.VideoProcessorSetStreamSourceRect(processor, 0, true, new RawRect(0, 0, sourceWidth, sourceHeight));
             videoContext.VideoProcessorSetStreamDestRect(processor, 0, true, new RawRect(x, y, x + fitWidth, y + fitHeight));
-            videoContext.VideoProcessorBlt(processor, outputView, 0,
+            operation = "VideoProcessorBlt";
+            videoContext.VideoProcessorBlt(processor, outputView!, 0,
                 [new VideoProcessorStream { Enable = true, InputSurface = inputView }]).CheckError();
             context.Flush();
-            return output;
+            Interlocked.Increment(ref convertedFrames);
         }
-        catch { output.Dispose(); throw; }
+        catch (SharpGenException error)
+        {
+            throw new IOException($"GPU conversion failed during {operation}: HRESULT=0x{unchecked((uint)error.ResultCode.Code):X8}; " +
+                $"input={sourceWidth}x{sourceHeight}, output={width}x{height}, HDR={toneMapper is not null}; {Diagnostics}.", error);
+        }
+        finally
+        {
+            if (!cacheViews) { outputView?.Dispose(); inputView?.Dispose(); }
+        }
     }
+
+    private ID3D11VideoProcessorInputView CreateInput(ID3D11Texture2D source) =>
+        videoDevice.CreateVideoProcessorInputView(source, enumerator, new()
+        {
+            ViewDimension = VideoProcessorInputViewDimension.Texture2D,
+            Texture2D = new() { MipSlice = 0, ArraySlice = 0 }
+        });
+
+    private ID3D11VideoProcessorOutputView CreateOutput(ID3D11Texture2D output) =>
+        videoDevice.CreateVideoProcessorOutputView(output, enumerator, new()
+        {
+            ViewDimension = VideoProcessorOutputViewDimension.Texture2D,
+            Texture2D = new() { MipSlice = 0 }
+        });
 
     public void Dispose()
     {
+        cachedInput?.Dispose();
+        foreach (var view in cachedOutputs.Values) view.Dispose();
         toneMapper?.Dispose();
         processor.Dispose();
         enumerator.Dispose();

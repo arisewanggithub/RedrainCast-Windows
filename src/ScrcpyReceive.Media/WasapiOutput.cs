@@ -55,12 +55,18 @@ public sealed unsafe partial class WasapiOutput : IDisposable
                 throw new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError(), "Audio scheduling cleanup failed.");
         }
     }
-    public void WaitForBuffer(CancellationToken token)
+    public int WaitForBuffer(CancellationToken token)
     {
-        if (WaitHandle.WaitAny([ready, token.WaitHandle], 250) == 1) token.ThrowIfCancellationRequested();
+        var result = WaitHandle.WaitAny([ready, token.WaitHandle], 250);
+        if (result == 1) token.ThrowIfCancellationRequested();
+        return result;
     }
     public bool Started { get { lock (gate) return started; } }
     public long Written { get { lock (gate) return written; } }
+    public (uint Padding, long Played)? CachedStatistics
+    {
+        get { lock (gate) return disposed || !started ? null : (lastPadding, lastPlayed); }
+    }
     public string Diagnostics { get { lock (gate) return $"deviceHz={frequency}, capacity={Capacity}, written={written}, played={lastPlayed}, padding={lastPadding}, clockSource={clockSource}, runMs={(started ? Environment.TickCount64 - startedAt : 0)}, writeGapMaxMs={maximumWriteGapMs}, emptyEpisodes={emptyEpisodes}, emptyMaxMs={maximumEmptyMs}"; } }
     private static nint Method(nint value, int slot) => (*(nint**)value)[slot];
 

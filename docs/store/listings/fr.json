@@ -1,0 +1,48 @@
+{
+  "locale": "fr",
+  "productName": "RedrainCast",
+  "description": "Partagez un écran ou une fenêtre entre votre PC Windows et des appareils compatibles avec RedrainCast sur un réseau local de confiance.\n\nRedrainCast réunit l’envoi et la réception dans une seule application Windows native. Choisissez un écran ou une fenêtre à partager, sélectionnez un récepteur à proximité et lancez le partage. Vous pouvez aussi vous connecter directement à l’aide de l’adresse IP et du port affichés par le récepteur.\n\nPartagez le son de sortie avec votre écran, réglez les limites de capture et la qualité vidéo, et affichez, si vous le souhaitez, les statistiques de lecture sur les récepteurs compatibles. Les partages entrants s’ouvrent en plein écran. Arrêtez le partage pour rétablir l’état précédent de la fenêtre du récepteur.\n\nConfiguration requise\n- Windows 11 version 22H2 ou ultérieure, sur ARM64 ou x64.\n- Une application RedrainCast compatible sur l’autre appareil, notamment sur les appareils Windows et Android pris en charge. RedrainCast n’est pas un récepteur générique Miracast ou Google Cast.\n- Un réseau local de confiance et un matériel prenant en charge l’encodage et le décodage vidéo. La disponibilité des codecs dépend de l’appareil.\n\nInformations importantes sur le réseau et la confidentialité\nLes partages entrants sont acceptés automatiquement lorsque le récepteur est disponible. Utilisez RedrainCast uniquement sur des réseaux et avec des appareils de confiance. Le trafic local de partage d’écran et de son ainsi que la découverte des appareils ne sont ni authentifiés ni chiffrés. Aucun compte ni relais dans le cloud n’est utilisé. L’application standard n’enregistre pas votre écran ni votre son dans des fichiers.",
+  "whatsNew": "",
+  "productFeatures": [
+    "Envoyez et recevez des écrans dans une seule application Windows native.",
+    "Partagez un écran ou une fenêtre de votre choix.",
+    "Trouvez des récepteurs à proximité ou connectez-vous à l’aide d’une adresse IP et d’un port.",
+    "Partagez avec les applications RedrainCast compatibles sur Windows et Android.",
+    "Envoyez le son de sortie avec votre écran.",
+    "Réglez la taille maximale de capture, la cadence d’images, le débit et le codec vidéo pris en charge.",
+    "Affichez, si vous le souhaitez, les statistiques de lecture sur les récepteurs compatibles.",
+    "Recevez les partages en plein écran avec les thèmes Windows clair, sombre et à contraste élevé."
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "Partagez votre écran ou une fenêtre, avec ou sans le son, entre des appareils Windows et Android compatibles sur un réseau local de confiance.",
+  "keywords": [
+    "partage d’écran",
+    "diffusion d’écran",
+    "réseau local",
+    "partage de fenêtre",
+    "récepteur d’écran",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/fr/01-home.png", "caption": "Partagez et recevez des écrans.", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/fr/02-sharing-settings.png", "caption": "Paramètres de partage", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

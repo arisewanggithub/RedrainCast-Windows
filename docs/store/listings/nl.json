@@ -1,0 +1,48 @@
+{
+  "locale": "nl",
+  "productName": "RedrainCast",
+  "description": "Deel een scherm of venster tussen uw Windows-pc en compatibele RedrainCast-apparaten via een vertrouwd lokaal netwerk.\n\nRedrainCast combineert verzenden en ontvangen in één native Windows-app. Kies een beeldscherm of venster om te delen, selecteer een ontvanger in de buurt en begin met streamen. U kunt ook rechtstreeks verbinding maken met het IP-adres en de poort die de ontvanger weergeeft.\n\nDeel het geluid dat uw apparaat afspeelt samen met uw scherm, pas de opnamelimieten en videokwaliteit aan en bekijk desgewenst afspeelstatistieken op compatibele ontvangers. Inkomende streams worden op volledig scherm geopend. Als u stopt met delen, keert de ontvanger terug naar de vorige vensterstatus.\n\nVereisten\n- Windows 11 versie 22H2 of hoger op ARM64 of x64.\n- Een compatibele RedrainCast-app op het andere apparaat, waaronder ondersteunde Windows- en Android-apparaten. RedrainCast is geen algemene Miracast- of Google Cast-ontvanger.\n- Een vertrouwd lokaal netwerk en ondersteuning voor hardwarematige videocodering en -decodering. De beschikbaarheid van codecs is afhankelijk van het apparaat.\n\nBelangrijke informatie over het netwerk en uw privacy\nInkomende streams worden automatisch geaccepteerd zolang de ontvanger beschikbaar is. Gebruik RedrainCast alleen op netwerken en met apparaten die u vertrouwt. Zowel het lokale streamverkeer voor scherm en audio als het verkeer voor apparaatdetectie wordt niet geauthenticeerd en niet versleuteld. Er wordt geen account of cloudrelay gebruikt. De standaardapp neemt uw scherm of audio niet op in bestanden.",
+  "whatsNew": "",
+  "productFeatures": [
+    "Verzend en ontvang schermen in één native Windows-app.",
+    "Deel een geselecteerd beeldscherm of venster.",
+    "Vind ontvangers in de buurt of maak verbinding via een IP-adres en poort.",
+    "Stream met compatibele RedrainCast-apps op Windows en Android.",
+    "Verzend het geluid dat uw apparaat afspeelt samen met uw scherm.",
+    "Pas de maximale opnameafmetingen, framesnelheid, bitrate en ondersteunde videocodec aan.",
+    "Bekijk desgewenst afspeelstatistieken op compatibele ontvangers.",
+    "Ontvang op volledig scherm met lichte, donkere en contrastrijke Windows-thema's."
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "Deel uw scherm of een venster, desgewenst met audio, tussen compatibele Windows- en Android-apparaten via een vertrouwd lokaal netwerk.",
+  "keywords": [
+    "scherm delen",
+    "scherm streamen",
+    "lokaal netwerk",
+    "venster delen",
+    "scherm ontvangen",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/nl/01-home.png", "caption": "Schermen verzenden en ontvangen.", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/nl/02-sharing-settings.png", "caption": "Instellingen voor delen", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

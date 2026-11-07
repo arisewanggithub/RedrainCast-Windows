@@ -14,7 +14,7 @@ internal static class AppVersion
     {
         uint length = 0;
         var result = GetCurrentPackageFullName(ref length, null);
-        if (result == 15700) // APPMODEL_ERROR_NO_PACKAGE: normal for an unpackaged preview.
+        if (result == 15700) // APPMODEL_ERROR_NO_PACKAGE: unpackaged application.
         {
             var build = typeof(App).Assembly.GetName().Version
                 ?? throw new InvalidOperationException("Application build version is unavailable.");

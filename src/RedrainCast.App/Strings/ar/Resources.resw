@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <!-- Canonical catalog. Preserve indexed placeholders exactly; never translate brand names, codec identifiers, IP addresses, PTS, HWND or protocol identifiers. -->
+  <data name="HomeTagline" xml:space="preserve"><value>أرسل الشاشات واستقبلها.</value></data>
+  <data name="AppDescription" xml:space="preserve"><value>أرسل الشاشات واستقبلها عبر الشبكات المحلية الموثوقة.</value><comment>Windows package/Start description. RedrainCast is the unchanged application display name.</comment></data>
+  <data name="Settings" xml:space="preserve"><value>الإعدادات</value></data>
+  <data name="SendScreen" xml:space="preserve"><value>إرسال الشاشة</value></data>
+  <data name="SendHint" xml:space="preserve"><value>اختر جهاز استقبال قريبًا لبدء المشاركة.</value></data>
+  <data name="ChooseSourceHelp" xml:space="preserve"><value>اختر شاشة أو نافذة</value></data>
+  <data name="ShareSource" xml:space="preserve"><value>مشاركة شاشة أو نافذة</value></data>
+  <data name="ChooseSource" xml:space="preserve"><value>اختر ما تريد مشاركته</value></data>
+  <data name="NearbyReceivers" xml:space="preserve"><value>أجهزة الاستقبال القريبة</value></data>
+  <data name="AutoUpdating" xml:space="preserve"><value>يُحدَّث تلقائيًا</value></data>
+  <data name="LookingForReceivers" xml:space="preserve"><value>جارٍ البحث عن أجهزة استقبال...</value></data>
+  <data name="ManualConnect" xml:space="preserve"><value>الاتصال عبر عنوان IP : المنفذ</value><comment>IP is a network abbreviation. Preserve the address/port distinction.</comment></data>
+  <data name="ReceiveScreen" xml:space="preserve"><value>استقبال الشاشة</value></data>
+  <data name="Starting" xml:space="preserve"><value>جارٍ البدء</value><comment>Readiness banner.</comment></data>
+  <data name="OpeningListener" xml:space="preserve"><value>جارٍ فتح منفذ الاستماع...</value></data>
+  <data name="ConnectThisPC" xml:space="preserve"><value>الاتصال بهذا الكمبيوتر</value></data>
+  <data name="AddressHint" xml:space="preserve"><value>استخدم عنوانًا يمكن الوصول إليه من شبكة المُرسِل.</value></data>
+  <data name="CopyAddress" xml:space="preserve"><value>نسخ العنوان</value></data>
+  <data name="CopyAddressHelp" xml:space="preserve"><value>نسخ عنوان IP:المنفذ دون مسافات</value></data>
+  <data name="IncomingHint" xml:space="preserve"><value>تُفتح عمليات البث الواردة تلقائيًا وتملأ هذه النافذة.</value></data>
+  <data name="TrustedNetworkHint" xml:space="preserve"><value>يتوقف الاستقبال مؤقتًا أثناء إرسال شاشتك. استخدم التطبيق على الشبكات الموثوقة فقط.</value></data>
+  <data name="ConnectionHelp" xml:space="preserve"><value>المساعدة في الاتصال</value></data>
+  <data name="Version" xml:space="preserve"><value>RedrainCast · {0}</value><comment>{0} invariant release label (v plus version). Do not translate RedrainCast.</comment></data>
+  <data name="ActionFailed" xml:space="preserve"><value>فشل الإجراء</value></data>
+  <data name="TechnicalDetails" xml:space="preserve"><value>التفاصيل التقنية: {0}</value><comment>{0} original technical/OS error, may be English. Do not translate or interpret its contents.</comment></data>
+  <data name="RetryAction" xml:space="preserve"><value>تعذر إكمال الإجراء. راجع التفاصيل وحاول مرة أخرى.</value></data>
+  <data name="InvalidAdvertisement" xml:space="preserve"><value>تم تجاهل إعلان اكتشاف غير صالح</value></data>
+  <data name="DiscoveryUnavailable" xml:space="preserve"><value>الاكتشاف غير متاح. اتصل عبر عنوان IP : المنفذ.</value></data>
+  <data name="DiscoveryUnavailableActive" xml:space="preserve"><value>الاكتشاف غير متاح. تبقى الوجهة النشطة معروضة أعلاه.</value></data>
+  <data name="NoReceivers" xml:space="preserve"><value>لا توجد أجهزة استقبال قريبة حتى الآن. يجب أن يكون الجهازان على شبكة محلية تتيح الاتصال بينهما.</value></data>
+  <data name="NoReceiversActive" xml:space="preserve"><value>لم تُعلن أي أجهزة استقبال قريبة عن وجودها. تظهر الوجهة النشطة أعلاه.</value></data>
+  <data name="ReceiverCount" xml:space="preserve"><value>عدد أجهزة الاستقبال المكتشفة: {0}. يُحدَّث تلقائيًا.</value><comment>{0} integer receiver count. Use a grammatically count-neutral form where needed.</comment></data>
+  <data name="Paused" xml:space="preserve"><value>متوقف مؤقتًا</value></data>
+  <data name="ConnectingBanner" xml:space="preserve"><value>جارٍ الاتصال</value></data>
+  <data name="Ready" xml:space="preserve"><value>جاهز</value></data>
+  <data name="PauseReceiveHint" xml:space="preserve"><value>يتوقف الاستقبال مؤقتًا أثناء مشاركة شاشتك.</value></data>
+  <data name="PreparingVideo" xml:space="preserve"><value>جارٍ إعداد الفيديو الوارد...</value></data>
+  <data name="Listening" xml:space="preserve"><value>في انتظار الاتصالات</value></data>
+  <data name="ConnectNetwork" xml:space="preserve"><value>اتصل بشبكة Wi-Fi أو Ethernet.</value></data>
+  <data name="AddressUnavailableSending" xml:space="preserve"><value>عناوين الاستقبال المحلية غير متاحة أثناء الإرسال.</value></data>
+  <data name="LocalNetwork" xml:space="preserve"><value>الشبكة المحلية</value></data>
+  <data name="SourceClosed" xml:space="preserve"><value>أُغلق المصدر. اختر مصدرًا من جديد.</value></data>
+  <data name="SourceDimensions" xml:space="preserve"><value>{0} ({1} x {2})</value><comment>{0} original source name, {1}/{2} invariant pixel width/height. Preserve original names.</comment></data>
+  <data name="Connecting" xml:space="preserve"><value>جارٍ الاتصال...</value></data>
+  <data name="Casting" xml:space="preserve"><value>جارٍ البث</value></data>
+  <data name="Stopping" xml:space="preserve"><value>جارٍ الإيقاف...</value></data>
+  <data name="Busy" xml:space="preserve"><value>مشغول</value></data>
+  <data name="Available" xml:space="preserve"><value>متاح</value></data>
+  <data name="Send" xml:space="preserve"><value>إرسال</value></data>
+  <data name="Stop" xml:space="preserve"><value>إيقاف</value></data>
+  <data name="Cancel" xml:space="preserve"><value>إلغاء</value></data>
+  <data name="Save" xml:space="preserve"><value>حفظ</value></data>
+  <data name="Close" xml:space="preserve"><value>إغلاق</value></data>
+  <data name="ActionHelp" xml:space="preserve"><value>{0}: {1}</value><comment>Accessible button name: {0} localized action, {1} verbatim peer/source name.</comment></data>
+  <data name="OperationalNotice" xml:space="preserve"><value>تنبيه بشأن الاتصال</value></data>
+  <data name="ReceiverAddress" xml:space="preserve"><value>عنوان IP للمُستقبِل : المنفذ</value></data>
+  <data name="ConnectReceiver" xml:space="preserve"><value>الاتصال بجهاز استقبال</value></data>
+  <data name="AddressExample" xml:space="preserve"><value>192.168.1.42 : 50432</value><comment>Keep invariant ASCII example address and port unchanged.</comment></data>
+  <data name="AddressValidation" xml:space="preserve"><value>أدخل عنوان IP الحالي للبث الأحادي للمُستقبِل : المنفذ، مثل 192.168.1.42 : 50432. ضع عناوين IPv6 بين قوسين مربعين، مثل [fe80::1] : 50432. يجب أن يكون المنفذ من 1 إلى 65535.</value><comment>Keep network address examples and numeric limits unchanged.</comment></data>
+  <data name="OwnAddress" xml:space="preserve"><value>أدخل عنوان جهاز آخر، وليس عنوان مُستقبِل هذا الكمبيوتر.</value></data>
+  <data name="CopiedAddress" xml:space="preserve"><value>تم نسخ {0}</value><comment>{0} invariant IP : Port, never translate.</comment></data>
+  <data name="SharingSettings" xml:space="preserve"><value>إعدادات المشاركة</value></data>
+  <data name="MaximumDimension" xml:space="preserve"><value>الحد الأقصى للبُعد (64-3840 بكسل)</value></data>
+  <data name="MaximumFPS" xml:space="preserve"><value>الحد الأقصى لمعدل إطارات الالتقاط</value><comment>FPS = frames per second.</comment></data>
+  <data name="VideoBitrate" xml:space="preserve"><value>معدل بت الفيديو (0.1-100 ميغابت/ث)</value><comment>Mbps = megabits per second. Preserve numeric limits.</comment></data>
+  <data name="VideoCodec" xml:space="preserve"><value>برنامج ترميز الفيديو</value></data>
+  <data name="ReceiverOrientation" xml:space="preserve"><value>اتجاه العرض لدى المُستقبِل</value></data>
+  <data name="Auto" xml:space="preserve"><value>تلقائي</value></data>
+  <data name="Landscape" xml:space="preserve"><value>أفقي</value></data>
+  <data name="Portrait" xml:space="preserve"><value>عمودي</value></data>
+  <data name="SendAudio" xml:space="preserve"><value>إرسال الصوت إلى المُستقبِل (يكتم التشغيل المحلي)</value></data>
+  <data name="ShowStatistics" xml:space="preserve"><value>إظهار إحصاءات التشغيل لدى المُستقبِل</value></data>
+  <data name="SettingsValidation" xml:space="preserve"><value>أدخل بُعدًا بعدد صحيح من 64 إلى 3840 بكسل، وحدًا أقصى لمعدل الإطارات من 1 إلى 120، ومعدل بت من {0} إلى 100 ميغابت/ث (حتى ست منازل عشرية). اختر برنامج ترميز واتجاه عرض مدعومين.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
+  <data name="SavedCodecUnavailable" xml:space="preserve"><value>برنامج الترميز المحفوظ غير متاح في سياق الالتقاط الحالي. اختر برنامج ترميز مدعومًا بشكل صريح قبل الحفظ.</value></data>
+  <data name="HelpBody" xml:space="preserve"><value>افتح RedrainCast على كلا الجهازين: أجهزة كمبيوتر تعمل بنظام Windows أو أجهزة Android متوافقة. أبقهما على الشبكة المحلية الموثوقة نفسها.
+
+على جهاز الإرسال، اختر جهاز استقبال قريبًا واضغط «إرسال»، أو أدخل عنوان IP الحالي للمُستقبِل : المنفذ. على Windows، اختر شاشة أو نافذة لمشاركتها.
+
+تُقبل عمليات البث الواردة تلقائيًا. على هذا الكمبيوتر، يبدأ التشغيل بملء الشاشة؛ يبدّل المفتاح Enter أو F وضع ملء الشاشة، ويخرج منه المفتاح Esc. أوقف البث من جهاز الإرسال.
+
+يتوقف الاستقبال على هذا الكمبيوتر مؤقتًا أثناء الإرسال، ويُستأنف بعد الضغط على «إيقاف».
+
+اسمح لتطبيق RedrainCast بالمرور عبر جدار حماية Windows على شبكتك الموثوقة المصنّفة «خاصة». لا يخضع البث للمصادقة ولا للتشفير؛ لا تجعله متاحًا عبر الإنترنت.</value><comment>Keep RedrainCast, Windows, Android, IP, Enter, F and Esc identifiers. Preserve paragraphs. Send and Stop refer to localized buttons.</comment></data>
+  <data name="HelpSupport" xml:space="preserve"><value>المساعدة والدعم</value></data>
+  <data name="PrivacyPolicy" xml:space="preserve"><value>سياسة الخصوصية</value></data>
+  <data name="TrustedNetworkTitle" xml:space="preserve"><value>الاتصال عبر شبكة محلية موثوقة</value></data>
+  <data name="PickerInstructions" xml:space="preserve"><value>اختر إحدى البطاقات. لا تبدأ المشاركة إلا عند الضغط على «إرسال».
+المعاينات المباشرة محلية، ولا تعمل إلا أثناء فتح أداة الاختيار هذه.</value></data>
+  <data name="Windows" xml:space="preserve"><value>النوافذ</value><comment>Plural application windows, not the Windows operating system brand.</comment></data>
+  <data name="Displays" xml:space="preserve"><value>الشاشات</value></data>
+  <data name="PreviewPending" xml:space="preserve"><value>في انتظار المعاينة</value></data>
+  <data name="CurrentlySelected" xml:space="preserve"><value>محدد حاليًا</value></data>
+  <data name="SelectedSourceHelp" xml:space="preserve"><value>{0}، محدد حاليًا</value><comment>{0} original source name.</comment></data>
+  <data name="NoSources" xml:space="preserve"><value>لا توجد مصادر متاحة.</value></data>
+  <data name="CannotSelectSource" xml:space="preserve"><value>لا يمكن تحديد هذا المصدر. اختر مصدرًا آخر.</value></data>
+  <data name="LivePreview" xml:space="preserve"><value>معاينة مباشرة</value></data>
+  <data name="PreviewUnavailable" xml:space="preserve"><value>المعاينة غير متاحة. لا يزال بإمكانك تحديد هذا المصدر.</value></data>
+  <data name="PreviewsUnavailable" xml:space="preserve"><value>المعاينات غير متاحة. لا يزال بإمكانك تحديد مصدر.</value></data>
+  <data name="ReceiverPhaseStarting" xml:space="preserve"><value>جارٍ بدء المُستقبِل</value></data>
+  <data name="ReceiverPhaseReady" xml:space="preserve"><value>جاهز للاستقبال</value></data>
+  <data name="ReceiverPhaseConnecting" xml:space="preserve"><value>جارٍ الاتصال</value></data>
+  <data name="ReceiverPhaseNoNetwork" xml:space="preserve"><value>لا يوجد اتصال بالشبكة</value></data>
+  <data name="ReceiverPhaseDiscoveryUnavailable" xml:space="preserve"><value>اكتشاف الشبكة غير متاح</value></data>
+  <data name="ReceiverPhaseError" xml:space="preserve"><value>توقف التشغيل</value></data>
+  <data name="ReceiverPhaseUnavailable" xml:space="preserve"><value>المُستقبِل غير متاح</value></data>
+  <data name="ReceiverPhaseStopped" xml:space="preserve"><value>أُغلق المُستقبِل</value></data>
+  <data name="ReceiverUnavailable" xml:space="preserve"><value>المُستقبِل غير متاح</value></data>
+  <data name="PlaybackStopped" xml:space="preserve"><value>توقف التشغيل</value></data>
+  <data name="ReceiverStartFailed" xml:space="preserve"><value>تعذر فتح منفذ استماع للمُستقبِل. تحقق من أذونات الشبكة، ثم أعد فتح هذا التطبيق.</value></data>
+  <data name="ReceiverUnsafe" xml:space="preserve"><value>تعذر على المُستقبِل المتابعة بأمان. أغلق هذا التطبيق وأعد فتحه.</value></data>
+  <data name="ReceiverDiscoveryWarning" xml:space="preserve"><value>قد لا يكون الاكتشاف التلقائي متاحًا. أدخل عنوان هذا الكمبيوتر يدويًا على جهاز الإرسال.</value></data>
+  <data name="ReceiverAddressLookupStopped" xml:space="preserve"><value>توقف البحث عن عناوين الشبكة. تحقق من اتصال هذا الكمبيوتر بالشبكة، ثم أغلق المُستقبِل وأعد فتحه للمحاولة مجددًا.</value></data>
+  <data name="ReceiverDiscoveryStopped" xml:space="preserve"><value>توقف الاكتشاف التلقائي وتحديث العناوين. يمكنك تجربة العنوان المعروض يدويًا، أو إعادة فتح المُستقبِل لإعادة بدء الاكتشاف.</value></data>
+  <data name="ReceiverWindowLayoutFailed" xml:space="preserve"><value>تعذر ضبط النافذة لتناسب هذه الشاشة. حاول نقلها أو إعادة فتحها.</value></data>
+  <data name="ReceiverUnsupportedConfig" xml:space="preserve"><value>هذه الإعدادات غير مدعومة. اختر برنامج ترميز ودقة ومعدل إطارات مدعومة على جهاز الإرسال، ثم حاول مرة أخرى.</value></data>
+  <data name="ReceiverDecoderFailed" xml:space="preserve"><value>توقف تشغيل الفيديو. أعد بدء البث؛ وإذا تكرر ذلك، فجرّب برنامج ترميز آخر أو دقة أقل.</value></data>
+  <data name="ReceiverAudioFailed" xml:space="preserve"><value>توقف تشغيل الصوت. تحقق من جهاز إخراج الصوت في Windows، ثم أعد بدء البث.</value></data>
+  <data name="ReceiverCongestion" xml:space="preserve"><value>تعذر على التشغيل مواكبة البث. جرّب دقة أو معدل إطارات أو معدل بت أقل على جهاز الإرسال.</value></data>
+  <data name="ReceiverTimeout" xml:space="preserve"><value>توقف المُرسِل عن الاستجابة أو تعذر بدء التشغيل. ابدأ البث مجددًا من جهاز الإرسال.</value></data>
+  <data name="ReceiverVersion" xml:space="preserve"><value>حدّث التطبيق على كلا الجهازين، ثم حاول الاتصال مرة أخرى.</value></data>
+  <data name="ReceiverSenderError" xml:space="preserve"><value>أبلغ المُرسِل عن خطأ. راجع شاشته، ثم ابدأ البث مجددًا.</value></data>
+  <data name="ReceiverUnexpected" xml:space="preserve"><value>توقف البث بشكل غير متوقع. أعد بدءه من جهاز الإرسال؛ وإذا تكرر ذلك، فأغلق المُستقبِل وأعد فتحه.</value></data>
+  <data name="StatisticsTitle" xml:space="preserve"><value>إحصاءات التشغيل</value></data>
+  <data name="StatisticsConnections" xml:space="preserve"><value>الاتصالات وقوائم الانتظار</value></data>
+  <data name="StatisticsVideo" xml:space="preserve"><value>دفق الفيديو</value></data>
+  <data name="StatisticsAudioSync" xml:space="preserve"><value>الصوت والمزامنة</value></data>
+  <data name="StatisticsColumnChannel" xml:space="preserve"><value>القناة</value></data>
+  <data name="StatisticsColumnQueued" xml:space="preserve"><value>في الانتظار</value></data>
+  <data name="StatisticsColumnSpan" xml:space="preserve"><value>المدى الزمني</value></data>
+  <data name="StatisticsColumnLastActivity" xml:space="preserve"><value>آخر نشاط</value></data>
+  <data name="StatisticsColumnRTT" xml:space="preserve"><value>RTT</value><comment>Round-trip time.</comment></data>
+  <data name="StatisticsClockNote" xml:space="preserve"><value>الانحراف الموجب = الفيديو متقدم · ذروة الانحراف المرصود تعتمد على عينات بتردد 1 هرتز.</value></data>
+  <data name="StatisticsCompactClockNote" xml:space="preserve"><value>PTS المصدر: + = الفيديو متقدم؛ الذروة بعينات 1 هرتز؛ ليست زمن التأخير من طرف إلى طرف</value><comment>PTS = presentation timestamp. Keep timing semantics and + sign.</comment></data>
+  <data name="StatisticsLatencyNote" xml:space="preserve"><value>طوابع المصدر الزمنية · ليست زمن التأخير من طرف إلى طرف</value></data>
+  <data name="StatisticsQueueNote" xml:space="preserve"><value>قوائم البيانات المرمّزة: الحزم المنتظرة · الإجماليات: دورة التشغيل/الجيل</value></data>
+  <data name="Statistics_receivedFps" xml:space="preserve"><value>المستلَمة (FPS)</value></data>
+  <data name="Statistics_decodedFps" xml:space="preserve"><value>فك الترميز (FPS)</value></data>
+  <data name="Statistics_presentedFps" xml:space="preserve"><value>مقدَّمة للعرض (FPS)</value></data>
+  <data name="Statistics_recentSkippedPercent" xml:space="preserve"><value>المتخطّاة · مؤخرًا</value><comment>Recent sampled percentage, not a cumulative count or network packet loss.</comment></data>
+  <data name="Statistics_videoCodec" xml:space="preserve"><value>برنامج الترميز</value></data>
+  <data name="Statistics_encodedSize" xml:space="preserve"><value>الأبعاد المرمّزة</value></data>
+  <data name="Statistics_captureLimit" xml:space="preserve"><value>سقف معدل الالتقاط</value><comment>Requested maximum FPS, not observed frames per second.</comment></data>
+  <data name="Statistics_canvasSize" xml:space="preserve"><value>سطح عرض المُستقبِل</value><comment>Physical pixel size of receiver surface, not DIP.</comment></data>
+  <data name="Statistics_rotation" xml:space="preserve"><value>الدوران</value></data>
+  <data name="Statistics_videoBitrate" xml:space="preserve"><value>معدل بت الفيديو</value></data>
+  <data name="Statistics_configuredVideoBitrate" xml:space="preserve"><value>معدل البت المضبوط</value></data>
+  <data name="Statistics_networkLoss" xml:space="preserve"><value>الفقد عبر الشبكة</value></data>
+  <data name="Statistics_audioCodec" xml:space="preserve"><value>تنسيق الصوت</value></data>
+  <data name="Statistics_audioBitrate" xml:space="preserve"><value>معدل بت الصوت</value></data>
+  <data name="Statistics_pcmBufferTarget" xml:space="preserve"><value>مخزن PCM / الهدف</value><comment>Current PCM buffer and target durations in milliseconds. Preserve PCM identifier.</comment></data>
+  <data name="Statistics_devicePadding" xml:space="preserve"><value>المتبقي بجهاز الصوت</value></data>
+  <data name="Statistics_insertedSilence" xml:space="preserve"><value>الصمت المُدرج</value></data>
+  <data name="Statistics_discardedPcm" xml:space="preserve"><value>PCM المستبعَد</value></data>
+  <data name="Statistics_avSkew" xml:space="preserve"><value>انحراف الصوت/الفيديو</value><comment>Video source PTS minus played-source audio PTS, milliseconds. Positive means video ahead; not end-to-end latency.</comment></data>
+  <data name="Statistics_peakObservedSkew" xml:space="preserve"><value>ذروة الانحراف المرصود</value><comment>Maximum absolute skew from 1-Hz overlay samples; not a native high-frequency maximum.</comment></data>
+  <data name="Statistics_decodedTotal" xml:space="preserve"><value>المفكوكة الترميز</value></data>
+  <data name="Statistics_presentedTotal" xml:space="preserve"><value>المقدَّمة للعرض</value></data>
+  <data name="Statistics_skippedTotal" xml:space="preserve"><value>المتخطّاة</value></data>
+  <data name="Statistics_state" xml:space="preserve"><value>الحالة</value></data>
+  <data name="Statistics_generation" xml:space="preserve"><value>الجيل</value></data>
+  <data name="Statistics_playbackEpoch" xml:space="preserve"><value>دورة التشغيل</value><comment>Native playback-instance/rebuild epoch, not Audio epoch. Preserve this distinction.</comment></data>
+  <data name="Statistics_occluded" xml:space="preserve"><value>سطح العرض محجوب</value><comment>Whether playback surface is covered/occluded.</comment></data>
+  <data name="ChannelVideo" xml:space="preserve"><value>الفيديو</value></data>
+  <data name="ChannelAudio" xml:space="preserve"><value>الصوت</value></data>
+  <data name="ChannelControl" xml:space="preserve"><value>التحكم</value></data>
+  <data name="NotAvailable" xml:space="preserve"><value>غير متاح</value></data>
+  <data name="Off" xml:space="preserve"><value>إيقاف</value></data>
+  <data name="Recovering" xml:space="preserve"><value>جارٍ الاسترداد</value></data>
+  <data name="Playing" xml:space="preserve"><value>جارٍ التشغيل</value></data>
+  <data name="Yes" xml:space="preserve"><value>نعم</value></data>
+  <data name="No" xml:space="preserve"><value>لا</value></data>
+  <data name="UnitMilliseconds" xml:space="preserve"><value>مللي ثانية</value><comment>Milliseconds. Short overlay unit; do not change magnitude.</comment></data>
+  <data name="UnitMegabits" xml:space="preserve"><value>ميغابت/ث</value><comment>Megabits per second, not megabytes.</comment></data>
+  <data name="UnitPixels" xml:space="preserve"><value>بكسل</value></data>
+  <data name="UnitFrames" xml:space="preserve"><value>إطار/ث</value><comment>Frames per second.</comment></data>
+  <data name="UnitBytes" xml:space="preserve"><value>بايت</value><comment>Bytes, not bits.</comment></data>
+  <data name="PreparingCapture" xml:space="preserve"><value>جارٍ إعداد الالتقاط</value></data>
+  <data name="InitializingCapture" xml:space="preserve"><value>جارٍ تهيئة الالتقاط</value></data>
+  <data name="Negotiating" xml:space="preserve"><value>جارٍ التفاوض</value></data>
+  <data name="PlaybackOptionUnavailable" xml:space="preserve"><value>تتطلب إحصاءات التشغيل مُستقبِلًا متوافقًا؛ يستمر البث دون لوحة الإحصاءات.</value></data>
+  <data name="ChooseSourceFailed" xml:space="preserve"><value>تعذر اختيار شاشة أو نافذة. اختر مصدرًا آخر أو حاول مرة أخرى.</value></data>
+  <data name="ReceiverBusy" xml:space="preserve"><value>جهاز الاستقبال هذا مشغول.</value></data>
+  <data name="ChooseOtherDevice" xml:space="preserve"><value>اختر جهازًا آخر، وليس مُستقبِل هذا الكمبيوتر نفسه.</value></data>
+  <data name="IncomingAlreadyStarted" xml:space="preserve"><value>بدأ بث وارد بالفعل.</value></data>
+  <data name="SendingFailed" xml:space="preserve"><value>تعذرت مشاركة الشاشة. تحقق من عنوان المُستقبِل واتصال الشبكة، ثم حاول مرة أخرى.</value></data>
+  <data name="CopyFailed" xml:space="preserve"><value>تعذر نسخ العنوان. حاول مرة أخرى.</value></data>
+  <data name="DisplaySource" xml:space="preserve"><value>الشاشة {0} ({1} × {2})</value><comment>{0} display number, {1}/{2} invariant pixel width/height. Do not change source identity.</comment></data>
+  <data name="ChooseSourceFirst" xml:space="preserve"><value>اختر شاشة أو نافذة قبل الإرسال.</value></data>
+  <data name="SettingsUnavailable" xml:space="preserve"><value>تعذرت قراءة إعدادات جهاز الالتقاط. تحقق من المصدر، ثم افتح الإعدادات مجددًا.</value></data>
+  <data name="SavedSettingsFailed" xml:space="preserve"><value>تعذر تحميل الإعدادات المحفوظة؛ تُستخدم إعدادات المشاركة الافتراضية.</value></data>
+  <data name="StatisticsUnavailable" xml:space="preserve"><value>إحصاءات التشغيل غير متاحة؛ يمكن أن يستمر البث دون لوحة الإحصاءات.</value></data>
+  <data name="SourceChanged" xml:space="preserve"><value>تغير مصدر الالتقاط أثناء قراءة خيارات برامج الترميز. افتح الإعدادات مجددًا أو أعد محاولة «حفظ».</value></data>
+  <data name="ChooseDifferentWindow" xml:space="preserve"><value>اختر نافذة أخرى أو شاشة، وليس النافذة الرئيسية لهذا التطبيق.</value></data>
+</root>

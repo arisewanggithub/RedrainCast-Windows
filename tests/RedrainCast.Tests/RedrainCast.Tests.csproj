@@ -5,11 +5,48 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <None Include="..\..\src\RedrainCast.App\SendingSelfTest.cs" Link="fixtures\SendingSelfTest.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\Strings\**\Resources.resw" Link="fixtures\Strings\%(RecursiveDir)Resources.resw" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\AppStrings.cs" Link="fixtures\AppStrings.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\SystemLanguageNotifications.cs" Link="fixtures\SystemLanguageNotifications.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\LocalizationSelfTest.cs" Link="fixtures\LocalizationSelfTest.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\PlaybackStatisticsSelfTest.cs" Link="fixtures\PlaybackStatisticsSelfTest.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\assets\package\RedrainCast.ico" Link="fixtures\RedrainCast.ico" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\assets\branding\asset-manifest.json" Link="fixtures\asset-manifest.json" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\tools\Validate-AppIcon.ps1" Link="fixtures\Validate-AppIcon.ps1" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\tools\Assert-ShippingBoundary.ps1" Link="fixtures\Assert-ShippingBoundary.ps1" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\RedrainCast.App.csproj" Link="fixtures\App.csproj" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\App.xaml.cs" Link="fixtures\App.xaml.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\ScrcpyReceive.Core\ReceiverServer.cs" Link="fixtures\ReceiverServer.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\Directory.Build.props" Link="fixtures\Directory.Build.props" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\tools\Publish.ps1" Link="fixtures\Publish.ps1" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\tools\Package.ps1" Link="fixtures\Package.ps1" CopyToOutputDirectory="PreserveNewest"/>
+    <None Update="fixtures\playback-statistics-display-contract.json" CopyToOutputDirectory="PreserveNewest"/>
+    <Compile Include="..\..\src\RedrainCast.App\PeerStabilityProgress.cs" Link="PeerStabilityProgress.cs"/>
+    <Compile Include="..\..\src\RedrainCast.App\RecoveryPcmSource.cs" Link="RecoveryPcmSource.cs"/>
+    <Compile Include="..\..\src\RedrainCast.App\HighFpsProbeControl.cs" Link="HighFpsProbeControl.cs"/>
+    <Compile Include="..\..\src\RedrainCast.App\PickerOperationLifetime.cs" Link="PickerOperationLifetime.cs"/>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0"/>
     <PackageReference Include="xunit" Version="2.9.3"/>
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" PrivateAssets="all"/>
     <ProjectReference Include="..\..\src\RedrainCast.Core\RedrainCast.Core.csproj"/>
     <ProjectReference Include="..\..\src\ScrcpyReceive.Core\ScrcpyReceive.Core.csproj"/>
+    <ProjectReference Include="..\..\src\ScrcpySend.Core\ScrcpySend.Core.csproj"/>
+    <None Include="..\ScrcpyReceive.Tests\fixtures\synthetic-h264.json" Link="fixtures\synthetic-h264.json" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.App\MainWindow.xaml" Link="MainWindow.xaml" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\MainWindow.xaml.cs" Link="fixtures\MainWindow.xaml.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\SourcePicker.cs" Link="fixtures\SourcePicker.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\ScrcpySend.Media\CaptureThumbnail.cs" Link="fixtures\CaptureThumbnail.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\ScrcpySend.Media\CaptureSource.cs" Link="fixtures\CaptureSource.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\ScrcpySend.Media\CaptureInterop.cs" Link="fixtures\CaptureInterop.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\ScrcpySend.Media\ProcessVideoSource.cs" Link="fixtures\ProcessVideoSource.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\ScrcpySend.Media\WorkerVideoSource.cs" Link="fixtures\WorkerVideoSource.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\NativeSourcePicker.cs" Link="fixtures\NativeSourcePicker.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\PlaybackStatisticsLayout.cs" Link="fixtures\PlaybackStatisticsLayout.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\PlaybackStatisticsOverlay.cs" Link="fixtures\PlaybackStatisticsOverlay.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\ScrcpySend.Media\WindowsVideoSource.cs" Link="fixtures\WindowsVideoSource.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\ScrcpyReceive.Media\GpuPresenter.cs" Link="fixtures\GpuPresenter.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\ScrcpyReceive.Media\VideoPlayback.cs" Link="fixtures\VideoPlayback.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\VideoHost.cs" Link="fixtures\VideoHost.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
   </ItemGroup>
 </Project>

@@ -1,0 +1,147 @@
+{
+    "schemaVersion":  1,
+    "source":  {
+                   "path":  "assets/branding/RedrainCast.svg",
+                   "sha256":  "2f43aa98129559c01c2f46484a9aaf3f26bc2a46f6175e222e158d105d173913",
+                   "androidRepository":  "RedrainCast-Android",
+                   "androidPath":  "app/src/main/res/drawable/cast_icon.xml",
+                   "androidSha256":  "d5cc41a5c42d7a3d6dd879be6f769b1c57dd2b5a035080dc99fe353c01c79a21",
+                   "viewBox":  "0 0 48 48",
+                   "fillRule":  "nonzero",
+                   "background":  "#9F2036",
+                   "foreground":  "#FFFFFF"
+               },
+    "rendering":  {
+                      "renderer":  "WPF DrawingVisual / RenderTargetBitmap / PngBitmapEncoder",
+                      "dpi":  96,
+                      "composition":  "Full Android square; rectangular artwork centers the same min(width,height) square on the solid background.",
+                      "transparency":  "opaque",
+                      "storeArtworkGuidance":  "https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/screenshots-and-images",
+                      "posterAspectRatio":  "2:3"
+                  },
+    "assets":  [
+                   {
+                       "path":  "store/StoreLogo71x71.png",
+                       "width":  71,
+                       "height":  71,
+                       "sha256":  "378c093115c410fe61d08e2d5d6b03afada804cd9136c9651dfbda719a6fddcf"
+                   },
+                   {
+                       "path":  "store/StoreLogo150x150.png",
+                       "width":  150,
+                       "height":  150,
+                       "sha256":  "3fff5410c9b320d38584b79b90d0697d4ba3b602a49b8b7d7c5b8dc377b3c2b8"
+                   },
+                   {
+                       "path":  "store/StoreLogo300x300.png",
+                       "width":  300,
+                       "height":  300,
+                       "sha256":  "2788423d94d3562e4bccec0b28205f95eccef44ae06a8882e9148690f755f913"
+                   },
+                   {
+                       "path":  "store/BoxArt2160x2160.png",
+                       "width":  2160,
+                       "height":  2160,
+                       "sha256":  "9e21b34056fec151aafe208ea82cde6f1a115ffa2a7c3995ee783690a30429f9"
+                   },
+                   {
+                       "path":  "store/PosterArt1440x2160.png",
+                       "width":  1440,
+                       "height":  2160,
+                       "sha256":  "7f9eca6a347645a20bbf5d7b67321884af05392627273eddd9740fd76af09bdc"
+                   },
+                   {
+                       "path":  "store/HeroArt3840x2160.png",
+                       "width":  3840,
+                       "height":  2160,
+                       "sha256":  "20d8a21b485849910988a9d674226254ed8c1aa3484f5fd1f76bb1b5f57165c3"
+                   },
+                   {
+                       "path":  "package/Cast44.png",
+                       "width":  44,
+                       "height":  44,
+                       "sha256":  "9647a4bdae11c546ed698cc1ecb63dc429792930cd2102ac7051f429b92fe343"
+                   },
+                   {
+                       "path":  "package/Cast50.png",
+                       "width":  50,
+                       "height":  50,
+                       "sha256":  "a0911ff764f9a783c4a3306075814853c71d7806f590ae8fa4fb99a2bf884cc8"
+                   },
+                   {
+                       "path":  "package/Cast150.png",
+                       "width":  150,
+                       "height":  150,
+                       "sha256":  "3fff5410c9b320d38584b79b90d0697d4ba3b602a49b8b7d7c5b8dc377b3c2b8"
+                   },
+                   {
+                       "path":  "package/RedrainCast.ico",
+                       "sha256":  "a1f9a25f77cc7ed30b2cadd82f369f9feb22093270d3804c103664e351dcb815",
+                       "frames":  [
+                                      {
+                                          "width":  16,
+                                          "height":  16,
+                                          "offset":  150,
+                                          "length":  386,
+                                          "sha256":  "a7d8181754ac1365c57bce964f33eb6be835aa686619c5da3b2f5af0bdef39fd"
+                                      },
+                                      {
+                                          "width":  20,
+                                          "height":  20,
+                                          "offset":  536,
+                                          "length":  410,
+                                          "sha256":  "8f1ad6ead117d266aa4ed49874ea14fe4bb0be12fe152637972c721674067b97"
+                                      },
+                                      {
+                                          "width":  24,
+                                          "height":  24,
+                                          "offset":  946,
+                                          "length":  335,
+                                          "sha256":  "e8a0dcb7a76e4a0990877a22ce93a7cdd07a0c7ec8cdbbeaf9a1801e0d1803da"
+                                      },
+                                      {
+                                          "width":  32,
+                                          "height":  32,
+                                          "offset":  1281,
+                                          "length":  523,
+                                          "sha256":  "2cf99173edabd353da57d641bd459fb6658f0d73b77cd288733fbb134e9c73b9"
+                                      },
+                                      {
+                                          "width":  40,
+                                          "height":  40,
+                                          "offset":  1804,
+                                          "length":  648,
+                                          "sha256":  "f4ade362ba64f557ae1777af947688b1f0a225e2d831f6d3eaa1656a051ed19a"
+                                      },
+                                      {
+                                          "width":  48,
+                                          "height":  48,
+                                          "offset":  2452,
+                                          "length":  571,
+                                          "sha256":  "6d0667f765dab4832c335c641cd8d27956aea94f86a0eeba688a36a5ea3499f8"
+                                      },
+                                      {
+                                          "width":  64,
+                                          "height":  64,
+                                          "offset":  3023,
+                                          "length":  856,
+                                          "sha256":  "18b0fd71ba6ae258072cbed142a96d307584ea8ea1fc85701f023fc28a6fbb09"
+                                      },
+                                      {
+                                          "width":  128,
+                                          "height":  128,
+                                          "offset":  3879,
+                                          "length":  1480,
+                                          "sha256":  "88fc875f56efcb4f51a568837325803777a1d223cf5f36b1cdcc24efb779c630"
+                                      },
+                                      {
+                                          "width":  256,
+                                          "height":  256,
+                                          "offset":  5359,
+                                          "length":  2807,
+                                          "sha256":  "e2e0097e721ff97d3090ae4da3061cdfa36d041c5ffd7bb8c52a7fabbd226ff1"
+                                      }
+                                  ]
+                   }
+               ]
+}

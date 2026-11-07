@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <!-- Canonical catalog. Preserve indexed placeholders exactly; never translate brand names, codec identifiers, IP addresses, PTS, HWND or protocol identifiers. -->
+  <data name="HomeTagline" xml:space="preserve"><value>画面を送信・受信。</value></data>
+  <data name="AppDescription" xml:space="preserve"><value>信頼できるローカルネットワークで画面を送受信します。</value><comment>Windows package/Start description. RedrainCast is the unchanged application display name.</comment></data>
+  <data name="Settings" xml:space="preserve"><value>設定</value></data>
+  <data name="SendScreen" xml:space="preserve"><value>画面を送信</value></data>
+  <data name="SendHint" xml:space="preserve"><value>共有するには、近くの受信先を選択してください。</value></data>
+  <data name="ChooseSourceHelp" xml:space="preserve"><value>ディスプレイまたはウィンドウを選択</value></data>
+  <data name="ShareSource" xml:space="preserve"><value>ディスプレイまたはウィンドウを共有</value></data>
+  <data name="ChooseSource" xml:space="preserve"><value>共有する画面を選択</value></data>
+  <data name="NearbyReceivers" xml:space="preserve"><value>近くの受信先</value></data>
+  <data name="AutoUpdating" xml:space="preserve"><value>自動更新中</value></data>
+  <data name="LookingForReceivers" xml:space="preserve"><value>受信先を検索中...</value></data>
+  <data name="ManualConnect" xml:space="preserve"><value>IP : ポートで接続</value><comment>IP is a network abbreviation. Preserve the address/port distinction.</comment></data>
+  <data name="ReceiveScreen" xml:space="preserve"><value>画面を受信</value></data>
+  <data name="Starting" xml:space="preserve"><value>起動中</value><comment>Readiness banner.</comment></data>
+  <data name="OpeningListener" xml:space="preserve"><value>接続の待ち受けを開始しています...</value></data>
+  <data name="ConnectThisPC" xml:space="preserve"><value>この PC に接続</value></data>
+  <data name="AddressHint" xml:space="preserve"><value>送信側のネットワークから到達できるアドレスを使用してください。</value></data>
+  <data name="CopyAddress" xml:space="preserve"><value>アドレスをコピー</value></data>
+  <data name="CopyAddressHelp" xml:space="preserve"><value>IP:ポートを空白なしでコピー</value></data>
+  <data name="IncomingHint" xml:space="preserve"><value>受信した画面は自動的に開き、このウィンドウ全体に表示されます。</value></data>
+  <data name="TrustedNetworkHint" xml:space="preserve"><value>画面の送信中は受信を一時停止します。信頼できるネットワークでのみ使用してください。</value></data>
+  <data name="ConnectionHelp" xml:space="preserve"><value>接続のヘルプ</value></data>
+  <data name="Version" xml:space="preserve"><value>RedrainCast · {0}</value><comment>{0} invariant release label (v plus version). Do not translate RedrainCast.</comment></data>
+  <data name="ActionFailed" xml:space="preserve"><value>操作に失敗しました</value></data>
+  <data name="TechnicalDetails" xml:space="preserve"><value>技術的な詳細: {0}</value><comment>{0} original technical/OS error, may be English. Do not translate or interpret its contents.</comment></data>
+  <data name="RetryAction" xml:space="preserve"><value>操作を完了できませんでした。詳細を確認して、もう一度お試しください。</value></data>
+  <data name="InvalidAdvertisement" xml:space="preserve"><value>無効な探索通知を無視しました</value></data>
+  <data name="DiscoveryUnavailable" xml:space="preserve"><value>自動検出を利用できません。IP : ポートで接続してください。</value></data>
+  <data name="DiscoveryUnavailableActive" xml:space="preserve"><value>自動検出を利用できません。接続中の受信先は引き続き上に表示されます。</value></data>
+  <data name="NoReceivers" xml:space="preserve"><value>近くの受信先はまだ見つかりません。両方のデバイスが互いに到達できるローカルネットワークに接続されている必要があります。</value></data>
+  <data name="NoReceiversActive" xml:space="preserve"><value>近くの受信先からの通知がありません。接続中の受信先は上に表示されています。</value></data>
+  <data name="ReceiverCount" xml:space="preserve"><value>受信先が {0} 台見つかりました。自動的に更新されます。</value><comment>{0} integer receiver count. Use a grammatically count-neutral form where needed.</comment></data>
+  <data name="Paused" xml:space="preserve"><value>一時停止中</value></data>
+  <data name="ConnectingBanner" xml:space="preserve"><value>接続中</value></data>
+  <data name="Ready" xml:space="preserve"><value>準備完了</value></data>
+  <data name="PauseReceiveHint" xml:space="preserve"><value>画面の共有中は受信を一時停止します。</value></data>
+  <data name="PreparingVideo" xml:space="preserve"><value>受信映像を準備しています...</value></data>
+  <data name="Listening" xml:space="preserve"><value>接続待ち</value></data>
+  <data name="ConnectNetwork" xml:space="preserve"><value>Wi-Fi またはイーサネットに接続してください。</value></data>
+  <data name="AddressUnavailableSending" xml:space="preserve"><value>送信中はローカルの受信アドレスを利用できません。</value></data>
+  <data name="LocalNetwork" xml:space="preserve"><value>ローカルネットワーク</value></data>
+  <data name="SourceClosed" xml:space="preserve"><value>共有元が閉じられました。共有元を選び直してください。</value></data>
+  <data name="SourceDimensions" xml:space="preserve"><value>{0} ({1} x {2})</value><comment>{0} original source name, {1}/{2} invariant pixel width/height. Preserve original names.</comment></data>
+  <data name="Connecting" xml:space="preserve"><value>接続中...</value></data>
+  <data name="Casting" xml:space="preserve"><value>送信中</value></data>
+  <data name="Stopping" xml:space="preserve"><value>停止中...</value></data>
+  <data name="Busy" xml:space="preserve"><value>使用中</value></data>
+  <data name="Available" xml:space="preserve"><value>利用可能</value></data>
+  <data name="Send" xml:space="preserve"><value>送信</value></data>
+  <data name="Stop" xml:space="preserve"><value>停止</value></data>
+  <data name="Cancel" xml:space="preserve"><value>キャンセル</value></data>
+  <data name="Save" xml:space="preserve"><value>保存</value></data>
+  <data name="Close" xml:space="preserve"><value>閉じる</value></data>
+  <data name="ActionHelp" xml:space="preserve"><value>{0}: {1}</value><comment>Accessible button name: {0} localized action, {1} verbatim peer/source name.</comment></data>
+  <data name="OperationalNotice" xml:space="preserve"><value>接続に関するお知らせ</value></data>
+  <data name="ReceiverAddress" xml:space="preserve"><value>受信先の IP : ポート</value></data>
+  <data name="ConnectReceiver" xml:space="preserve"><value>受信先に接続</value></data>
+  <data name="AddressExample" xml:space="preserve"><value>192.168.1.42 : 50432</value><comment>Keep invariant ASCII example address and port unchanged.</comment></data>
+  <data name="AddressValidation" xml:space="preserve"><value>受信先の現在のユニキャスト IP : ポートを入力してください。例: 192.168.1.42 : 50432。IPv6 アドレスは角括弧で囲んでください。例: [fe80::1] : 50432。ポートは 1 から 65535 の範囲で指定してください。</value><comment>Keep network address examples and numeric limits unchanged.</comment></data>
+  <data name="OwnAddress" xml:space="preserve"><value>この PC の受信アドレスではなく、別のデバイスのアドレスを入力してください。</value></data>
+  <data name="CopiedAddress" xml:space="preserve"><value>{0} をコピーしました</value><comment>{0} invariant IP : Port, never translate.</comment></data>
+  <data name="SharingSettings" xml:space="preserve"><value>共有設定</value></data>
+  <data name="MaximumDimension" xml:space="preserve"><value>最大辺長 (64-3840 ピクセル)</value></data>
+  <data name="MaximumFPS" xml:space="preserve"><value>画面取得の上限 FPS</value><comment>FPS = frames per second.</comment></data>
+  <data name="VideoBitrate" xml:space="preserve"><value>映像ビットレート (0.1-100 Mbps)</value><comment>Mbps = megabits per second. Preserve numeric limits.</comment></data>
+  <data name="VideoCodec" xml:space="preserve"><value>映像コーデック</value></data>
+  <data name="ReceiverOrientation" xml:space="preserve"><value>受信側の表示方向</value></data>
+  <data name="Auto" xml:space="preserve"><value>自動</value></data>
+  <data name="Landscape" xml:space="preserve"><value>横向き</value></data>
+  <data name="Portrait" xml:space="preserve"><value>縦向き</value></data>
+  <data name="SendAudio" xml:space="preserve"><value>受信先に音声を送信 (この PC の再生音を消音)</value></data>
+  <data name="ShowStatistics" xml:space="preserve"><value>受信側に再生統計を表示</value></data>
+  <data name="SettingsValidation" xml:space="preserve"><value>最大辺長は 64 から 3840 ピクセルの整数、FPS の上限は 1 から 120、ビットレートは {0} から 100 Mbps (小数点以下 6 桁まで) で入力してください。対応するコーデックと表示方向を選択してください。</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
+  <data name="SavedCodecUnavailable" xml:space="preserve"><value>保存済みのコーデックは現在の画面取得環境では利用できません。対応するコーデックを明示的に選択してから保存してください。</value></data>
+  <data name="HelpBody" xml:space="preserve"><value>両方のデバイス (Windows PC または対応する Android デバイス) で RedrainCast を開き、同じ信頼できるローカルネットワークに接続してください。
+
+送信側で近くの受信先を選んで「送信」を押すか、受信先の現在の IP : ポートを入力してください。Windows では、共有するディスプレイまたはウィンドウを選択してください。
+
+画面の受信は自動的に受け入れられます。この PC では全画面表示で再生が始まります。Enter または F で全画面表示を切り替え、Esc で全画面表示を終了します。画面の送信を停止するには、送信側で操作してください。
+
+この PC は送信中に受信を一時停止し、「停止」を押すと受信を再開します。
+
+信頼できるプライベートネットワークで、Windows ファイアウォールによる RedrainCast の通信を許可してください。画面の送受信は認証も暗号化もされません。インターネットに公開しないでください。</value><comment>Keep RedrainCast, Windows, Android, IP, Enter, F and Esc identifiers. Preserve paragraphs. Send and Stop refer to localized buttons.</comment></data>
+  <data name="HelpSupport" xml:space="preserve"><value>ヘルプとサポート</value></data>
+  <data name="PrivacyPolicy" xml:space="preserve"><value>プライバシーポリシー</value></data>
+  <data name="TrustedNetworkTitle" xml:space="preserve"><value>信頼できるローカルネットワークで接続</value></data>
+  <data name="PickerInstructions" xml:space="preserve"><value>タイルを選択してください。「送信」を押すまで共有は始まりません。
+ライブプレビューはこの PC 内でのみ実行され、この選択画面を開いている間だけ動作します。</value></data>
+  <data name="Windows" xml:space="preserve"><value>ウィンドウ</value><comment>Plural application windows, not the Windows operating system brand.</comment></data>
+  <data name="Displays" xml:space="preserve"><value>ディスプレイ</value></data>
+  <data name="PreviewPending" xml:space="preserve"><value>プレビュー待ち</value></data>
+  <data name="CurrentlySelected" xml:space="preserve"><value>選択中</value></data>
+  <data name="SelectedSourceHelp" xml:space="preserve"><value>{0}、選択中</value><comment>{0} original source name.</comment></data>
+  <data name="NoSources" xml:space="preserve"><value>利用可能な共有元がありません。</value></data>
+  <data name="CannotSelectSource" xml:space="preserve"><value>この共有元は選択できません。別の共有元を選択してください。</value></data>
+  <data name="LivePreview" xml:space="preserve"><value>ライブプレビュー</value></data>
+  <data name="PreviewUnavailable" xml:space="preserve"><value>プレビューを表示できません。この共有元は選択できます。</value></data>
+  <data name="PreviewsUnavailable" xml:space="preserve"><value>プレビューを表示できません。共有元は選択できます。</value></data>
+  <data name="ReceiverPhaseStarting" xml:space="preserve"><value>受信機能を起動中</value></data>
+  <data name="ReceiverPhaseReady" xml:space="preserve"><value>受信準備完了</value></data>
+  <data name="ReceiverPhaseConnecting" xml:space="preserve"><value>接続中</value></data>
+  <data name="ReceiverPhaseNoNetwork" xml:space="preserve"><value>ネットワーク未接続</value></data>
+  <data name="ReceiverPhaseDiscoveryUnavailable" xml:space="preserve"><value>ネットワークの自動検出を利用できません</value></data>
+  <data name="ReceiverPhaseError" xml:space="preserve"><value>再生停止</value></data>
+  <data name="ReceiverPhaseUnavailable" xml:space="preserve"><value>受信機能を利用できません</value></data>
+  <data name="ReceiverPhaseStopped" xml:space="preserve"><value>受信機能を終了しました</value></data>
+  <data name="ReceiverUnavailable" xml:space="preserve"><value>受信機能を利用できません</value></data>
+  <data name="PlaybackStopped" xml:space="preserve"><value>再生が停止しました</value></data>
+  <data name="ReceiverStartFailed" xml:space="preserve"><value>受信接続の待ち受けを開始できませんでした。ネットワークのアクセス許可を確認してから、このアプリを開き直してください。</value></data>
+  <data name="ReceiverUnsafe" xml:space="preserve"><value>受信を安全に続行できませんでした。このアプリを閉じて開き直してください。</value></data>
+  <data name="ReceiverDiscoveryWarning" xml:space="preserve"><value>自動検出を利用できない可能性があります。送信側でこの PC のアドレスを手動で入力してください。</value></data>
+  <data name="ReceiverAddressLookupStopped" xml:space="preserve"><value>ネットワークアドレスの検索が停止しました。この PC のネットワーク接続を確認し、受信画面を閉じて開き直してください。</value></data>
+  <data name="ReceiverDiscoveryStopped" xml:space="preserve"><value>自動検出とアドレス更新が停止しました。表示されているアドレスを手動で指定するか、受信画面を開き直して検出を再開してください。</value></data>
+  <data name="ReceiverWindowLayoutFailed" xml:space="preserve"><value>ウィンドウをこのディスプレイに合わせて調整できませんでした。ウィンドウを移動するか、開き直してください。</value></data>
+  <data name="ReceiverUnsupportedConfig" xml:space="preserve"><value>これらの設定には対応していません。送信側で対応するコーデック、解像度、フレームレートを選択して、もう一度お試しください。</value></data>
+  <data name="ReceiverDecoderFailed" xml:space="preserve"><value>映像の再生が停止しました。画面の送信を再開してください。繰り返し発生する場合は、別のコーデックを使うか、解像度を下げてください。</value></data>
+  <data name="ReceiverAudioFailed" xml:space="preserve"><value>音声の再生が停止しました。Windows の出力デバイスを確認してから、画面の送信を再開してください。</value></data>
+  <data name="ReceiverCongestion" xml:space="preserve"><value>再生処理が追いつきませんでした。送信側で解像度、フレームレート、またはビットレートを下げてください。</value></data>
+  <data name="ReceiverTimeout" xml:space="preserve"><value>送信側からの応答がなくなったか、再生を開始できませんでした。送信側から画面の送信を再開してください。</value></data>
+  <data name="ReceiverVersion" xml:space="preserve"><value>両方のアプリを更新してから、もう一度接続してください。</value></data>
+  <data name="ReceiverSenderError" xml:space="preserve"><value>送信側でエラーが報告されました。送信側の画面を確認してから、画面の送信を再開してください。</value></data>
+  <data name="ReceiverUnexpected" xml:space="preserve"><value>画面の送受信が予期せず停止しました。送信側から再開してください。繰り返し発生する場合は、受信画面を閉じて開き直してください。</value></data>
+  <data name="StatisticsTitle" xml:space="preserve"><value>再生統計</value></data>
+  <data name="StatisticsConnections" xml:space="preserve"><value>接続と待機キュー</value></data>
+  <data name="StatisticsVideo" xml:space="preserve"><value>映像ストリーム</value></data>
+  <data name="StatisticsAudioSync" xml:space="preserve"><value>音声と同期</value></data>
+  <data name="StatisticsColumnChannel" xml:space="preserve"><value>チャネル</value></data>
+  <data name="StatisticsColumnQueued" xml:space="preserve"><value>待機中</value></data>
+  <data name="StatisticsColumnSpan" xml:space="preserve"><value>時間幅</value></data>
+  <data name="StatisticsColumnLastActivity" xml:space="preserve"><value>最終通信</value></data>
+  <data name="StatisticsColumnRTT" xml:space="preserve"><value>RTT</value><comment>Round-trip time.</comment></data>
+  <data name="StatisticsClockNote" xml:space="preserve"><value>ずれが正の場合は映像が先行 · 観測最大ずれは 1 Hz で採取した標本値に基づきます。</value></data>
+  <data name="StatisticsCompactClockNote" xml:space="preserve"><value>送信元PTS: + = 映像先行; 1 Hz標本の最大値; 端から端までの遅延ではない</value><comment>PTS = presentation timestamp. Keep timing semantics and + sign.</comment></data>
+  <data name="StatisticsLatencyNote" xml:space="preserve"><value>送信元のタイムスタンプ · 端から端までの遅延ではありません</value></data>
+  <data name="StatisticsQueueNote" xml:space="preserve"><value>符号化データのキュー: 待機中のパケットのみ · 累計: 再生エポック/世代ごと</value></data>
+  <data name="Statistics_receivedFps" xml:space="preserve"><value>受信 FPS</value></data>
+  <data name="Statistics_decodedFps" xml:space="preserve"><value>復号 FPS</value></data>
+  <data name="Statistics_presentedFps" xml:space="preserve"><value>描画 FPS</value></data>
+  <data name="Statistics_recentSkippedPercent" xml:space="preserve"><value>スキップ率 · 直近</value><comment>Recent sampled percentage, not a cumulative count or network packet loss.</comment></data>
+  <data name="Statistics_videoCodec" xml:space="preserve"><value>コーデック</value></data>
+  <data name="Statistics_encodedSize" xml:space="preserve"><value>符号化サイズ</value></data>
+  <data name="Statistics_captureLimit" xml:space="preserve"><value>画面取得上限</value><comment>Requested maximum FPS, not observed frames per second.</comment></data>
+  <data name="Statistics_canvasSize" xml:space="preserve"><value>受信側の描画領域</value><comment>Physical pixel size of receiver surface, not DIP.</comment></data>
+  <data name="Statistics_rotation" xml:space="preserve"><value>回転</value></data>
+  <data name="Statistics_videoBitrate" xml:space="preserve"><value>映像ビットレート</value></data>
+  <data name="Statistics_configuredVideoBitrate" xml:space="preserve"><value>設定ビットレート</value></data>
+  <data name="Statistics_networkLoss" xml:space="preserve"><value>ネットワーク損失</value></data>
+  <data name="Statistics_audioCodec" xml:space="preserve"><value>音声形式</value></data>
+  <data name="Statistics_audioBitrate" xml:space="preserve"><value>音声ビットレート</value></data>
+  <data name="Statistics_pcmBufferTarget" xml:space="preserve"><value>PCM バッファー / 目標</value><comment>Current PCM buffer and target durations in milliseconds. Preserve PCM identifier.</comment></data>
+  <data name="Statistics_devicePadding" xml:space="preserve"><value>デバイス内の再生待ち</value></data>
+  <data name="Statistics_insertedSilence" xml:space="preserve"><value>挿入した無音</value></data>
+  <data name="Statistics_discardedPcm" xml:space="preserve"><value>破棄した PCM</value></data>
+  <data name="Statistics_avSkew" xml:space="preserve"><value>映像と音声のずれ</value><comment>Video source PTS minus played-source audio PTS, milliseconds. Positive means video ahead; not end-to-end latency.</comment></data>
+  <data name="Statistics_peakObservedSkew" xml:space="preserve"><value>観測最大ずれ</value><comment>Maximum absolute skew from 1-Hz overlay samples; not a native high-frequency maximum.</comment></data>
+  <data name="Statistics_decodedTotal" xml:space="preserve"><value>復号済み</value></data>
+  <data name="Statistics_presentedTotal" xml:space="preserve"><value>描画済み</value></data>
+  <data name="Statistics_skippedTotal" xml:space="preserve"><value>スキップ</value></data>
+  <data name="Statistics_state" xml:space="preserve"><value>状態</value></data>
+  <data name="Statistics_generation" xml:space="preserve"><value>世代</value></data>
+  <data name="Statistics_playbackEpoch" xml:space="preserve"><value>再生エポック</value><comment>Native playback-instance/rebuild epoch, not Audio epoch. Preserve this distinction.</comment></data>
+  <data name="Statistics_occluded" xml:space="preserve"><value>描画領域の遮蔽</value><comment>Whether playback surface is covered/occluded.</comment></data>
+  <data name="ChannelVideo" xml:space="preserve"><value>映像</value></data>
+  <data name="ChannelAudio" xml:space="preserve"><value>音声</value></data>
+  <data name="ChannelControl" xml:space="preserve"><value>制御</value></data>
+  <data name="NotAvailable" xml:space="preserve"><value>情報なし</value></data>
+  <data name="Off" xml:space="preserve"><value>オフ</value></data>
+  <data name="Recovering" xml:space="preserve"><value>復旧中</value></data>
+  <data name="Playing" xml:space="preserve"><value>再生中</value></data>
+  <data name="Yes" xml:space="preserve"><value>はい</value></data>
+  <data name="No" xml:space="preserve"><value>いいえ</value></data>
+  <data name="UnitMilliseconds" xml:space="preserve"><value>ms</value><comment>Milliseconds. Short overlay unit; do not change magnitude.</comment></data>
+  <data name="UnitMegabits" xml:space="preserve"><value>Mbps</value><comment>Megabits per second, not megabytes.</comment></data>
+  <data name="UnitPixels" xml:space="preserve"><value>px</value></data>
+  <data name="UnitFrames" xml:space="preserve"><value>FPS</value><comment>Frames per second.</comment></data>
+  <data name="UnitBytes" xml:space="preserve"><value>B</value><comment>Bytes, not bits.</comment></data>
+  <data name="PreparingCapture" xml:space="preserve"><value>画面取得を準備中</value></data>
+  <data name="InitializingCapture" xml:space="preserve"><value>画面取得を初期化中</value></data>
+  <data name="Negotiating" xml:space="preserve"><value>接続条件を調整中</value></data>
+  <data name="PlaybackOptionUnavailable" xml:space="preserve"><value>再生統計には対応する受信側が必要です。統計を重ねて表示せずに、画面の送信を続行します。</value></data>
+  <data name="ChooseSourceFailed" xml:space="preserve"><value>ディスプレイまたはウィンドウを選択できませんでした。別の共有元を選ぶか、もう一度お試しください。</value></data>
+  <data name="ReceiverBusy" xml:space="preserve"><value>その受信先は使用中です。</value></data>
+  <data name="ChooseOtherDevice" xml:space="preserve"><value>この PC の受信機能ではなく、別のデバイスを選択してください。</value></data>
+  <data name="IncomingAlreadyStarted" xml:space="preserve"><value>すでに画面の受信が始まっています。</value></data>
+  <data name="SendingFailed" xml:space="preserve"><value>画面を共有できませんでした。受信先のアドレスとネットワーク接続を確認して、もう一度お試しください。</value></data>
+  <data name="CopyFailed" xml:space="preserve"><value>アドレスをコピーできませんでした。もう一度お試しください。</value></data>
+  <data name="DisplaySource" xml:space="preserve"><value>ディスプレイ {0} ({1} × {2})</value><comment>{0} display number, {1}/{2} invariant pixel width/height. Do not change source identity.</comment></data>
+  <data name="ChooseSourceFirst" xml:space="preserve"><value>送信する前にディスプレイまたはウィンドウを選択してください。</value></data>
+  <data name="SettingsUnavailable" xml:space="preserve"><value>画面取得デバイスの設定を読み取れませんでした。共有元を確認してから、設定を開き直してください。</value></data>
+  <data name="SavedSettingsFailed" xml:space="preserve"><value>保存済みの設定を読み込めなかったため、既定の共有設定を使用しています。</value></data>
+  <data name="StatisticsUnavailable" xml:space="preserve"><value>再生統計を利用できません。統計を重ねて表示せずに、画面の送信を続行できます。</value></data>
+  <data name="SourceChanged" xml:space="preserve"><value>コーデックの選択肢を読み取り中に共有元が変更されました。設定を開き直すか、もう一度「保存」を押してください。</value></data>
+  <data name="ChooseDifferentWindow" xml:space="preserve"><value>このアプリのメインウィンドウではなく、別のウィンドウまたはディスプレイを選択してください。</value></data>
+</root>

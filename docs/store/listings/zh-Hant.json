@@ -1,0 +1,48 @@
+{
+  "locale": "zh-Hant",
+  "productName": "RedrainCast",
+  "description": "在信任的區域網路上，於 Windows 電腦與相容的 RedrainCast 裝置之間分享畫面或視窗。\n\nRedrainCast 將傳送與接收功能整合在同一款原生 Windows 應用程式中。選擇要分享的顯示器或視窗，再選取附近的接收端，即可開始投放。您也可以使用接收端顯示的 IP 位址與連接埠直接連線。\n\n分享畫面的同時，也能一併傳送輸出音訊、調整擷取上限與視訊品質，並選擇在相容的接收端上查看播放統計資料。接收到的投放會以全螢幕開啟。停止分享後，接收端會恢復原本的視窗狀態。\n\n系統需求\n- 搭載 ARM64 或 x64 處理器，並執行 Windows 11 22H2 或更新版本。\n- 另一部裝置須安裝相容的 RedrainCast 應用程式，包括受支援的 Windows 與 Android 裝置。RedrainCast 並非通用的 Miracast 或 Google Cast 接收端。\n- 信任的區域網路，以及受支援的硬體視訊編碼與解碼功能。可用的編解碼器依裝置而異。\n\n重要網路與隱私權資訊\n接收端可用時，會自動接受傳入的投放。請僅在您信任的網路上，與您信任的裝置搭配使用 RedrainCast。區域網路上的畫面與音訊投放流量，以及裝置探索流量，均未經身分驗證，也未加密。不使用帳戶或雲端中繼服務。標準版應用程式不會將您的畫面或音訊錄製成檔案。",
+  "whatsNew": "",
+  "productFeatures": [
+    "在同一款原生 Windows 應用程式中傳送與接收畫面。",
+    "分享所選的顯示器或視窗。",
+    "尋找附近的接收端，或使用 IP 位址與連接埠連線。",
+    "與 Windows 和 Android 上相容的 RedrainCast 應用程式互相投放。",
+    "傳送畫面的同時，一併傳送輸出音訊。",
+    "調整最大擷取尺寸、影格率、位元速率及受支援的視訊編解碼器。",
+    "選擇在相容的接收端上查看播放統計資料。",
+    "以全螢幕接收投放，並支援 Windows 淺色、深色與高對比佈景主題。"
+  ],
+  "shortTitle": "",
+  "voiceTitle": "",
+  "shortDescription": "在信任的區域網路上，於相容的 Windows 與 Android 裝置之間分享畫面或視窗，並可選擇一併傳送音訊。",
+  "keywords": [
+    "畫面分享",
+    "螢幕投放",
+    "區域網路",
+    "視窗分享",
+    "畫面接收",
+    "Windows",
+    "Android"
+  ],
+  "copyrightAndTrademarkInfo": "",
+  "additionalLicenseTerms": "",
+  "developedBy": "RedRain",
+  "screenshots": [
+    { "file": "../../../assets/store/screenshots/zh-Hant/01-home.png", "caption": "傳送與接收畫面。", "deviceFamily": "Desktop" },
+    { "file": "../../../assets/store/screenshots/zh-Hant/02-sharing-settings.png", "caption": "分享設定", "deviceFamily": "Desktop" }
+  ],
+  "submissionReview": {
+    "status": "draft",
+    "privacyPolicyUrl": "https://redraincast.redrain.ccwu.cc/privacy/",
+    "supportUrl": "https://redraincast.redrain.ccwu.cc/support/",
+    "websiteUrl": "https://redraincast.redrain.ccwu.cc/",
+    "pending": [
+      "Confirm RedrainCast is selected from this product's reserved names.",
+      "Review the published cross-platform privacy policy and enter these public URLs in the applicable Partner Center product settings.",
+      "Owner review of prepared screenshots is required before upload.",
+      "Review copyright/trademark wording if an attribution is desired; no legal terms have been invented.",
+      "Complete final packaged-app and physical playback acceptance before submission."
+    ]
+  }
+}

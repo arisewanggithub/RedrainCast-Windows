@@ -10,24 +10,77 @@ namespace ScrcpySend.Media;
 
 public sealed record CaptureTarget(string Name, nint Handle, bool IsWindow)
 {
-    public CaptureSource Open() => new(CaptureInterop.CreateItem(Handle, IsWindow ? 3 : 4), Handle, IsWindow);
+    public uint ProcessId { get; init; }
+    public uint ThreadId { get; init; }
+    public int DisplayNumber { get; init; }
+    public int DisplayWidth { get; init; }
+    public int DisplayHeight { get; init; }
+    public CaptureSource Open()
+    {
+        if (!CaptureSource.IsAvailable(this))
+            throw new IOException("This source closed or is no longer available. Choose another tile or reopen the picker to refresh.");
+        var source = new CaptureSource(CaptureInterop.CreateItem(Handle, IsWindow ? 3 : 4), Handle, IsWindow);
+        try
+        {
+            if (!CaptureSource.IsAvailable(this))
+                throw new IOException("This source closed or changed while it was opening. Choose a source again.");
+            source.EnsureAvailable();
+            return source;
+        }
+        catch { source.Dispose(); throw; }
+    }
     public override string ToString() => Name;
 }
 
-public sealed partial class CaptureSource
+public sealed partial class CaptureSource : IDisposable
 {
     public GraphicsCaptureItem Item { get; }
     public nint Handle { get; }
     public bool IsWindow { get; }
+    public uint WindowProcessId { get; }
+    public uint WindowThreadId { get; }
+    private readonly CaptureSelectionLifetime selection = new();
+    private readonly Windows.Foundation.TypedEventHandler<GraphicsCaptureItem, object> sourceClosed;
+    private int disposed;
+    public CancellationToken Closed => selection.Closed;
     private readonly object colorGate = new();
     private DisplayInformation? display;
     private nint displayMonitor;
+    private string? metadataWarning;
 
     internal CaptureSource(GraphicsCaptureItem item, nint handle, bool isWindow)
     {
         Item = item;
         Handle = handle;
         IsWindow = isWindow;
+        if (isWindow)
+        {
+            WindowThreadId = GetWindowThreadProcessId(handle, out var process);
+            WindowProcessId = process;
+        }
+        var weak = new WeakReference<CaptureSelectionLifetime>(selection);
+        sourceClosed = (_, _) => { if (weak.TryGetTarget(out var state)) state.Invalidate(); };
+        item.Closed += sourceClosed;
+    }
+
+    public static bool SupportsNativePicker(nint owner) => CaptureInterop.SupportsItemHandles(owner);
+
+    public static CaptureSource FromPickedItem(GraphicsCaptureItem item)
+    {
+        var target = CaptureInterop.ItemTarget(item);
+        var source = new CaptureSource(item, target.Handle, target.IsWindow);
+        try { source.EnsureAvailable(); return source; }
+        catch { source.Dispose(); throw; }
+    }
+
+    public void EnsureAvailable() => selection.EnsureAvailable(IsAvailable(new("", Handle, IsWindow)
+        { ProcessId = WindowProcessId, ThreadId = WindowThreadId }));
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+        Item.Closed -= sourceClosed;
+        selection.Dispose();
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -59,6 +112,22 @@ public sealed partial class CaptureSource
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool IsIconic(nint window);
+    [LibraryImport("user32.dll", EntryPoint = "IsWindow")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool WindowExists(nint window);
+    [LibraryImport("user32.dll")]
+    private static partial nint GetAncestor(nint window, uint flags);
+    [LibraryImport("user32.dll")]
+    private static partial nint GetShellWindow();
+    [LibraryImport("user32.dll")]
+    private static partial nint GetWindowLongPtrW(nint window, int index);
+    [LibraryImport("user32.dll")]
+    private static partial uint GetWindowThreadProcessId(nint window, out uint process);
+    [LibraryImport("dwmapi.dll")]
+    private static partial int DwmGetWindowAttribute(nint window, uint attribute, out uint value, uint size);
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetWindowRect(nint window, out Rect bounds);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowTextW(nint window, StringBuilder text, int capacity);
     [LibraryImport("combase.dll", StringMarshalling = StringMarshalling.Utf16)]
@@ -68,7 +137,26 @@ public sealed partial class CaptureSource
     [LibraryImport("combase.dll")]
     private static partial int RoGetActivationFactory(nint name, in Guid iid, out nint result);
 
-    public static IReadOnlyList<CaptureTarget> Enumerate()
+    private static bool EligibleWindow(nint window) =>
+        WindowExists(window) && IsWindowVisible(window) && !IsIconic(window) &&
+        GetAncestor(window, 2) == window && window != GetShellWindow() &&
+        (GetWindowLongPtrW(window, -20).ToInt64() & 0x80) == 0 &&
+        DwmGetWindowAttribute(window, 14, out var cloaked, 4) >= 0 && cloaked == 0 &&
+        GetWindowRect(window, out var rect) && rect.Right > rect.Left && rect.Bottom > rect.Top;
+
+    public static bool IsAvailable(CaptureTarget target)
+    {
+        if (target.IsWindow)
+        {
+            var thread = GetWindowThreadProcessId(target.Handle, out var process);
+            return EligibleWindow(target.Handle) && (target.ProcessId == 0 || process == target.ProcessId) &&
+                (target.ThreadId == 0 || thread == target.ThreadId);
+        }
+        var info = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>(), Device = "" };
+        return GetMonitorInfoW(target.Handle, ref info);
+    }
+
+    public static IReadOnlyList<CaptureTarget> Enumerate(nint excludedWindow = 0)
     {
         var targets = new List<CaptureTarget>();
         Exception? failure = null;
@@ -80,20 +168,29 @@ public sealed partial class CaptureSource
                 failure = new Win32Exception(Marshal.GetLastWin32Error(), "Cannot read capture display information.");
                 return false;
             }
-            targets.Add(new($"{info.Device.Replace(@"\\.\", "")} ({info.Bounds.Right - info.Bounds.Left} x {info.Bounds.Bottom - info.Bounds.Top})", monitor, false));
+            targets.Add(new($"Display {targets.Count + 1} ({info.Bounds.Right - info.Bounds.Left} × {info.Bounds.Bottom - info.Bounds.Top})", monitor, false)
+            {
+                DisplayNumber = targets.Count + 1,
+                DisplayWidth = info.Bounds.Right - info.Bounds.Left,
+                DisplayHeight = info.Bounds.Bottom - info.Bounds.Top
+            });
             return true;
         }, 0)) throw failure ?? new Win32Exception(Marshal.GetLastWin32Error(), "Cannot enumerate capture displays.");
         if (!EnumWindows((window, _) =>
         {
-            if (!IsWindowVisible(window) || IsIconic(window)) return true;
+            if (window == excludedWindow || !EligibleWindow(window)) return true;
             var title = new StringBuilder(512);
-            if (GetWindowTextW(window, title, title.Capacity) > 0) targets.Add(new(title.ToString(), window, true));
+            if (GetWindowTextW(window, title, title.Capacity) > 0)
+            {
+                var thread = GetWindowThreadProcessId(window, out var process);
+                targets.Add(new(title.ToString(), window, true) { ProcessId = process, ThreadId = thread });
+            }
             return true;
         }, 0)) throw new Win32Exception(Marshal.GetLastWin32Error(), "Cannot enumerate capture windows.");
         return targets;
     }
 
-    public CaptureColor ReadColor()
+    public CaptureColor ReadColor(Action<string>? diagnostic = null)
     {
         var monitor = IsWindow ? MonitorFromWindow(Handle, 2) : Handle;
         if (monitor == 0) throw new IOException("The capture source no longer has a display.");
@@ -105,8 +202,18 @@ public sealed partial class CaptureSource
                 displayMonitor = monitor;
             }
             var color = display.GetAdvancedColorInfo();
-            if (color.CurrentAdvancedColorKind != AdvancedColorKind.HighDynamicRange) return CaptureColor.Sdr;
-            var profile = new CaptureColor(true, color.SdrWhiteLevelInNits, color.MaxLuminanceInNits);
+            if (color.CurrentAdvancedColorKind != AdvancedColorKind.HighDynamicRange)
+            {
+                metadataWarning = null;
+                return CaptureColor.Sdr;
+            }
+            var profile = CaptureColor.FromHdrDisplayMetadata(color.SdrWhiteLevelInNits, color.MaxLuminanceInNits);
+            var warning = profile.SdrWhiteNits is null || profile.PeakNits is null
+                ? $"Display HDR luminance metadata is unavailable: rawWhite={color.SdrWhiteLevelInNits}, rawPeak={color.MaxLuminanceInNits}. " +
+                  "HDR remains enabled; BT.2390 uses the GPU-measured content peak, not these display values."
+                : null;
+            if (warning is not null && warning != metadataWarning) diagnostic?.Invoke(warning);
+            metadataWarning = warning;
             profile.Validate();
             return profile;
         }

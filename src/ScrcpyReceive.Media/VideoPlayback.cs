@@ -1,10 +1,11 @@
 using System.Text.Json;
 using System.Diagnostics;
 using ScrcpyReceive.Core;
+using RedrainCast.Protocol;
 
 namespace ScrcpyReceive.Media;
 
-public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress
+public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRecoveryPlayback
 {
     private readonly GpuPresenter presenter;
     private readonly HardwareDecoder decoder;
@@ -13,6 +14,7 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress
     private readonly AudioPlayback? audio;
     private readonly string codecName;
     private int rendered;
+    private int decodedCurrentGeneration;
     private readonly object nativeGate = new();
     private HardwareFrame? lastFrame;
     private HardwareFrame? pendingFrame;
@@ -25,14 +27,55 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress
     private Exception? resizeFailure;
     private bool disposed;
     private long maximumAvSkewUs;
+    private long timingSession;
     private int avMeasurements;
     private long maximumSteadySkewUs;
+    private AvTimingSample? lastAvTiming;
+    private AvTimingSample? maximumAvTiming;
+    private uint configuredGeneration;
+    private sealed record StatisticsConfiguration(uint Generation, int Width, int Height);
+    private StatisticsConfiguration? statisticsConfiguration;
+    private long statisticsPeakSkewUs;
+    public PlaybackStatistics? Statistics(long epoch)
+    {
+        var configuration = Volatile.Read(ref statisticsConfiguration);
+        if (Volatile.Read(ref disposed) || renderCancellation.IsCancellationRequested || configuration is null) return null;
+        var result = new PlaybackStatistics(epoch, configuration.Generation,
+            Interlocked.Read(ref receivedVideoPackets), DecodedFrames, presenter.PresentedFrames, SkippedFrames,
+            configuration.Width, configuration.Height, LastPresentedRotationDegrees,
+            IsPresentationSuspended, audio?.Statistics, LastAvTiming, Interlocked.Read(ref statisticsPeakSkewUs));
+        return Volatile.Read(ref disposed) || renderCancellation.IsCancellationRequested ||
+            !ReferenceEquals(configuration, Volatile.Read(ref statisticsConfiguration))
+            ? null : result;
+    }
+    public AvTimingSample? LastAvTiming => Volatile.Read(ref lastAvTiming);
+    public AvTimingSample? MaximumAvTiming => Volatile.Read(ref maximumAvTiming);
     private long? firstVideoPresentationPts;
     private long receivedVideoPackets, decodedVideoPackets, decodedFrames, skippedFrames;
     private long maximumDecodeUs, maximumGateWaitUs, totalDecodeUs;
     public long DecodedFrames => Interlocked.Read(ref decodedFrames);
     public long SkippedFrames => Interlocked.Read(ref skippedFrames);
     public long LastPresentedPtsUs => Interlocked.Read(ref lastVideoPts);
+    private int lastPresentedRotation;
+    private long recoveryKey = -1, decodedRecoveryKey = -1;
+    public long? DecodedRecoveryKeyPtsUs => Interlocked.Read(ref decodedRecoveryKey) is var pts && pts >= 0 ? pts : null;
+    public long? FirstRecoverySourceAudioPtsUs => audio?.FirstRecoverySourcePtsUs;
+    public void SetRecoveryKey(long keyPtsUs)
+    {
+        Interlocked.Exchange(ref recoveryKey, keyPtsUs);
+        audio?.SetRecoveryCutoff(keyPtsUs);
+    }
+    public async ValueTask ConfigureRecoveryAsync(Packet video, Packet? audioConfiguration, bool midstream, CancellationToken token)
+    {
+        if (audioConfiguration is not null)
+        {
+            if (audio is null) throw new ProtocolException("Recovery audio was not requested.");
+            await audio.ConfigureAsync(audioConfiguration, token, midstream);
+        }
+        await ConfigureAsync(video, token);
+        token.ThrowIfCancellationRequested();
+    }
+    public int LastPresentedRotationDegrees => Volatile.Read(ref lastPresentedRotation);
     public string DecoderDiagnostics => decoder.Diagnostics;
     public int HardwareSurfaceCount => decoder.HardwareSurfaceCount;
     public int MinimumHardwareSurfaces => decoder.MinimumHardwareSurfaces;
@@ -41,6 +84,8 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress
     public bool KeepsDisplayAwake => awake.IsActive;
     public bool HasPresentedVideo => Volatile.Read(ref rendered) != 0;
     public bool HasEverPresentedVideo => presenter.PresentedFrames > 0;
+    public bool HasDecodedVideo => Volatile.Read(ref decodedCurrentGeneration) != 0;
+    public bool IsPresentationSuspended => presenter.IsOccluded;
     public long MaximumAvSkewUs => Interlocked.Read(ref maximumAvSkewUs);
     public int AvMeasurements => Volatile.Read(ref avMeasurements);
     public long MaximumSteadySkewUs => Interlocked.Read(ref maximumSteadySkewUs);
@@ -67,9 +112,7 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress
 
     public static void Validate(CastRequest request)
     {
-        if (request.VideoCodec is not ("h264" or "h265" or "av1") ||
-            request.ReceiverOrientation != "auto" || request.FramesPerSecond > 60)
-            throw new ProtocolException("Supports custom TCP 8-bit H.264, HEVC Main and AV1 Profile 0, PCM/AAC-LC/Opus audio, auto presentation, at most 60 FPS. No substitution.", "UNSUPPORTED_CONFIG");
+        _ = request.VideoProcessingFramesPerSecond;
     }
 
     public void CheckHealth()
@@ -115,13 +158,21 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress
         CheckVideoHealth();
         lock (nativeGate)
         {
+            Volatile.Write(ref statisticsConfiguration, null);
+            Interlocked.Exchange(ref statisticsPeakSkewUs, 0);
             Volatile.Write(ref rendered, 0);
+            configuredGeneration = configuration.Generation;
+            timingSession = configuration.Session;
+            Volatile.Write(ref lastAvTiming, null);
+            Volatile.Write(ref decodedCurrentGeneration, 0);
             if (pendingFrame is not null) { pendingFrame.Dispose(); pendingFrame = null; Interlocked.Increment(ref skippedFrames); }
             lastFrame?.Dispose(); lastFrame = null;
             Interlocked.Exchange(ref resizeRequested, 0);
             decoder.Configure(CodecConfiguration.VideoData(codecName, buffers),
                 JsonObject.Number(json, "width"), JsonObject.Number(json, "height"));
             presenter.Prepare(JsonObject.Number(json, "width"), JsonObject.Number(json, "height"));
+            Volatile.Write(ref statisticsConfiguration, new(configuration.Generation,
+                JsonObject.Number(json, "width"), JsonObject.Number(json, "height")));
         }
         await status($"Hardware {codecName} decoder configured; waiting for a real random-access picture.");
     }
@@ -148,9 +199,15 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress
             Interlocked.Add(ref totalDecodeUs, elapsed);
         }
         Interlocked.Increment(ref decodedVideoPackets);
-        Interlocked.Add(ref decodedFrames, frames.Count);
+        var totalDecoded = Interlocked.Add(ref decodedFrames, frames.Count);
+        if (frames.Count > 0) Volatile.Write(ref decodedCurrentGeneration, 1);
+        var expectedKey = Interlocked.Read(ref recoveryKey);
+        if (expectedKey >= 0 && frames.Any(frame => frame.PtsUs >= expectedKey))
+            Interlocked.CompareExchange(ref decodedRecoveryKey, expectedKey, -1);
         try
         {
+            if (frames.Count > 0 && totalDecoded == frames.Count)
+                await status("Video ready: first hardware-decoded surface available for presentation.");
             foreach (var frame in frames)
             {
                 if (frame.PtsUs < 0) throw new ProtocolException("Hardware decoder lost the source timestamp.");
@@ -174,7 +231,8 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress
         {
             while (true)
             {
-                var delay = Volatile.Read(ref pendingFrame) is not null || Volatile.Read(ref resizeRequested) != 0 ? 5 : 250;
+                var delay = presenter.IsOccluded ? 100 :
+                    Volatile.Read(ref pendingFrame) is not null || Volatile.Read(ref resizeRequested) != 0 ? 5 : 250;
                 if (WaitHandle.WaitAny([renderWake, token.WaitHandle], delay) == 1) token.ThrowIfCancellationRequested();
                 token.ThrowIfCancellationRequested();
                 if (!Monitor.TryEnter(nativeGate)) continue;
@@ -189,10 +247,19 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress
                         lastFrame?.Dispose();
                         lastFrame = frame;
                         Interlocked.Exchange(ref resizeRequested, 0);
+                        Volatile.Write(ref lastPresentedRotation, frame.RotationDegrees);
                         Interlocked.Exchange(ref lastVideoPts, frame.PtsUs);
-                        if (audio?.Position is { ContentFrames: > 0, PtsUs: { } audioPts })
+                        if (audio?.Position is { ContentFrames: > 0, PtsUs: { } audioPts } position)
                         {
-                            var skew = Math.Abs(frame.PtsUs - audioPts);
+                            var signedSkew = frame.PtsUs - audioPts;
+                            MediaTiming.Record(MediaStage.VideoPresent, timingSession, 1, configuredGeneration,
+                                frame.PtsUs, audioPts, position.ContentFrames, signedSkew);
+                            var skew = Math.Abs(signedSkew);
+                            Interlocked.Exchange(ref statisticsPeakSkewUs, Math.Max(Interlocked.Read(ref statisticsPeakSkewUs), skew));
+                            var timing = new AvTimingSample(configuredGeneration, frame.PtsUs, audioPts,
+                                position.ContentFrames, signedSkew, Environment.TickCount64);
+                            Volatile.Write(ref lastAvTiming, timing);
+                            if (skew > maximumAvSkewUs) Volatile.Write(ref maximumAvTiming, timing);
                             maximumAvSkewUs = Math.Max(maximumAvSkewUs, skew);
                             firstVideoPresentationPts ??= frame.PtsUs;
                             if (frame.PtsUs - firstVideoPresentationPts.Value >= 1_000_000)
@@ -216,6 +283,7 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress
 
     public async ValueTask DisposeAsync()
     {
+        Volatile.Write(ref statisticsConfiguration, null);
         try
         {
             renderCancellation.Cancel();

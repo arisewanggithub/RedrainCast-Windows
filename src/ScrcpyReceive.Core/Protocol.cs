@@ -19,6 +19,8 @@ public sealed class ProtocolException(string message, string code = "PROTOCOL") 
 public sealed record Packet(PacketType Type, long Session, uint Track, uint Generation,
     long PtsUs, uint Flags, byte[] Payload)
 {
+    public int VideoRotationDegrees => (int)((Flags >> 1) & 3) * 90;
+
     public static Packet Control(PacketType type, long session, object body) =>
         new(type, session, 0, 0, -1, 0, JsonSerializer.SerializeToUtf8Bytes(body));
 
@@ -185,7 +187,7 @@ public static class Wire
         JsonObject.Require(packet.Type != PacketType.VideoFrame || packet.Track == 1, "Video requires track 1.");
         JsonObject.Require(packet.Type != PacketType.AudioPacket || packet.Track == 2, "Audio requires track 2.");
         JsonObject.Require(media ? packet.PtsUs >= 0 : packet.PtsUs == -1, "Invalid PTS.");
-        JsonObject.Require(packet.Flags == 0 || packet.Type == PacketType.VideoFrame && packet.Flags == 1,
+        JsonObject.Require(packet.Flags == 0 || packet.Type == PacketType.VideoFrame && packet.Flags <= 7,
             "Invalid flags.");
     }
 }

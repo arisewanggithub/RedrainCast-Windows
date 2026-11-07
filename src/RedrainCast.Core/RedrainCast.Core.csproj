@@ -5,4 +5,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ScrcpySend.Core\ScrcpySend.Core.csproj"/>
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\RedrainCast.App\Strings\en-US\Resources.resw" LogicalName="RedrainCast.English.resw"/>
+  </ItemGroup>
 </Project>

@@ -1,3 +1,5 @@
+using RedrainCast.Protocol;
+
 namespace ScrcpyReceive.Core;
 
 public sealed class ReceiveQueue : IDisposable
@@ -14,10 +16,32 @@ public sealed class ReceiveQueue : IDisposable
     private int controlBytes;
     private int controls;
     private readonly int maximumMediaBytes;
+    public int MediaByteBudget => maximumMediaBytes;
     private readonly int audioReserveBytes;
     private int videoBytes;
     private TaskCompletionSource space = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly long[] waitTotalUs = new long[2], waitMaximumUs = new long[2], mediaTaken = new long[2];
+    public EncodedQueueStatistics Snapshot(uint track) => Snapshot(track, includeInFlight: true);
+    public EncodedQueueStatistics WaitingSnapshot(uint track) => Snapshot(track, includeInFlight: false);
+    private EncodedQueueStatistics Snapshot(uint track, bool includeInFlight)
+    {
+        if (track is not (1 or 2)) throw new ArgumentOutOfRangeException(nameof(track));
+        lock (gate)
+        {
+            var count = 0;
+            long bytes = 0, minimum = long.MaxValue, maximum = 0;
+            void Include(Packet? packet)
+            {
+                if (packet is null || !Wire.IsMedia(packet.Type)) return;
+                count++; bytes += packet.Payload.Length;
+                minimum = Math.Min(minimum, packet.PtsUs);
+                maximum = Math.Max(maximum, packet.PtsUs);
+            }
+            foreach (var entry in packets[track - 1]) Include(entry.Packet);
+            if (includeInFlight) Include(inFlight[track - 1]);
+            return new(count, bytes, count == 0 ? 0 : maximum - minimum);
+        }
+    }
     public string Diagnostics
     {
         get
@@ -74,6 +98,8 @@ public sealed class ReceiveQueue : IDisposable
                 controlBytes += packet.Payload.Length;
             }
             packets[packet.Track - 1].Enqueue(new(packet, System.Diagnostics.Stopwatch.GetTimestamp()));
+            MediaTiming.Record(MediaStage.QueueAdmit, packet.Session, packet.Track, packet.Generation,
+                packet.PtsUs, a: packet.Payload.Length, b: packets[packet.Track - 1].Count, c: mediaBytes);
             signals[packet.Track - 1].Release();
         }
     }
@@ -113,11 +139,13 @@ public sealed class ReceiveQueue : IDisposable
     public async ValueTask<Packet> TakeAsync(uint track, CancellationToken cancellationToken)
     {
         if (track is not (1 or 2)) throw new ArgumentOutOfRangeException(nameof(track));
+        while (true)
+        {
         await signals[track - 1].WaitAsync(cancellationToken);
         lock (gate)
         {
             if (inFlight[track - 1] is not null) throw new InvalidOperationException("Each track has one serial consumer.");
-            var entry = packets[track - 1].Dequeue();
+            if (!packets[track - 1].TryDequeue(out var entry)) continue;
             var packet = entry.Packet;
             if (Wire.IsMedia(packet.Type))
             {
@@ -127,8 +155,11 @@ public sealed class ReceiveQueue : IDisposable
                 waitMaximumUs[track - 1] = Math.Max(waitMaximumUs[track - 1], elapsed);
             }
             inFlight[track - 1] = packet;
+            MediaTiming.Record(MediaStage.QueueTake, packet.Session, packet.Track, packet.Generation,
+                packet.PtsUs, a: packet.Payload.Length, b: packets[track - 1].Count, c: mediaBytes);
             SpaceChanged();
             return packet;
+        }
         }
     }
 
@@ -149,6 +180,30 @@ public sealed class ReceiveQueue : IDisposable
         }
     }
 
+    public void DiscardQueuedMedia()
+    {
+        lock (gate)
+        {
+            for (var track = 0; track < packets.Length; track++)
+            {
+                var keep = new Queue<Entry>();
+                while (packets[track].TryDequeue(out var entry))
+                {
+                    if (Wire.IsMedia(entry.Packet.Type))
+                    {
+                        mediaBytes -= entry.Packet.Payload.Length;
+                        if (track == 0) videoBytes -= entry.Packet.Payload.Length;
+                        // A waiting consumer may already own the semaphore signal.
+                    }
+                    else keep.Enqueue(entry);
+                }
+                foreach (var entry in keep) packets[track].Enqueue(entry);
+                while (signals[track].Wait(0)) { }
+                if (packets[track].Count > 0) signals[track].Release(packets[track].Count);
+            }
+            SpaceChanged();
+        }
+    }
     public void Dispose()
     {
         foreach (var signal in signals) signal.Dispose();

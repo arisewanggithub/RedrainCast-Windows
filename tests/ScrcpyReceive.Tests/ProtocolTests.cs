@@ -7,6 +7,28 @@ namespace ScrcpyReceive.Tests;
 
 public sealed class ProtocolTests
 {
+    [Theory]
+    [InlineData(0u, 0)]
+    [InlineData(1u, 0)]
+    [InlineData(2u, 90)]
+    [InlineData(3u, 90)]
+    [InlineData(4u, 180)]
+    [InlineData(5u, 180)]
+    [InlineData(6u, 270)]
+    [InlineData(7u, 270)]
+    public async Task RotationFlagsRoundTripWithoutChangingPtsOrPayload(uint flags, int degrees)
+    {
+        var packet = new Packet(PacketType.VideoFrame, 1, 1, 1, 1234567890123, flags, [1, 2, 3]);
+        using var stream = new MemoryStream();
+        await Wire.WriteAsync(stream, packet);
+        stream.Position = 0;
+        var result = await Wire.ReadAsync(stream);
+        Assert.Equal(degrees, result.VideoRotationDegrees);
+        Assert.Equal(flags, result.Flags);
+        Assert.Equal(packet.PtsUs, result.PtsUs);
+        Assert.Equal(packet.Payload, result.Payload);
+    }
+
     [Fact]
     public async Task HeaderIsExactlyBigEndianV3()
     {
@@ -53,7 +75,9 @@ public sealed class ProtocolTests
     [InlineData(8, 0, 0, 1, 1, 0, 0)]
     [InlineData(8, 1, 0, 2, 1, 0, 0)]
     [InlineData(9, 1, 0, 1, 1, 0, 0)]
-    [InlineData(8, 1, 2, 1, 1, 0, 0)]
+    [InlineData(8, 1, 8, 1, 1, 0, 0)]
+    [InlineData(9, 1, 1, 2, 1, 0, 0)]
+    [InlineData(1, 1, 2, 0, 0, -1, 0)]
     [InlineData(8, 1, 0, 1, 0, 0, 0)]
     [InlineData(8, 1, 0, 1, 1, -1, 0)]
     [InlineData(1, 0, 0, 1, 0, -1, 0)]
