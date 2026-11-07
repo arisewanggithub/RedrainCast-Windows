@@ -3,6 +3,7 @@
 artifacts/
 native/
 TestResults/
+/msbuild.log
 .vs/
 *.user
 *.pfx
