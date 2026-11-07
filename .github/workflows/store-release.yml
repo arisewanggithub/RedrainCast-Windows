@@ -3,11 +3,11 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: Upload packages, upload packages plus reviewed listings, or request certification (Manual publication hold)
+        description: Read-only preflight, draft upload, listing upload, or certification request (Manual publication hold)
         required: true
-        default: upload-draft
+        default: preflight
         type: choice
-        options: [upload-draft, upload-listings-draft, submit-draft]
+        options: [preflight, upload-draft, upload-listings-draft, submit-draft]
       build_run_id:
         description: Successful main Windows build run ID (required for upload; derived from receipt for submit)
         type: string

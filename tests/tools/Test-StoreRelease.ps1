@@ -229,6 +229,28 @@ try {
         Reject { New-StorePackageArchive $fixtures $identity } 'versions'
         New-FixturePackage (Join-Path $fixtures 'x64\package.msix') x64
     }
+    Test 'read-only preflight reports readiness for a published product without mutations' {
+        $mock = New-Mock
+        $ready = Get-StoreReadiness $identity $mock.request
+        Assert ($ready.firstPublicationComplete -and -not $ready.pendingDraftExists -and $ready.automatedUpdateAllowed) 'Published readiness incorrect.'
+        Assert ($mock.state.calls.Count -eq 1 -and $mock.state.calls[0].StartsWith('GET ')) 'Preflight mutated Store.'
+    }
+    Test 'read-only preflight permits unpublished eligibility checks and preserves human drafts' {
+        $mock = New-Mock
+        $mock.state.app.lastPublishedApplicationSubmission = $null
+        $mock.state.app.pendingApplicationSubmission = @{ id = '90' }
+        $ready = Get-StoreReadiness $identity $mock.request
+        Assert (-not $ready.firstPublicationComplete -and $ready.pendingDraftExists -and -not $ready.automatedUpdateAllowed) 'Initial-draft readiness incorrect.'
+        Assert ($mock.state.calls.Count -eq 1) 'Preflight performed more than one GET.'
+    }
+    Test 'read-only preflight refuses wrong identities and malformed submission pointers' {
+        $mock = New-Mock; $mock.state.app.id = 'wrong'
+        Reject { Get-StoreReadiness $identity $mock.request } 'does not match'
+        $mock = New-Mock; $mock.state.app.lastPublishedApplicationSubmission.id = 'invalid'
+        Reject { Get-StoreReadiness $identity $mock.request } 'published submission pointer'
+        $mock = New-Mock; $mock.state.app.pendingApplicationSubmission = @{ id = 'invalid' }
+        Reject { Get-StoreReadiness $identity $mock.request } 'pending submission pointer'
+    }
     Test 'first publication has no mutation' {
         $mock = New-Mock; $mock.state.app.lastPublishedApplicationSubmission = $null
         Reject { New-StoreDraft $identity $archive '123' ('a' * 40) $mock.request } 'First publication'
@@ -592,7 +614,11 @@ try {
         Assert ($workflow -notmatch 'contents: write|actions: write|msstore publish|--noCommit') 'Unsafe publication shortcut or token permissions.'
         $entrypoint = Get-Content -LiteralPath (Join-Path $root 'tools\Invoke-StoreRelease.ps1') -Raw
         Assert ($entrypoint.IndexOf('ShouldProcess(') -lt $entrypoint.IndexOf('(Get-StoreToken)')) 'WhatIf could authenticate to Store.'
-        Assert ($entrypoint.IndexOf('New-StorePackageArchive ') -lt $entrypoint.IndexOf('(Get-StoreToken)')) 'Archive length validation must precede Store authentication.'
+        $uploadStart = $entrypoint.IndexOf('if (Test-Path -LiteralPath $WorkDirectory)')
+        Assert ($uploadStart -ge 0) 'Upload entrypoint guard missing.'
+        $uploadCode = $entrypoint.Substring($uploadStart)
+        Assert ($uploadCode.IndexOf('ShouldProcess(') -lt $uploadCode.IndexOf('(Get-StoreToken)')) 'Upload WhatIf could authenticate to Store.'
+        Assert ($uploadCode.IndexOf('New-StorePackageArchive ') -lt $uploadCode.IndexOf('(Get-StoreToken)')) 'Archive length validation must precede upload authentication.'
     }
     Test 'real entrypoint WhatIf uses only mocked GitHub reads, never Store or Azure' {
         $environment = @{}
@@ -633,6 +659,12 @@ try {
             $env:GITHUB_EVENT_NAME = 'workflow_dispatch'
             $env:GITHUB_SHA = 'a' * 40
             $env:GITHUB_RUN_ID = '456'
+            $preflight = Join-Path $fixtures 'preflight-whatif'
+            & (Join-Path $root 'tools\Invoke-StoreRelease.ps1') -Stage preflight -ConfirmStore $identity.StoreId -WorkDirectory $preflight -WhatIf
+            Assert ($global:StoreTestGhCount -eq 0 -and -not (Test-Path -LiteralPath $preflight)) 'Read-only WhatIf accessed artifacts or created files.'
+            Reject {
+                & (Join-Path $root 'tools\Invoke-StoreRelease.ps1') -Stage preflight -BuildRunId '123' -ConfirmStore $identity.StoreId -WhatIf
+            } 'does not accept'
             $work = Join-Path $fixtures 'whatif'
             & (Join-Path $root 'tools\Invoke-StoreRelease.ps1') -Stage upload-draft -BuildRunId '123' -ConfirmStore $identity.StoreId -WorkDirectory $work -WhatIf
             Assert ($global:StoreTestGhCount -eq 3) 'Expected one run read and two artifact downloads.'

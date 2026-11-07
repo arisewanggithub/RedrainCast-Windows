@@ -51,9 +51,10 @@ worker child process when sending. The standard app does not record media.
 ## INTERNAL — DO NOT PASTE
 
 - **Not release acceptance or proof of Store publication.** Reviewed-source
-  portable regression results: 1,133 tests passed. The separate Store guard
-  suite passed 58 offline checks on Windows PowerShell 5.1 after alignment
-  with the actual package-language export. These checks do not establish
+  portable regression results: 1,134 tests passed after deterministic CI-fixture
+  synchronization. The separate Store guard suite passed 61 offline checks on
+  Windows PowerShell 5.1, including read-only preflight and alignment with the
+  actual package-language export. These checks do not establish
   native x64 playback or human capture acceptance.
 - **Fresh unsigned packaging passed only, 2026-11-07.** Both architectures
   passed publication, branding, localization, manifest and shipping-boundary

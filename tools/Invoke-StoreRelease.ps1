@@ -1,6 +1,6 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [Parameter(Mandatory = $true)][ValidateSet('upload-draft', 'upload-listings-draft', 'submit-draft')][string]$Stage,
+    [Parameter(Mandatory = $true)][ValidateSet('preflight', 'upload-draft', 'upload-listings-draft', 'submit-draft')][string]$Stage,
     [string]$BuildRunId,
     [string]$DraftRunId,
     [Parameter(Mandatory = $true)][string]$ConfirmStore,
@@ -20,6 +20,19 @@ if ($Stage -ceq 'upload-listings-draft') {
 } elseif ($ConfirmListingsCommit) { throw 'Listing commit confirmation is only valid for upload-listings-draft.' }
 $identity = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'StoreIdentity.json') -Raw | ConvertFrom-Json
 if ($identity.StoreId -cne $ConfirmStore) { throw 'Store identity does not match the confirmation.' }
+if ($Stage -ceq 'preflight') {
+    if ($BuildRunId -or $DraftRunId) { throw 'Preflight does not accept build or draft run inputs.' }
+    if (-not $PSCmdlet.ShouldProcess($ConfirmStore, 'Read-only Store authentication and readiness check')) { return }
+    $headers = @{ Authorization = 'Bearer ' + (Get-StoreToken) }
+    $request = {
+        param($method, $path, $body, $inFile)
+        if ($method -cne 'GET' -or $null -ne $body -or $inFile) { throw 'Preflight only permits read-only Store GET requests.' }
+        Invoke-StoreHttp GET "https://manage.devcenter.microsoft.com/v1.0/my/$path" $headers
+    }.GetNewClosure()
+    $readiness = Get-StoreReadiness $identity $request
+    Write-Host "Store authentication and product identity verified. First publication complete: $($readiness.firstPublicationComplete). Pending draft exists: $($readiness.pendingDraftExists). Automated update allowed: $($readiness.automatedUpdateAllowed)."
+    return
+}
 if (Test-Path -LiteralPath $WorkDirectory) { throw 'Work directory must be new; existing files are preserved.' }
 New-Item -ItemType Directory -Path $WorkDirectory -WhatIf:$false | Out-Null
 try {

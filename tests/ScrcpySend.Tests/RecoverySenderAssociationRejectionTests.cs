@@ -26,7 +26,7 @@ public sealed class RecoverySenderAssociationRejectionTests
     public async Task AssociationRejectionRequiresMatchingStopAndAcknowledgementWithoutHidingFailures(
         string channel, string scenario)
     {
-        await using var fixture = new Fixture(scenario == "ack-write-failure");
+        await using var fixture = new Fixture(scenario);
         await fixture.AcceptAsync(channel);
         if (scenario == "stop-first")
         {
@@ -127,14 +127,19 @@ public sealed class RecoverySenderAssociationRejectionTests
         private long session;
         public Task Run { get; }
 
-        public Fixture(bool failAcknowledgement)
+        public Fixture(string scenario)
         {
             listener.Start();
             var endpoint = new ReceiverEndpoint(IPAddress.Loopback,
                 ((IPEndPoint)listener.LocalEndpoint).Port, "Recovery association test", false);
-            Run = failAcknowledgement ? RunWithFailingAcknowledgementAsync(endpoint) :
-                new SenderSession().RunAsync(endpoint, new(), Source, Status, Stop.Token);
+            Run = scenario == "ack-write-failure" || SynchronizesStopAndError(scenario)
+                ? RunWithControlStreamAsync(endpoint, scenario)
+                : new SenderSession().RunAsync(endpoint, new(), Source, Status, Stop.Token);
         }
+
+        private static bool SynchronizesStopAndError(string scenario) =>
+            scenario is "unknown" or "protocol" or "wrong-session" or "empty" or "oversized" or
+                "duplicate" or "malformed" or "hello-channel" or "hello-type" or "hello-csd";
 
         private void Status(string text)
         {
@@ -143,28 +148,78 @@ public sealed class RecoverySenderAssociationRejectionTests
             ReleaseStopping.Task.Wait(Limit.Token);
         }
 
-        private async Task RunWithFailingAcknowledgementAsync(ReceiverEndpoint endpoint)
+        private async Task RunWithControlStreamAsync(ReceiverEndpoint endpoint, string scenario)
         {
             using var client = new TcpClient();
             await client.ConnectAsync(endpoint.Address, endpoint.Port, Limit.Token);
-            using var stream = new FailingAcknowledgementStream(client.Client);
+            var synchronizeStopAndError = SynchronizesStopAndError(scenario);
+            using var stream = new AssociationControlStream(client.Client, scenario == "ack-write-failure",
+                synchronizeStopAndError, Limit.Token);
             await Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0, new { role = "sender" }), Limit.Token);
             Assert.Equal(MessageType.Hello, (await Wire.ReadAsync(stream, Limit.Token)).Type);
             var type = typeof(SenderSession).Assembly.GetType("ScrcpySend.Core.RecoverySender", true)!;
             var run = (Task)type.GetMethod("RunAsync", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)!
                 .Invoke(null, [endpoint, new CaptureSettings(), Source, null, (Action<string>)Status, 1L, stream, Stop.Token, null])!;
             try { await run; }
-            finally { await Source.DisposeAsync(); }
+            finally
+            {
+                await Source.DisposeAsync();
+                if (synchronizeStopAndError)
+                {
+                    Assert.True(stream.ErrorAttempted.Task.IsCompletedSuccessfully);
+                    Assert.True(stream.StopConsumed.Task.IsCompletedSuccessfully);
+                }
+            }
         }
 
-        private sealed class FailingAcknowledgementStream(Socket socket) : NetworkStream(socket, ownsSocket: false)
+        private sealed class AssociationControlStream(Socket socket, bool failAcknowledgement,
+            bool synchronizeStopAndError, CancellationToken limit) : NetworkStream(socket, ownsSocket: false)
         {
-            public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+            public readonly TaskCompletionSource ErrorAttempted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            public readonly TaskCompletionSource StopConsumed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            private readonly byte[] header = new byte[Wire.HeaderSize];
+            private int headerBytes, payloadRemaining;
+            private bool readingStop;
+
+            public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
             {
-                if (buffer.Length == Wire.HeaderSize && buffer.Span[..4].SequenceEqual("SCPY"u8) &&
-                    System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(buffer.Span[6..]) == (ushort)MessageType.SessionEnd)
+                // Force the slow-reader interleaving, then consume STOP before the terminal write can close TCP.
+                if (synchronizeStopAndError && readingStop)
+                    await ErrorAttempted.Task.WaitAsync(limit);
+                var read = await base.ReadAsync(buffer, cancellationToken);
+                if (payloadRemaining > 0)
+                {
+                    payloadRemaining -= read;
+                    if (payloadRemaining == 0 && readingStop) StopConsumed.TrySetResult();
+                }
+                else
+                {
+                    buffer.Span[..read].CopyTo(header.AsSpan(headerBytes));
+                    headerBytes += read;
+                    if (headerBytes == Wire.HeaderSize)
+                    {
+                        readingStop = System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(header.AsSpan(6)) ==
+                            (ushort)MessageType.Stop;
+                        payloadRemaining = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(header.AsSpan(8));
+                        headerBytes = 0;
+                    }
+                }
+                return read;
+            }
+
+            public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+            {
+                var type = buffer.Length == Wire.HeaderSize && buffer.Span[..4].SequenceEqual("SCPY"u8)
+                    ? (MessageType)System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(buffer.Span[6..])
+                    : (MessageType)0;
+                if (failAcknowledgement && type == MessageType.SessionEnd)
                     throw new IOException("independent SESSION_END write failure");
-                return base.WriteAsync(buffer, cancellationToken);
+                if (synchronizeStopAndError && type == MessageType.Error)
+                {
+                    ErrorAttempted.TrySetResult();
+                    await StopConsumed.Task.WaitAsync(limit);
+                }
+                await base.WriteAsync(buffer, cancellationToken);
             }
         }
 

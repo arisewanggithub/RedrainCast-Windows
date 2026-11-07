@@ -3,11 +3,15 @@
 **Guarded automation, not an executed Store API submission.** The manual
 `.github/workflows/store-release.yml` workflow is prepared for `main`.
 Owner-authorized setup created the `microsoft-store` GitHub environment with
-a deployment policy restricted to the `main` branch. Entra application/key
-setup requires the associated tenant's administrator sign-in; a personal
-Microsoft-account session can edit Store drafts but cannot manage Entra apps.
-The verified associated tenant identifier has been configured as an environment
-secret; the application client ID and client secret are still pending.
+a deployment policy restricted to the `main` branch. The existing authorized
+`StoreAppPublisher` Entra application is reused without changing its roles or
+existing credentials. A dedicated RedrainCast client secret uses Azure's
+recommended 180-day expiration; rotate it before expiry.
+All three environment secrets have been configured privately. The client
+secret was transferred using Azure's value-copy button and encrypted GitHub
+secret input, never placed in source, logs or artifacts; its clipboard entry
+was cleared. Read-only token acquisition and exact product identity access
+were verified without modifying the initial draft.
 No API upload or certification request has been executed by this workflow.
 The initial submission was prepared separately through Partner Center.
 
@@ -87,7 +91,19 @@ Both jobs run only for a manual `main` dispatch in the private
 job, never PR jobs. All action references reuse the pinned official SHAs in
 `windows.yml`.
 
-### 1. `upload-draft` (default; no certification)
+### `preflight` (default; read-only and valid before first publication)
+
+Leave build/draft inputs empty and type the product ID confirmation. This stage
+uses the environment credentials to obtain a token and performs only a Store
+application **GET**. It validates the pinned product/package/publisher identity
+and reports first-publication completion, pending-draft existence and update
+eligibility. An unpublished app or existing human draft is reported as ineligible,
+not overwritten. No packages are downloaded, no draft/ZIP/receipt is created,
+and there is no Store POST/PUT/DELETE. `-WhatIf` does not authenticate or make
+any Store or GitHub request. This stage validates setup without waiting for
+release; it does not prove that a later package submission will be accepted.
+
+### 1. `upload-draft` (packages only; no certification)
 
 Choose a successful completed `main` run of `.github/workflows/windows.yml`.
 Supply its numeric `build_run_id` and type `9P1153MP6R32` in `confirm_store`.

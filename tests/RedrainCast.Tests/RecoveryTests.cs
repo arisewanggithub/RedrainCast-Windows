@@ -239,6 +239,7 @@ public sealed class RecoveryTests
     [InlineData(false, 350, 0)]
     [InlineData(true, 350, 0)]
     [InlineData(true, 0, 450)]
+    [InlineData(false, 1100, 0)]
     public async Task DelayedDecodedKeyAndCoveredAudioCompleteWithoutResetStorm(bool audio, int decodeDelay, int deliveryDelay)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(6));
@@ -247,7 +248,12 @@ public sealed class RecoveryTests
         var states = new ConcurrentQueue<string>();
         await using var server = new ReceiverServer("Delayed fake playback", factory, _ => { }, 0, IPAddress.Loopback);
         server.Start(false);
-        await using var source = new GeneratedSource();
+        // A delayed first decode is not a video-pressure test: keep fresh key requests live,
+        // but withhold dependent pictures until the fake has actually decoded the key.
+        await using var source = new GeneratedSource
+        {
+            CanEmitDependentFrames = () => factory.FirstOutput?.DecodedRecoveryKeyPtsUs is not null
+        };
         var sound = audio ? new GeneratedAudio { InitialDeliveryDelayMilliseconds = deliveryDelay } : null;
         if (sound is not null)
             factory.ValidateAudio = packet =>

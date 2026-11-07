@@ -409,7 +409,7 @@ function Get-StoreToken {
 }
 
 function Assert-StoreApplication {
-    param($Application, $Identity)
+    param($Application, $Identity, [switch]$AllowUnpublished)
     if ($Application.id -cne $script:Product -or $Identity.StoreId -cne $script:Product -or
         $Application.packageIdentityName -cne $Identity.PackageName -or $Application.publisherName -cne $Identity.Publisher) {
         throw 'Partner Center application does not match StoreIdentity.json and the pinned Store product.'
@@ -417,7 +417,28 @@ function Assert-StoreApplication {
     $published = $Application.PSObject.Properties['lastPublishedApplicationSubmission']
     if ($null -eq $published -or $null -eq $published.Value -or
         [string]$published.Value.id -notmatch '^[1-9][0-9]*$') {
-        throw 'First publication must be completed manually in Partner Center. No Store mutation was performed.'
+        if (-not $AllowUnpublished) { throw 'First publication must be completed manually in Partner Center. No Store mutation was performed.' }
+    }
+}
+
+function Get-StoreReadiness {
+    param($Identity, [scriptblock]$Request)
+    $app = & $Request GET "applications/$script:Product" $null $null
+    Assert-StoreApplication $app $Identity -AllowUnpublished
+    $published = $app.PSObject.Properties['lastPublishedApplicationSubmission']
+    $pending = $app.PSObject.Properties['pendingApplicationSubmission']
+    if ($null -ne $published -and $null -ne $published.Value -and [string]$published.Value.id -notmatch '^[1-9][0-9]*$') {
+        throw 'Unexpected published submission pointer in the read-only Store response.'
+    }
+    if ($null -ne $pending -and $null -ne $pending.Value -and [string]$pending.Value.id -notmatch '^[1-9][0-9]*$') {
+        throw 'Unexpected pending submission pointer in the read-only Store response.'
+    }
+    $hasPublished = $null -ne $published -and $null -ne $published.Value -and
+        [string]$published.Value.id -match '^[1-9][0-9]*$'
+    $hasPending = $null -ne $pending -and $null -ne $pending.Value
+    return [pscustomobject]@{
+        applicationId = $script:Product; firstPublicationComplete = $hasPublished
+        pendingDraftExists = $hasPending; automatedUpdateAllowed = $hasPublished -and -not $hasPending
     }
 }
 
@@ -557,4 +578,4 @@ Export-ModuleMember -Function Assert-StoreRun, Get-StoreRun, Receive-StoreArtifa
     Get-StoreHash, Get-StoreMetadataFingerprint, Get-StoreActivePackageFingerprint, Read-StorePackage,
     Assert-StoreArchiveLength, New-StorePackageArchive,
     Get-StoreListingLocales, Assert-StoreListingApproval, Read-StoreListings, Set-StoreDraftListings, Assert-StoreListingImages,
-    Invoke-StoreHttp, Get-StoreToken, Assert-StoreApplication, Assert-StorePackages, New-StoreDraft, Submit-StoreDraft
+    Invoke-StoreHttp, Get-StoreToken, Assert-StoreApplication, Get-StoreReadiness, Assert-StorePackages, New-StoreDraft, Submit-StoreDraft
