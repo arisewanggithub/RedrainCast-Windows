@@ -130,13 +130,21 @@ public sealed class TeardownTests
         var watch = Stopwatch.StartNew();
         peer.Eof();
         await Task.Delay(350, timeout.Token);
-        if (invalid == "wrong-type")
-            await Wire.WriteAsync(peer.Stream, Message.Control(MessageType.Error, peer.Session,
-                new { code = "DECODER_FAILED", message = "Do not replace", fatal = "true" }), timeout.Token);
-        else
-            await peer.Error(invalid == "unknown" ? "UNRECOGNIZED" : "DECODER_FAILED",
-                invalid == "oversized" ? new string('x', 2049) : "Do not replace", invalid != "nonfatal",
-                timeout.Token, invalid == "wrong-session" ? peer.Session + 1 : null);
+        try
+        {
+            if (invalid == "wrong-type")
+                await Wire.WriteAsync(peer.Stream, Message.Control(MessageType.Error, peer.Session,
+                    new { code = "DECODER_FAILED", message = "Do not replace", fatal = "true" }), timeout.Token);
+            else
+                await peer.Error(invalid == "unknown" ? "UNRECOGNIZED" : "DECODER_FAILED",
+                    invalid == "oversized" ? new string('x', 2049) : "Do not replace", invalid != "nonfatal",
+                    timeout.Token, invalid == "wrong-session" ? peer.Session + 1 : null);
+        }
+        catch (IOException) when (invalid == "wrong-session")
+        {
+            // Rejection can close the socket before the fake peer's write completes.
+            // The exact terminal protocol failure is still required below.
+        }
         var error = await Assert.ThrowsAsync<IOException>(() => run.WaitAsync(timeout.Token));
         Assert.Contains(invalid switch
         {
