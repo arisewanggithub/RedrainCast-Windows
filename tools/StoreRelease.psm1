@@ -11,7 +11,8 @@ function Assert-StoreRun {
         $Run.head_repository.full_name -cne $script:Repository -or
         $Run.head_branch -cne 'main' -or $Run.status -cne 'completed' -or
         $Run.conclusion -cne 'success' -or $Run.event -cnotin @('push', 'workflow_dispatch') -or
-        $Run.path -cne $WorkflowPath -or [string]$Run.head_sha -notmatch '^[a-f0-9]{40}$') {
+        $Run.path -cne $WorkflowPath -or [string]$Run.head_sha -notmatch '^[a-f0-9]{40}$' -or
+        [string]$Run.run_attempt -notmatch '^[1-9][0-9]*$') {
         throw 'Source must be a successful, completed main run of the expected workflow in this repository (not a PR or fork).'
     }
 }
@@ -331,7 +332,7 @@ function New-StorePackageArchive {
     foreach ($arch in @('arm64', 'x64')) {
         $folder = Join-Path $Directory $arch
         $found = @(Get-ChildItem -LiteralPath $folder -Filter '*.msix' -Recurse -File)
-        if ($found.Count -ne 1) { throw 'Exactly one MSIX is required in each architecture artifact.' }
+        if ($found.Count -ne 1) { throw 'Exactly one MSIX is required in each architecture build archive.' }
         $packages += Read-StorePackage $found[0].FullName $arch $Identity
         $files += $found[0].FullName
     }

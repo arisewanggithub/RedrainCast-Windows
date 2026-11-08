@@ -997,6 +997,26 @@ and the requirement for a new/empty output directory are unchanged.
 
 ## Build and test
 
+### Private CI downloads and Actions storage
+
+Pull requests still test and package both architectures, but do not upload large
+Actions artifacts or receive release-write permissions. Successful main pushes
+and manual main builds upload the x64/ARM64 packages directly to a private
+`ci-build-<run-id>-<attempt>` prerelease in this source repository. The paired
+packages and checksum files are downloaded and verified before the complete,
+run/attempt/commit-bound manifest is uploaded and the draft is published.
+CI packages include unsigned MSIX files; they are not production releases or
+Store approval. Failed packaging can leave an incomplete private draft, which
+is never accepted by the Store workflow. To retry, use **Re-run all jobs** or a
+new main build so the draft and both architectures share the new run attempt.
+
+Download private build files with authorized `gh release download` access.
+GitHub Release assets do not consume Actions artifact storage. Successful
+tests retain no TRX artifact; failed-test diagnostics expire after one day.
+Small sanitized Store receipts remain private Actions artifacts for 14 days
+because explicit draft submission depends on them. Public downloads and Store
+publication/approval behavior are unchanged.
+
 ### Production and regression boundaries
 
 The production backend remains Windows Graphics Capture plus direct Media
@@ -1165,7 +1185,7 @@ Publication/package output directories must be new or empty. Packaging checks
 PE architecture, required notices, assembly/package version and the exact
 Partner Center identity. See [STORE.md](STORE.md).
 The optional [Store update pipeline](docs/store/pipeline.md) consumes paired
-private CI artifacts only after a first manual publication, with separate
+verified private CI release packages only after a first manual publication, with separate
 upload/certification dispatches and manual final publication. An explicit
 listing-enabled upload can include all 22 translations and 44 screenshots
 after confirmation of the exact reviewed commit. Package-only uploads preserve

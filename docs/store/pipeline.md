@@ -37,9 +37,10 @@ requirement. A single-file executable is primarily a portable/direct-distributio
 option; it is not needed for this Store route. The separate experimental
 trimmed/single-file attempt is not used by the normal release pipeline.
 
-Windows distribution remains **Microsoft Store only**. Private Actions
-artifacts are intermediate submission inputs, not public downloads. Never
-upload Windows binaries to `RedrainCast-Releases`.
+Windows distribution remains **Microsoft Store only**. Private CI prereleases
+in `arisewanggithub/RedrainCast-Windows` are intermediate submission inputs,
+not public downloads. Actions retains only the small sanitized Store receipt,
+not Windows build binaries. Never upload Windows binaries to `RedrainCast-Releases`.
 
 ## Owner prerequisites (not automatically configured)
 
@@ -55,7 +56,7 @@ upload Windows binaries to `RedrainCast-Releases`.
    this; the workflow cannot register applications or change tenant roles.
 3. The GitHub environment **`microsoft-store`** has been created and its
    deployment branches restricted to `main`. Review repository access, branch protection,
-   workflow changes and Actions artifact access. Add these environment secrets:
+   workflow changes, private CI release access and Actions receipt access. Add these environment secrets:
 
    | Name | Value |
    | --- | --- |
@@ -115,10 +116,19 @@ Leave `draft_run_id` empty. Review that build's exact SHA/version and acceptance
 results yourself before authorizing an upload.
 
 The script checks the source repository and head repository, workflow path,
-event (`push` or `workflow_dispatch`), branch, conclusion, completion and SHA.
-It downloads the **private Actions** artifacts `RedrainCast-arm64` and
-`RedrainCast-x64` with `gh`; missing/expired artifacts stop processing.
-It requires exactly one MSIX per artifact, validates manifest identity,
+event (`push` or `workflow_dispatch`), branch, conclusion, completion, SHA and
+positive run attempt. `tools\CiBuild.ps1` is dot-sourced as a library, then
+`Receive-CiBuild` receives that exact run ID, attempt and SHA. It verifies the
+signed-in source repository is private and downloads the canonical private CI
+prerelease `ci-build-<run-id>-<run-attempt>`, requiring a complete release,
+matching manifest provenance, asset checksums and safe extraction. Each
+architecture ZIP preserves its `win-arm64`/`msix-arm64` or
+`win-x64`/`msix-x64` layout under the corresponding local architecture folder.
+A missing historical archive or validation failure stops processing with an
+instruction to rebuild the reviewed main commit and use the resulting
+successful Windows run. There is **no fallback to legacy Actions build
+artifacts**, another run, another attempt or a latest release.
+It requires exactly one MSIX per architecture build archive, validates manifest identity,
 publisher, architecture, matching versions with zero revision, matching
 non-architecture manifest metadata, PRI/runtime/worker/notice presence and
 absence of debug symbols/forbidden helpers. The trusted build's existing
@@ -227,7 +237,9 @@ be omitted; if supplied it must match the receipt.
 The script first validates the receipt run as a successful completed `main`
 run of `.github/workflows/store-release.yml` in this same repository. It
 downloads only its receipt artifact, not an arbitrary URL or local receipt,
-then re-validates the referenced Windows build and both MSIX hashes.
+then re-validates the referenced Windows build, receives its exact private CI
+archive and verifies both MSIX hashes against the receipt. The receipt remains
+an Actions artifact; it is not read from the CI prerelease.
 For a listing-enabled receipt, its listing commit and upload run must match
 that trusted upload workflow run; malformed or incomplete image bindings fail.
 
@@ -272,9 +284,10 @@ There is intentionally no `Immediate` or scheduled-publication option here.
   no adoption, force-overwrite, cleanup submission or automatic retry**.
 - A failed upload or receipt-artifact failure has no usable successful receipt;
   it cannot be retried as a new upload over the existing draft. The owner must
-  resolve it in Partner Center. An expired build/receipt artifact or changed
-  metadata similarly requires explicit manual resolution. Do not hand-edit a
-  receipt to bypass a guard.
+  resolve it in Partner Center. A missing private build archive, expired receipt
+  artifact or changed metadata similarly requires explicit manual resolution.
+  Rebuild unavailable historical inputs; do not hand-edit a receipt or select
+  different build bytes to bypass a guard.
 - Do not use Microsoft Store CLI `publish` as a shortcut: it can delete pending
   drafts. Its `--noCommit` still mutates Store state and is **not a dry run**.
 
@@ -290,8 +303,12 @@ non-executable ZIP fixtures and fake HTTP/GitHub adapters. They test
 unpublished/pending gates, trusted-run filtering, paired MSIX identity/version
 checks, metadata preservation, listing field/locale mapping, all 44 real PNGs,
 invalid inputs, screenshot byte-change detection, image ingestion transitions,
-receipt binding, human-edit rejection,
+receipt binding, exact CI downloader run/attempt/SHA wiring, missing or
+mismatched private archive rejection without Actions fallback, receipt-only
+Actions download, human-edit rejection,
 transport redaction and positive upload/commit paths without live credentials.
+The entrypoint wiring fixture uses an unchanged script copy and a CI-library
+test double; the shared CI tests cover real archive transport and provenance.
 They do not establish real Store API acceptance or installed-app behavior.
 
 For an authorized manual-main Actions context, the entrypoint also supports:
@@ -302,7 +319,8 @@ For an authorized manual-main Actions context, the entrypoint also supports:
 ```
 
 Replace the example run ID with a real trusted run. `-WhatIf` performs only
-GitHub artifact download/local validation, **no Store authentication or
+private CI archive download/local validation (and the tiny Actions receipt for
+`submit-draft`), **no Store authentication or
 Store/Azure request**, and creates no upload receipt. It does not check live
 Store eligibility. The entrypoint intentionally refuses an ordinary local
 shell/non-main/PR invocation; run the portable offline tests locally instead.

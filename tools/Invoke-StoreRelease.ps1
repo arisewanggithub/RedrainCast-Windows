@@ -53,15 +53,18 @@ try {
         $BuildRunId = [string]$receipt.sourceBuildRunId
     } elseif ($DraftRunId) { throw 'Draft run input is only valid for submit-draft.' }
     $build = Get-StoreRun $BuildRunId '.github/workflows/windows.yml'
-    foreach ($arch in @('arm64', 'x64')) {
-        Receive-StoreArtifact $BuildRunId "RedrainCast-$arch" (Join-Path $WorkDirectory $arch)
+    . (Join-Path $PSScriptRoot 'CiBuild.ps1')
+    try {
+        $null = Receive-CiBuild -RunId $BuildRunId -RunAttempt $build.run_attempt -ExpectedSha $build.head_sha -DestinationDirectory $WorkDirectory
+    } catch {
+        throw "Required validated private CI build archive for run $BuildRunId attempt $($build.run_attempt) could not be received. Rebuild the reviewed main commit and use its successful Windows run; there is no Actions build-artifact fallback."
     }
     $listingUpdate = $null
     if ($Stage -ceq 'upload-listings-draft') {
         $listingUpdate = Read-StoreListings (Split-Path -Parent $PSScriptRoot) $env:GITHUB_SHA $env:GITHUB_RUN_ID
     }
     $archive = New-StorePackageArchive $WorkDirectory $identity $listingUpdate
-    # -WhatIf downloads/validates private GitHub artifacts only; it never authenticates to or calls Store/Azure.
+    # -WhatIf downloads/validates private CI archives (and submission receipts) only; it never calls Store/Azure.
     if (-not $PSCmdlet.ShouldProcess('9P1153MP6R32 (Manual publication hold)', $Stage)) { return }
     $headers = @{ Authorization = 'Bearer ' + (Get-StoreToken) }
     $request = {
