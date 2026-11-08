@@ -240,6 +240,9 @@ try {
     Assert ($workflow -match 'if: failure\(\)' -and $workflow -match 'retention-days: 1') 'Diagnostics need failure-only one-day retention.'
     Assert ($workflow -match "if: github.event_name == 'pull_request'") 'PR packages must remain read-only and separate from release writes.'
     Assert ($workflow -match 'Publish-CiBuild.ps1 -Stage Complete') 'Private releases require complete paired verification.'
+    Assert ($workflow -match 'RunConfiguration.MaxCpuCount=1' -and
+        $workflow -match 'xUnit.ParallelizeTestCollections=false') 'Shared CI runners must not oversubscribe wall-clock protocol deadline tests.'
+    Assert ($workflow -notmatch 'dotnet test[^\r\n]*--filter') 'CI scheduling must not exclude application tests.'
     foreach ($job in @('prepare-release', 'release-package', 'complete-release')) {
         $block = [regex]::Match($workflow, ('(?ms)^  ' + [regex]::Escape($job) +
             ':\r?\n(?<body>.*?)(?=^  [a-z][a-z-]*:\r?\n|\z)'))
