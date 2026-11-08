@@ -109,8 +109,13 @@ try {
             return ($script:run | ConvertTo-Json)
         }
         if ($Arguments[0] -eq 'api' -and $Arguments[1] -match '/releases/tags/') {
+            if ($script:releaseDraft) { throw 'GitHub HTTP 404 fixture: tag endpoint excludes drafts' }
             return (@{ tag_name = 'ci-build-42-2'; target_commitish = $sha; draft = $script:releaseDraft;
                 prerelease = $true; assets = $assets } | ConvertTo-Json -Depth 8)
+        }
+        if ($Arguments[0] -eq 'release' -and $Arguments[1] -eq 'view') {
+            return (@{ tagName = 'ci-build-42-2'; targetCommitish = $sha; isDraft = $script:releaseDraft;
+                isPrerelease = $true; assets = $assets; url = 'https://github.com/fixture' } | ConvertTo-Json -Depth 8)
         }
         if ($Arguments[0] -eq 'release' -and $Arguments[1] -eq 'download') {
             $directory = $Arguments[[Array]::IndexOf($Arguments, '--dir') + 1]
@@ -142,6 +147,9 @@ try {
     }
     Assert (-not @($script:ghCalls | Where-Object { $_ -join ' ' -match '/actions/artifacts/' }).Count) 'CI downloads must not use Actions artifacts.'
     $script:releaseDraft = $true
+    $draft = Get-CiRelease 'ci-build-42-2' $sha $true
+    Assert $draft.draft 'Draft releases must use an authenticated draft-aware lookup.'
+    Assert (($script:ghCalls[-1] -join ' ') -match '^release view ') 'Draft lookup used the published-only tag API.'
     Reject { Receive-CiBuild '42' 2 $sha (Join-Path $scratch 'draft') }
     $script:releaseDraft = $false
     $script:tamperDownload = $true
@@ -182,9 +190,16 @@ try {
         }
         if ($a[0] -eq 'api' -and $a[1] -match '/releases/tags/ci-build-42-2$') {
             if (-not $f.created) { throw 'Release was not created first.' }
+            if ($f.draft) { throw 'GitHub HTTP 404 fixture: tag endpoint excludes drafts' }
             $uploaded = @(Get-ChildItem -LiteralPath $f.remote -File | ForEach-Object { @{ name = $_.Name; size = $_.Length } })
             return (@{ tag_name = 'ci-build-42-2'; target_commitish = $f.sha; draft = $f.draft;
                 prerelease = $true; assets = $uploaded } | ConvertTo-Json -Depth 8)
+        }
+        if ($a[0] -eq 'release' -and $a[1] -eq 'view') {
+            if (-not $f.created) { throw 'Release was not created first.' }
+            $uploaded = @(Get-ChildItem -LiteralPath $f.remote -File | ForEach-Object { @{ name = $_.Name; size = $_.Length } })
+            return (@{ tagName = 'ci-build-42-2'; targetCommitish = $f.sha; isDraft = $f.draft;
+                isPrerelease = $true; assets = $uploaded; url = 'https://github.com/fixture' } | ConvertTo-Json -Depth 8)
         }
         if ($a[0] -eq 'release' -and $a[1] -eq 'create') { $f.created = $true; return 'created' }
         if ($a[0] -eq 'release' -and $a[1] -eq 'upload') {

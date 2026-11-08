@@ -70,9 +70,20 @@ function Assert-CiManifest($Manifest, [string]$RunId, [int]$RunAttempt, [string]
 
 function Get-CiRelease([string]$Tag, [string]$ExpectedSha, [bool]$Draft) {
     try {
-        $release = Invoke-CiGh @('api', "repos/$script:CiRepository/releases/tags/$Tag") | ConvertFrom-Json
+        if ($Draft) {
+            # The REST tag lookup excludes drafts; gh resolves them using authenticated release access.
+            $view = Invoke-CiGh @('release', 'view', $Tag, '--repo', $script:CiRepository,
+                '--json', 'tagName,targetCommitish,isDraft,isPrerelease,assets,url') | ConvertFrom-Json
+            $release = [pscustomobject]@{
+                tag_name = $view.tagName; target_commitish = $view.targetCommitish
+                draft = $view.isDraft; prerelease = $view.isPrerelease
+                assets = $view.assets; html_url = $view.url
+            }
+        } else {
+            $release = Invoke-CiGh @('api', "repos/$script:CiRepository/releases/tags/$Tag") | ConvertFrom-Json
+        }
     } catch {
-        if ($_.Exception.Message -match 'HTTP 404') {
+        if ($_.Exception.Message -match 'HTTP 404|release not found') {
             throw "Private CI build $Tag is unavailable; re-run all jobs or start a new reviewed main build instead of using expired Actions artifacts."
         }
         throw
