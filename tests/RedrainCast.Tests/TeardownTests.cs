@@ -54,12 +54,15 @@ public sealed class TeardownTests
         {
             var control = await listener.AcceptTcpClientAsync(token);
             var stream = control.GetStream();
-            Assert.Equal(MessageType.Hello, (await Wire.ReadAsync(stream, token)).Type);
+            var hello = await Wire.ReadAsync(stream, token);
+            Assert.Equal(MessageType.Hello, hello.Type);
+            Assert.True(StrictJson.Boolean(hello.Json(), "uncappedFps"));
             await Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0,
-                new { role = "receiver", versions = new[] { 3 }, name = "Test",
+                new { role = "receiver", versions = new[] { 3 }, name = "Test", uncappedFps = true,
                     streamRecovery = recovery, streamRecoveryVersion = 1 }), token);
             var request = await Wire.ReadAsync(stream, token);
             Assert.Equal(MessageType.SessionRequest, request.Type);
+            Assert.Equal(0, request.Json().GetProperty("video").GetProperty("maxFps").GetInt32());
             await Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, request.Session,
                 new { tracks = new[] { 1 }, mediaToken = new string('A', 64) }), token);
             var video = await listener.AcceptTcpClientAsync(token);
