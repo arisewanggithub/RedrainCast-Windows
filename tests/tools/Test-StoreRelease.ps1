@@ -21,7 +21,7 @@ function New-Run {
     return [pscustomobject]@{
         id = 123; repository = @{ full_name = 'arisewanggithub/RedrainCast-Windows' }
         head_repository = @{ full_name = 'arisewanggithub/RedrainCast-Windows' }
-        head_branch = 'main'; head_sha = ('a' * 40); status = 'completed'; conclusion = 'success'
+        head_branch = 'main'; head_sha = ('a' * 40); run_attempt = 2; status = 'completed'; conclusion = 'success'
         event = 'push'; path = '.github/workflows/windows.yml'
     }
 }
@@ -128,7 +128,7 @@ if (Test-Path -LiteralPath $fixtures) { throw 'Fixture directory already exists.
 New-Item -ItemType Directory -Path $fixtures | Out-Null
 try {
     Test 'trusted completed main build' { Assert-StoreRun (New-Run) '123' '.github/workflows/windows.yml' }
-    foreach ($field in @('head_branch', 'status', 'conclusion', 'event', 'path', 'head_sha')) {
+    foreach ($field in @('head_branch', 'status', 'conclusion', 'event', 'path', 'head_sha', 'run_attempt')) {
         Test "reject untrusted run $field" {
             $run = New-Run; $run.$field = 'invalid'
             Reject { Assert-StoreRun $run '123' '.github/workflows/windows.yml' }
@@ -145,6 +145,12 @@ try {
     Test 'reject shell-injection or mismatched run ID' {
         Reject { Assert-StoreRun (New-Run) '123; exit' '.github/workflows/windows.yml' }
         Reject { Assert-StoreRun (New-Run) '124' '.github/workflows/windows.yml' }
+    }
+    Test 'trusted run requires an exact positive run attempt' {
+        foreach ($attempt in @($null, 0, -1, 1.5, '02', '2; exit')) {
+            $run = New-Run; $run.run_attempt = $attempt
+            Reject { Assert-StoreRun $run '123' '.github/workflows/windows.yml' }
+        }
     }
     Test 'canonical JSON sorts keys and preserves arrays and deep Unicode values' {
         $unicode = [string][char]0x4e2d + [char]0x6587
@@ -620,13 +626,49 @@ try {
         Assert ($uploadCode.IndexOf('ShouldProcess(') -lt $uploadCode.IndexOf('(Get-StoreToken)')) 'Upload WhatIf could authenticate to Store.'
         Assert ($uploadCode.IndexOf('New-StorePackageArchive ') -lt $uploadCode.IndexOf('(Get-StoreToken)')) 'Archive length validation must precede upload authentication.'
     }
-    Test 'real entrypoint WhatIf uses only mocked GitHub reads, never Store or Azure' {
+    Test 'entrypoint wires trusted private CI provenance and receipt-only Actions reads without Store or Azure' {
         $environment = @{}
         foreach ($name in @('GITHUB_REPOSITORY', 'GITHUB_REF', 'GITHUB_EVENT_NAME', 'GITHUB_SHA', 'GITHUB_RUN_ID')) { $environment[$name] = [Environment]::GetEnvironmentVariable($name) }
         $oldGh = Get-Item Function:\gh -ErrorAction SilentlyContinue
         $global:StoreTestRun = New-Run
         $global:StoreTestFixturePath = $fixtures
         $global:StoreTestGhCount = 0
+        $global:StoreTestCiCalls = New-Object 'Collections.Generic.List[object]'
+        $global:StoreTestCiFailure = $false
+        # Run an unchanged copy of the entrypoint with a bounded CI-library test double.
+        # The shared CI suite covers the real release transport, manifests and extraction.
+        $entryRoot = Join-Path $fixtures 'entrypoint'
+        $entryTools = Join-Path $entryRoot 'tools'
+        New-Item -ItemType Directory -Path $entryTools | Out-Null
+        foreach ($file in @('Invoke-StoreRelease.ps1', 'StoreRelease.psm1')) {
+            Copy-Item -LiteralPath (Join-Path $root "tools\$file") -Destination $entryTools
+        }
+        Copy-Item -LiteralPath (Join-Path $root 'StoreIdentity.json') -Destination $entryRoot
+        foreach ($folder in @('docs\store', 'assets\store')) {
+            $destination = Join-Path $entryRoot $folder
+            New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+            Copy-Item -LiteralPath (Join-Path $root $folder) -Destination $destination -Recurse
+        }
+        $entrypointPath = Join-Path $entryTools 'Invoke-StoreRelease.ps1'
+        $ciStub = @'
+function Receive-CiBuild {
+    param([string]$RunId, [int]$RunAttempt, [string]$ExpectedSha, [string]$DestinationDirectory)
+    $global:StoreTestCiCalls.Add([pscustomobject]@{
+        runId = $RunId; runAttempt = $RunAttempt; sha = $ExpectedSha; destination = $DestinationDirectory
+    })
+    if ($global:StoreTestCiFailure -or $RunId -cne '123' -or $RunAttempt -ne 2 -or $ExpectedSha -cne ('a' * 40)) {
+        throw 'Offline private CI archive unavailable or provenance mismatched.'
+    }
+    foreach ($arch in @('arm64', 'x64')) {
+        $folder = Join-Path $DestinationDirectory "$arch\msix-$arch"
+        New-Item -ItemType Directory -Path $folder -WhatIf:$false | Out-Null
+        Copy-Item -LiteralPath (Join-Path $global:StoreTestFixturePath "$arch\package.msix") -Destination $folder -WhatIf:$false
+        New-Item -ItemType Directory -Path (Join-Path $DestinationDirectory "$arch\win-$arch") -WhatIf:$false | Out-Null
+    }
+    return [pscustomobject]@{ runId = $RunId; runAttempt = $RunAttempt; headSha = $ExpectedSha }
+}
+'@
+        [IO.File]::WriteAllText((Join-Path $entryTools 'CiBuild.ps1'), $ciStub, (New-Object Text.UTF8Encoding($false)))
         $global:StoreTestDraftRun = Copy-Json $global:StoreTestRun
         $global:StoreTestDraftRun.id = 456
         $global:StoreTestDraftRun.path = '.github/workflows/store-release.yml'
@@ -647,9 +689,7 @@ try {
                         (ConvertTo-Json -InputObject $global:StoreTestReceipt -Depth 100), (New-Object Text.UTF8Encoding($false)))
                     return
                 }
-                $arch = $name.Replace('RedrainCast-', '')
-                Copy-Item -LiteralPath (Join-Path $global:StoreTestFixturePath "$arch\package.msix") -Destination $destination -WhatIf:$false
-                return
+                throw 'Only the sanitized Store receipt may be downloaded from Actions.'
             }
             throw 'Unexpected offline GitHub request.'
         }
@@ -660,44 +700,71 @@ try {
             $env:GITHUB_SHA = 'a' * 40
             $env:GITHUB_RUN_ID = '456'
             $preflight = Join-Path $fixtures 'preflight-whatif'
-            & (Join-Path $root 'tools\Invoke-StoreRelease.ps1') -Stage preflight -ConfirmStore $identity.StoreId -WorkDirectory $preflight -WhatIf
+            & $entrypointPath -Stage preflight -ConfirmStore $identity.StoreId -WorkDirectory $preflight -WhatIf
             Assert ($global:StoreTestGhCount -eq 0 -and -not (Test-Path -LiteralPath $preflight)) 'Read-only WhatIf accessed artifacts or created files.'
             Reject {
-                & (Join-Path $root 'tools\Invoke-StoreRelease.ps1') -Stage preflight -BuildRunId '123' -ConfirmStore $identity.StoreId -WhatIf
+                & $entrypointPath -Stage preflight -BuildRunId '123' -ConfirmStore $identity.StoreId -WhatIf
             } 'does not accept'
             $work = Join-Path $fixtures 'whatif'
-            & (Join-Path $root 'tools\Invoke-StoreRelease.ps1') -Stage upload-draft -BuildRunId '123' -ConfirmStore $identity.StoreId -WorkDirectory $work -WhatIf
-            Assert ($global:StoreTestGhCount -eq 3) 'Expected one run read and two artifact downloads.'
+            & $entrypointPath -Stage upload-draft -BuildRunId '123' -ConfirmStore $identity.StoreId -WorkDirectory $work -WhatIf
+            Assert ($global:StoreTestGhCount -eq 1 -and $global:StoreTestCiCalls.Count -eq 1) 'Expected one trusted run read and one private CI archive download.'
+            $call = $global:StoreTestCiCalls[0]
+            Assert ($call.runId -ceq '123' -and $call.runAttempt -eq 2 -and $call.sha -ceq ('a' * 40) -and
+                $call.destination -ceq $work) 'Private CI download was not bound to the exact reviewed run attempt, SHA and destination.'
             Assert (-not (Test-Path -LiteralPath (Join-Path $work 'store-draft-receipt.json'))) 'WhatIf produced a live upload receipt.'
             Reject {
-                & (Join-Path $root 'tools\Invoke-StoreRelease.ps1') -Stage upload-listings-draft -BuildRunId '123' -ConfirmStore $identity.StoreId `
+                & $entrypointPath -Stage upload-listings-draft -BuildRunId '123' -ConfirmStore $identity.StoreId `
                     -WorkDirectory (Join-Path $fixtures 'unapproved-listings') -WhatIf
             } 'reviewed'
-            Assert ($global:StoreTestGhCount -eq 3) 'Unapproved listing input accessed artifacts.'
+            Assert ($global:StoreTestGhCount -eq 1 -and $global:StoreTestCiCalls.Count -eq 1) 'Unapproved listing input accessed private builds.'
             $listingPreflight = Join-Path $fixtures 'whatif-listings'
-            & (Join-Path $root 'tools\Invoke-StoreRelease.ps1') -Stage upload-listings-draft -BuildRunId '123' -ConfirmStore $identity.StoreId `
+            & $entrypointPath -Stage upload-listings-draft -BuildRunId '123' -ConfirmStore $identity.StoreId `
                 -ConfirmListingsCommit ('a' * 40) -WorkDirectory $listingPreflight -WhatIf
-            Assert ($global:StoreTestGhCount -eq 6) 'Listing WhatIf did not validate paired artifacts.'
+            Assert ($global:StoreTestGhCount -eq 2 -and $global:StoreTestCiCalls.Count -eq 2) 'Listing WhatIf did not validate the private paired build.'
             Assert (-not (Test-Path -LiteralPath (Join-Path $listingPreflight 'store-draft-receipt.json')) -and
                 -not (Test-Path -LiteralPath (Join-Path $listingPreflight 'store-packages.zip'))) 'Listing preflight left receipt or ZIP.'
             $global:StoreTestReceipt.listingUpdate.sourceSha = 'b' * 40
             Reject {
-                & (Join-Path $root 'tools\Invoke-StoreRelease.ps1') -Stage submit-draft -DraftRunId '456' -ConfirmStore $identity.StoreId `
+                & $entrypointPath -Stage submit-draft -DraftRunId '456' -ConfirmStore $identity.StoreId `
                     -WorkDirectory (Join-Path $fixtures 'wrong-listing-receipt') -WhatIf
             } 'trusted upload workflow'
-            Assert ($global:StoreTestGhCount -eq 8) 'Wrong listing source was not rejected before build access.'
+            Assert ($global:StoreTestGhCount -eq 4 -and $global:StoreTestCiCalls.Count -eq 2) 'Wrong listing source was not rejected before private build access.'
             $global:StoreTestReceipt.listingUpdate.sourceSha = 'a' * 40
-            & (Join-Path $root 'tools\Invoke-StoreRelease.ps1') -Stage submit-draft -DraftRunId '456' -ConfirmStore $identity.StoreId `
+            & $entrypointPath -Stage submit-draft -DraftRunId '456' -ConfirmStore $identity.StoreId `
                 -WorkDirectory (Join-Path $fixtures 'whatif-listing-submit') -WhatIf
-            Assert ($global:StoreTestGhCount -eq 13) 'Listing submit preflight did not validate upload receipt and build.'
+            Assert ($global:StoreTestGhCount -eq 7 -and $global:StoreTestCiCalls.Count -eq 3) 'Listing submit preflight did not validate the Actions receipt and private build.'
+            foreach ($field in @('head_sha', 'run_attempt')) {
+                $original = $global:StoreTestRun.$field
+                $global:StoreTestRun.$field = if ($field -ceq 'head_sha') { 'b' * 40 } else { 3 }
+                Reject {
+                    & $entrypointPath -Stage upload-draft -BuildRunId '123' -ConfirmStore $identity.StoreId `
+                        -WorkDirectory (Join-Path $fixtures "mismatched-$field") -WhatIf
+                } 'Rebuild.*no Actions build-artifact fallback'
+                $global:StoreTestRun.$field = $original
+            }
+            $global:StoreTestCiFailure = $true
+            Reject {
+                & $entrypointPath -Stage upload-draft -BuildRunId '123' -ConfirmStore $identity.StoreId `
+                    -WorkDirectory (Join-Path $fixtures 'missing-private-archive') -WhatIf
+            } 'Rebuild.*no Actions build-artifact fallback'
+            $global:StoreTestCiFailure = $false
+            Assert ($global:StoreTestGhCount -eq 10 -and $global:StoreTestCiCalls.Count -eq 6) 'Private archive failure fell back to Actions.'
+            $global:StoreTestRun.event = 'pull_request'
+            Reject {
+                & $entrypointPath -Stage upload-draft -BuildRunId '123' -ConfirmStore $identity.StoreId `
+                    -WorkDirectory (Join-Path $fixtures 'untrusted-private-source') -WhatIf
+            } 'successful, completed main run'
+            $global:StoreTestRun.event = 'push'
+            Assert ($global:StoreTestCiCalls.Count -eq 6) 'Untrusted source reached the private build downloader.'
             $env:GITHUB_REF = 'refs/heads/feature'
-            Reject { & (Join-Path $root 'tools\Invoke-StoreRelease.ps1') -Stage upload-draft -BuildRunId '123' -ConfirmStore $identity.StoreId -WorkDirectory (Join-Path $fixtures 'badbranch') -WhatIf } 'manual main'
-            Assert ($global:StoreTestGhCount -eq 13) 'Branch rejection accessed artifacts.'
+            Reject { & $entrypointPath -Stage upload-draft -BuildRunId '123' -ConfirmStore $identity.StoreId -WorkDirectory (Join-Path $fixtures 'badbranch') -WhatIf } 'manual main'
+            Assert ($global:StoreTestGhCount -eq 11 -and $global:StoreTestCiCalls.Count -eq 6) 'Branch rejection accessed private builds.'
         } finally {
             Remove-Item Function:\gh
             if ($null -ne $oldGh) { Set-Item Function:\gh $oldGh.ScriptBlock }
             foreach ($name in $environment.Keys) { [Environment]::SetEnvironmentVariable($name, $environment[$name]) }
-            Remove-Variable StoreTestRun, StoreTestFixturePath, StoreTestGhCount, StoreTestDraftRun, StoreTestReceipt -Scope Global
+            Remove-Variable StoreTestRun, StoreTestFixturePath, StoreTestGhCount, StoreTestDraftRun, StoreTestReceipt,
+                StoreTestCiCalls, StoreTestCiFailure -Scope Global
         }
     }
     Write-Host "$script:passed offline Store tests passed. No live Store, Azure, native build, signing, installation, or capture operations ran."
