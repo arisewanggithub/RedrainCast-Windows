@@ -77,7 +77,7 @@
   <data name="Portrait" xml:space="preserve"><value>पोर्ट्रेट</value></data>
   <data name="SendAudio" xml:space="preserve"><value>रिसीवर को ऑडियो भेजें (स्थानीय प्लेबैक की आवाज़ बंद हो जाती है)</value></data>
   <data name="ShowStatistics" xml:space="preserve"><value>रिसीवर पर प्लेबैक के आँकड़े दिखाएँ</value></data>
-  <data name="SettingsValidation" xml:space="preserve"><value>आयाम के लिए 64 से 3840 पिक्सेल तक पूर्णांक, FPS सीमा के लिए 1 से 120 तक और बिटरेट के लिए {0} से 100 Mbps तक मान दर्ज करें (दशमलव के बाद अधिकतम छह अंक)। समर्थित कोडेक और ओरिएंटेशन चुनें।</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
+  <data name="SettingsValidation" xml:space="preserve"><value>आयाम के लिए 64 से 3840 पिक्सेल तक पूर्णांक, FPS सीमा के लिए असीमित या 1 से 120 तक और बिटरेट के लिए {0} से 100 Mbps तक मान दर्ज करें (दशमलव के बाद अधिकतम छह अंक)। समर्थित कोडेक और ओरिएंटेशन चुनें।</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
   <data name="SavedCodecUnavailable" xml:space="preserve"><value>मौजूदा कैप्चर संदर्भ में सहेजा गया कोडेक उपलब्ध नहीं है। सहेजने से पहले कोई समर्थित कोडेक स्वयं चुनें।</value></data>
   <data name="HelpBody" xml:space="preserve"><value>दोनों डिवाइस पर RedrainCast खोलें: Windows PC या संगत Android डिवाइस। उन्हें एक ही भरोसेमंद स्थानीय नेटवर्क पर रखें।
 
@@ -205,4 +205,7 @@
   <data name="StatisticsSdrOutput" xml:space="preserve"><value>SDR आउटपुट</value></data>
   <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (टोन मैपिंग)</value></data>
   <data name="StatisticsBitDepth" xml:space="preserve"><value>{0}-बिट</value><comment>{0} actual decoded surface bit depth.</comment></data>
+  <data name="Uncapped" xml:space="preserve"><value>असीमित</value></data>
+  <data name="UncappedDefault" xml:space="preserve"><value>असीमित (डिफ़ॉल्ट)</value></data>
+  <data name="UncappedFpsUnavailable" xml:space="preserve"><value>यह रिसीवर असीमित कैप्चर FPS का समर्थन नहीं करता। रिसीवर अपडेट करें या साझाकरण सेटिंग में सकारात्मक FPS सीमा चुनें।</value></data>
 </root>

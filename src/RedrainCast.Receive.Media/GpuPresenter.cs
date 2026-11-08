@@ -21,6 +21,8 @@ public sealed class GpuPresenter : IDisposable
     public bool IsHdr => color.Hdr10;
     internal float SdrPeakNits => hdrRenderer?.SdrPeakNits ?? 0;
     public int FramesPerSecond { get; }
+    // D3D11 requires positive descriptor rates; this hint never schedules or caps frames.
+    public int NominalFramesPerSecond => FramesPerSecond == 0 ? 60 : FramesPerSecond;
     public int ProcessorInputFramesPerSecond { get; private set; }
     public int ProcessorOutputFramesPerSecond { get; private set; }
     public int ProcessorConfigurations { get; private set; }
@@ -67,7 +69,8 @@ public sealed class GpuPresenter : IDisposable
         $"stillDrawing={Interlocked.Read(ref stillDrawing)}, occluded={Interlocked.Read(ref occluded)}, " +
         $"presentAttempts={Interlocked.Read(ref presentAttempts)}, lastPresentResult=0x{unchecked((uint)Volatile.Read(ref lastPresentResult)):X8}, " +
         $"slotHeld={presentationSlot.IsHeld}, renderMaxUs={Interlocked.Read(ref maximumRenderUs)}, " +
-        $"requestedFps={FramesPerSecond}, processorInputFps={ProcessorInputFramesPerSecond}/1, processorOutputFps={ProcessorOutputFramesPerSecond}/1, " +
+        $"requestedFps={(FramesPerSecond == 0 ? "Uncapped" : FramesPerSecond.ToString(System.Globalization.CultureInfo.InvariantCulture))}, " +
+        $"processorNominalInputFps={ProcessorInputFramesPerSecond}/1, processorNominalOutputFps={ProcessorOutputFramesPerSecond}/1, " +
         $"hdr10={color.Hdr10}, outputFormat={(successfulDisplay is null ? "unpresented" : $"{successfulFormat}")}, nativeHdr={nativeHdr}, " +
         $"displayPeakNits={(successfulDisplay?.NativeHdr == true ? $"{successfulDisplay.PeakNits}" : "unknown")}, outputPeakNits={successfulDisplay?.PeakNits}, " +
         $"displayPolicy={successfulDisplay?.Diagnostic ?? "unpresented"}, " +
@@ -104,7 +107,7 @@ public sealed class GpuPresenter : IDisposable
     public GpuPresenter(int framesPerSecond, HdrVideoFormat? color = null)
     {
         this.color = color ?? HdrVideoFormat.Sdr;
-        if (framesPerSecond is < 1 or > 240) throw new ArgumentOutOfRangeException(nameof(framesPerSecond));
+        if (framesPerSecond is < 0 or > 240) throw new ArgumentOutOfRangeException(nameof(framesPerSecond));
         FramesPerSecond = framesPerSecond;
         Device = D3D11CreateDevice(DriverType.Hardware, DeviceCreationFlags.BgraSupport | DeviceCreationFlags.VideoSupport);
         try
@@ -300,8 +303,8 @@ public sealed class GpuPresenter : IDisposable
         var description = new VideoProcessorContentDescription
         {
             InputFrameFormat = VideoFrameFormat.Progressive,
-            InputFrameRate = new((uint)FramesPerSecond, 1),
-            OutputFrameRate = new((uint)FramesPerSecond, 1),
+            InputFrameRate = new((uint)NominalFramesPerSecond, 1),
+            OutputFrameRate = new((uint)NominalFramesPerSecond, 1),
             InputWidth = (uint)input.Width,
             InputHeight = (uint)input.Height,
             OutputWidth = (uint)output.Width,

@@ -77,7 +77,7 @@
   <data name="Portrait" xml:space="preserve"><value>عمودي</value></data>
   <data name="SendAudio" xml:space="preserve"><value>إرسال الصوت إلى المُستقبِل (يكتم التشغيل المحلي)</value></data>
   <data name="ShowStatistics" xml:space="preserve"><value>إظهار إحصاءات التشغيل لدى المُستقبِل</value></data>
-  <data name="SettingsValidation" xml:space="preserve"><value>أدخل بُعدًا بعدد صحيح من 64 إلى 3840 بكسل، وحدًا أقصى لمعدل الإطارات من 1 إلى 120، ومعدل بت من {0} إلى 100 ميغابت/ث (حتى ست منازل عشرية). اختر برنامج ترميز واتجاه عرض مدعومين.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
+  <data name="SettingsValidation" xml:space="preserve"><value>أدخل بُعدًا بعدد صحيح من 64 إلى 3840 بكسل، وحدًا أقصى لمعدل الإطارات من 1 إلى 120 أو بلا حد أقصى، ومعدل بت من {0} إلى 100 ميغابت/ث (حتى ست منازل عشرية). اختر برنامج ترميز واتجاه عرض مدعومين.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
   <data name="SavedCodecUnavailable" xml:space="preserve"><value>برنامج الترميز المحفوظ غير متاح في سياق الالتقاط الحالي. اختر برنامج ترميز مدعومًا بشكل صريح قبل الحفظ.</value></data>
   <data name="HelpBody" xml:space="preserve"><value>افتح RedrainCast على كلا الجهازين: أجهزة كمبيوتر تعمل بنظام Windows أو أجهزة Android متوافقة. أبقهما على الشبكة المحلية الموثوقة نفسها.
 
@@ -205,4 +205,7 @@
   <data name="StatisticsSdrOutput" xml:space="preserve"><value>إخراج SDR</value></data>
   <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (تحويل النغمات)</value></data>
   <data name="StatisticsBitDepth" xml:space="preserve"><value>{0} بت</value><comment>{0} actual decoded surface bit depth.</comment></data>
+  <data name="Uncapped" xml:space="preserve"><value>بلا حد أقصى</value></data>
+  <data name="UncappedDefault" xml:space="preserve"><value>بلا حد أقصى (افتراضي)</value></data>
+  <data name="UncappedFpsUnavailable" xml:space="preserve"><value>لا يدعم هذا المستقبل الالتقاط بلا حد أقصى لمعدل الإطارات. حدّث المستقبل أو اختر حدًا موجبًا في إعدادات المشاركة.</value></data>
 </root>

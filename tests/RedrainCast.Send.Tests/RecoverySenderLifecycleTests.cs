@@ -114,7 +114,7 @@ public sealed class RecoverySenderLifecycleTests
             Assert.Equal(MessageType.Hello, (await Wire.ReadAsync(Control, Limit.Token)).Type);
             await Wire.WriteAsync(Control, Message.Control(MessageType.Hello, 0,
                 new { role = "receiver", versions = new[] { 3 }, name = "Test receiver",
-                    streamRecovery = true, streamRecoveryVersion = 1 }), Limit.Token);
+                    uncappedFps = true, streamRecovery = true, streamRecoveryVersion = 1 }), Limit.Token);
             var request = await ReadControlAsync();
             Assert.Equal(MessageType.SessionRequest, request.Type);
             session = request.Session;

@@ -21,7 +21,7 @@ public partial class App : Application
             Exit();
             return;
         }
-        string[] supportedFlags = ["--self-test", "--layout-self-test", "--playback-stats-self-test",
+        string[] supportedFlags = ["--self-test", "--sharing-settings-self-test", "--layout-self-test", "--playback-stats-self-test",
             "--media-self-test", "--occlusion-self-test", "--color-self-test", "--encoder-self-test", "--hdr-self-test",
             "--peer-self-test", "--peer-timeline", "--peer-static-source", "--peer-duration-seconds",
             "--peer-sample-seconds", "--peer-silent-pcm", "--rotation-self-test",
@@ -37,6 +37,7 @@ public partial class App : Application
             return;
         }
         var testIndex = Array.IndexOf(arguments, "--self-test");
+        var sharingSettingsIndex = Array.IndexOf(arguments, "--sharing-settings-self-test");
         var layoutIndex = Array.IndexOf(arguments, "--layout-self-test");
         var statisticsIndex = Array.IndexOf(arguments, "--playback-stats-self-test");
         var mediaIndex = Array.IndexOf(arguments, "--media-self-test");
@@ -70,12 +71,14 @@ public partial class App : Application
             Exit();
             return;
         }
-        var uiIndex = statisticsIndex >= 0 ? statisticsIndex : layoutIndex >= 0 ? layoutIndex : testIndex;
+        var uiIndex = statisticsIndex >= 0 ? statisticsIndex : layoutIndex >= 0 ? layoutIndex :
+            sharingSettingsIndex >= 0 ? sharingSettingsIndex : testIndex;
         if (uiIndex >= 0 && uiIndex + 1 >= arguments.Length)
             throw new ArgumentException($"{arguments[uiIndex]} requires a report path.");
-        using var uiTestJournal = uiIndex >= 0 ? new DiagnosticLog(Path.Combine(
-            Path.GetDirectoryName(Path.GetFullPath(arguments[uiIndex + 1]))!,
-            Path.GetFileNameWithoutExtension(arguments[uiIndex + 1]) + "-diagnostics")) : null;
+        var diagnosticIndex = uiIndex >= 0 ? uiIndex : highFpsIndex;
+        using var uiTestJournal = diagnosticIndex >= 0 ? new DiagnosticLog(Path.Combine(
+            Path.GetDirectoryName(Path.GetFullPath(arguments[diagnosticIndex + 1]))!,
+            Path.GetFileNameWithoutExtension(arguments[diagnosticIndex + 1]) + "-diagnostics")) : null;
         if (uiTestJournal is not null)
             UnhandledException += (_, failure) => uiTestJournal.Write($"Isolated UI unhandled exception: {failure.Exception}");
         uiTestJournal?.Write($"UI self-test phase: constructing window; version={AppVersion.Current().Label}, pid={Environment.ProcessId}");
@@ -86,7 +89,12 @@ public partial class App : Application
         uiTestJournal?.Write("UI self-test phase: initializing receiver");
         await window.InitializeAsync();
         uiTestJournal?.Write("UI self-test phase: receiver initialization completed");
-        if (statisticsIndex >= 0)
+        if (sharingSettingsIndex >= 0)
+        {
+            try { await window.RunSharingSettingsSelfTestAsync(arguments[sharingSettingsIndex + 1]); }
+            finally { window.Close(); }
+        }
+        else if (statisticsIndex >= 0)
         {
             try { await window.RunPlaybackStatisticsSelfTestAsync(arguments[statisticsIndex + 1]); }
             finally { window.Close(); }

@@ -39,13 +39,15 @@ public sealed partial class MainWindow
             var picture = await Task.Run(() => MediaDiagnostics.EncodeColorProbeAsync("h264", deadline.Token, checkGpuBudget: true), deadline.Token);
             if (!RedrainCast.Send.Core.VideoBitstream.IsKeyFrame("h264", picture.Data, picture.Configuration))
                 throw new IOException("Synthetic fixture did not begin with a random-access H.264 picture.");
-            foreach (var fps in new[] { 90, 120 })
+            foreach (var fps in new[] { 0, 90, 120 })
             {
+                var sourceFps = fps == 0 ? 120 : fps;
+                var nominalFps = fps == 0 ? 60 : fps;
                 var server = receiver ?? throw new IOException("Isolated listener is unavailable.");
                 using var control = new TcpClient { NoDelay = true };
                 using var videoPeer = new TcpClient { NoDelay = true };
                 using var audioPeer = new TcpClient { NoDelay = true };
-                var session = (long)fps;
+                var session = fps == 0 ? 1L : fps;
                 phase = $"{fps} control connect/hello";
                 await control.ConnectAsync(IPAddress.Loopback, server.Port, deadline.Token);
                 var protocol = new HighFpsProbeControl(control.GetStream(), session);
@@ -53,15 +55,19 @@ public sealed partial class MainWindow
                 {
                     await protocol.SendAsync(Packet.Control(PacketType.Hello, 0,
                         JsonData.Object(("role", "sender"), ("versions", JsonData.Value(new[] { 3 })),
-                            ("name", "Synthetic high-FPS receiver probe"), ("streamRecovery", true),
+                            ("name", "Synthetic high-FPS receiver probe"), ("uncappedFps", true), ("streamRecovery", true),
                             ("streamRecoveryVersion", 1))), deadline.Token);
                     var hello = await ReadControlAsync(PacketType.Hello);
                     if (!hello.Object().GetProperty("streamRecovery").GetBoolean())
                         throw new IOException("Native recovery support was not negotiated.");
+                    if (!JsonObject.Boolean(hello.Object(), "uncappedFps"))
+                        throw new IOException("Uncapped FPS support was not advertised.");
                     phase = $"{fps} session request";
+                    var request = new RedrainCast.Send.Core.CaptureSettings(MaxSize: 640, MaxFps: sourceFps, EnableAudio: false)
+                        .Request("Generated H.264 key picture");
+                    request["video"]!["maxFps"] = fps;
                     await protocol.SendAsync(Packet.Control(PacketType.SessionRequest, session,
-                        new RedrainCast.Send.Core.CaptureSettings(MaxSize: 640, MaxFps: fps, EnableAudio: false)
-                            .Request("Generated H.264 key picture")), deadline.Token);
+                        request), deadline.Token);
                     var accepted = await ReadControlAsync(PacketType.SessionAccept);
                     var token = JsonObject.Text(accepted.Object(), "mediaToken", 64);
                     foreach (var (socket, channel) in new[] { (videoPeer, "video"), (audioPeer, "audio") })
@@ -84,8 +90,8 @@ public sealed partial class MainWindow
                             JsonData.Bytes(JsonData.Object(("codec", "h264"), ("width", 640), ("height", 360),
                                 ("csd", JsonData.Value(new[] { Convert.ToBase64String(picture.Configuration) }))))), deadline.Token);
                         await ReadControlAsync(PacketType.StreamReady);
-                        if (video.RequestedFramesPerSecond != fps || video.ProcessorInputFramesPerSecond != fps ||
-                            video.ProcessorOutputFramesPerSecond != fps || video.PlaybackEpoch != epoch + generation - 1)
+                        if (video.RequestedFramesPerSecond != fps || video.ProcessorInputFramesPerSecond != nominalFps ||
+                            video.ProcessorOutputFramesPerSecond != nominalFps || video.PlaybackEpoch != epoch + generation - 1)
                             throw new IOException("Initial or rebuilt presenter did not preserve the requested content rate.");
                         video.CheckDiagnosticGpuBudget();
                         var first = QpcUs();
@@ -110,7 +116,7 @@ public sealed partial class MainWindow
                                 video.CheckDiagnosticGpuBudget();
                                 nextBudgetCheck += 0.5;
                             }
-                            var remaining = emitted / (double)fps - clock.Elapsed.TotalSeconds;
+                            var remaining = emitted / (double)sourceFps - clock.Elapsed.TotalSeconds;
                             if (remaining > 0) { await Task.Delay(TimeSpan.FromSeconds(remaining), deadline.Token); continue; }
                             await SendPictureAsync(QpcUs());
                             emitted++;
@@ -118,6 +124,9 @@ public sealed partial class MainWindow
                         var pumpSeconds = clock.Elapsed.TotalSeconds;
                         await Task.Delay(150, deadline.Token);
                         var seconds = (QpcUs() - first) / 1_000_000.0;
+                        if (fps == 0 && (video.DecodedFrames / seconds <= 60 ||
+                            !video.PresentationDiagnostics.Contains("requestedFps=Uncapped", StringComparison.Ordinal)))
+                            throw new IOException("Uncapped decoding did not exceed the nominal hint or diagnostics lost the uncapped request.");
                         if (video.PresentedFrames < 5 || video.DecodedFrames < 5 || video.HardwareSurfaceCount < 1 ||
                             HomePage.Visibility != Visibility.Collapsed || roles.Role != CastRole.Receiving ||
                             AppWindow.Presenter.Kind != AppWindowPresenterKind.FullScreen || video.PlayedAudioFrames != 0 ||
@@ -196,9 +205,9 @@ public sealed partial class MainWindow
             if (originalPresenter is not null && originalOnTop is { } onTop) originalPresenter.IsAlwaysOnTop = onTop;
         }
         await File.WriteAllTextAsync(reportFile, JsonData.Text(JsonData.Object(
-            ("passed", failure is null && measurements.Count == 4), ("failure", failure),
+            ("passed", failure is null && measurements.Count == 6), ("failure", failure),
             ("measurements", JsonData.Value(measurements)), ("keyProofs", JsonData.Value(keyProofs)),
-            ("ptsUntouched", measurements.Count == 4 ? true : (bool?)null), ("monotonic", measurements.Count == 4 ? true : (bool?)null),
+            ("ptsUntouched", measurements.Count == 6 ? true : (bool?)null), ("monotonic", measurements.Count == 6 ? true : (bool?)null),
             ("recordedPresentations", recordedPresentations), ("droppedPresentationSamples", droppedPresentationSamples),
             ("presentationEvidence", JsonData.Value(presentationEvidence)), ("qpcFrequency", Stopwatch.Frequency),
             ("controlJournals", JsonData.Value(controlJournals)),

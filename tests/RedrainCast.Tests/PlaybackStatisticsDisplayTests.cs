@@ -77,6 +77,38 @@ public sealed class PlaybackStatisticsDisplayTests
         Assert.Equal("N/A", Cell(display, "presentationOutput").Value);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void UncappedCaptureLimitDoesNotReplaceMeasuredRates(bool compact)
+    {
+        var request = new CastRequest("h264", null, 0, "auto");
+        var display = PlaybackStatisticsDisplay.Create(request, Playback(), Receive(), Rates(), 100, 200, null, compact);
+        Assert.Equal("Uncapped", Cell(display, "captureLimit").Value);
+        Assert.Equal(11.8, Cell(display, "receivedFps").Number);
+        Assert.Equal(8.9, Cell(display, "presentedFps").Number);
+        var localized = PlaybackStatisticsDisplay.Create(request, Playback(), Receive(), Rates(), 100, 200, null,
+            compact, key => key == "Uncapped" ? "Sans limite" : RedrainCast.Core.EnglishCatalog.Get(key));
+        Assert.Equal("Sans limite", Cell(localized, "captureLimit").Value);
+    }
+
+    [Fact]
+    public void UncappedLimitDoesNotReplaceHdrStreamOrPresentationMetadata()
+    {
+        var format = new HdrVideoFormat(true);
+        var playback = Playback() with
+        {
+            Video = new(format, VideoTransfer.Pq, "Main 10", 10),
+            Presentation = VideoPresentationStatistics.ForStream(format, true)
+        };
+        var display = PlaybackStatisticsDisplay.Create(
+            new("h265", null, 0, "auto", VideoColor: format), playback, Receive(), Rates(), 100, 100, null);
+        Assert.Equal("Uncapped", Cell(display, "captureLimit").Value);
+        Assert.Equal("HDR10 · PQ", Cell(display, "videoDynamicRange").Value);
+        Assert.Equal("Main 10 · 10-bit", Cell(display, "videoDecodeFormat").Value);
+        Assert.Equal("HDR output", Cell(display, "presentationOutput").Value);
+    }
+
     [Fact]
     public void GoldenContractHasExactStableIdsLabelsUnitsAndOrder()
     {

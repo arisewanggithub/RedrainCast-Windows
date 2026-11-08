@@ -16,7 +16,7 @@ public sealed class JsonSerializationTests
     [Fact]
     public void DefaultSettingsRetainExactNamesOrderAndDefaults()
     {
-        const string expected = """{"MaxSize":1920,"MaxFps":60,"VideoBitrate":8000000,"EnableAudio":false,"ReceiverOrientation":"auto","VideoCodec":"h264","ShowPlaybackStatistics":false}""";
+        const string expected = """{"MaxSize":1920,"MaxFps":0,"VideoBitrate":8000000,"EnableAudio":false,"ReceiverOrientation":"auto","VideoCodec":"h264","ShowPlaybackStatistics":false}""";
         Assert.Equal(expected, SettingsJson(new()));
         Assert.Equal(new CaptureSettings(), CaptureSettings.ReadSaved("{}"));
         Assert.Equal(new CaptureSettings(), CaptureSettings.ReadSaved(expected));
@@ -35,6 +35,7 @@ public sealed class JsonSerializationTests
     }
 
     [Theory]
+    [InlineData("h264", false, "auto", 0)]
     [InlineData("h264", false, "auto", 27)]
     [InlineData("h265", true, "portrait", 90)]
     [InlineData("av1", true, "landscape", 120)]
@@ -59,7 +60,7 @@ public sealed class JsonSerializationTests
         Assert.ThrowsAny<JsonException>(() => CaptureSettings.ReadSaved(json));
 
     [Theory]
-    [InlineData("""{"MaxFps":0}""")]
+    [InlineData("""{"MaxFps":-1}""")]
     [InlineData("""{"MaxSize":63}""")]
     [InlineData("""{"VideoBitrate":99999}""")]
     [InlineData("""{"VideoCodec":null}""")]
@@ -77,7 +78,7 @@ public sealed class JsonSerializationTests
     [Fact]
     public void SessionRequestRetainsNullCropDefaultAudioAndConditionalReceiverOptions()
     {
-        const string expected = """{"video":{"codec":"h264","encoder":"Hardware","bitrate":8000000,"maxSize":1920,"maxFps":60,"displayId":0,"orientation":"0","crop":null,"codecOptions":""},"receiverOrientation":"auto","audio":{"enabled":false,"codec":"raw","encoder":"","bitrate":1536000,"source":"output","codecOptions":""}}""";
+        const string expected = """{"video":{"codec":"h264","encoder":"Hardware","bitrate":8000000,"maxSize":1920,"maxFps":0,"displayId":0,"orientation":"0","crop":null,"codecOptions":""},"receiverOrientation":"auto","audio":{"enabled":false,"codec":"raw","encoder":"","bitrate":1536000,"source":"output","codecOptions":""}}""";
         var settings = new CaptureSettings();
         Assert.Equal(expected, JsonData.Text(settings.Request("Hardware")));
         Assert.Equal(expected, JsonData.Text(settings.Request("Hardware", ReceiverOptions.None)));
@@ -129,6 +130,7 @@ public sealed class JsonSerializationTests
 
     [Theory]
     [InlineData("""{"nonce":1,"nonce":2}""")]
+    [InlineData("""{"uncappedFps":true,"uncappedFps":false}""")]
     [InlineData("""{"nonce":1.5}""")]
     [InlineData("""{"nonce":2147483648}""")]
     [InlineData("""{"nested":{"a":1,"a":2}}""")]

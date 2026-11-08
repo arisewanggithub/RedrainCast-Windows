@@ -1,4 +1,5 @@
 using Windows.Foundation;
+using Windows.Foundation.Metadata;
 using Windows.Graphics;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
@@ -8,7 +9,8 @@ namespace RedrainCast.Send.Media;
 
 internal sealed class CaptureFrameSession(
     IDirect3DDevice device, GraphicsCaptureItem item,
-    TypedEventHandler<Direct3D11CaptureFramePool, object> arrived) : IDisposable
+    TypedEventHandler<Direct3D11CaptureFramePool, object> arrived,
+    Action<string>? diagnostic = null) : IDisposable
 {
     private Direct3D11CaptureFramePool? pool;
     private GraphicsCaptureSession? session;
@@ -29,6 +31,20 @@ internal sealed class CaptureFrameSession(
             pool = Direct3D11CaptureFramePool.CreateFreeThreaded(device, format, 2, size);
             pool.FrameArrived += arrived;
             session = pool.CreateCaptureSession(item);
+            if (ApiInformation.IsPropertyPresent("Windows.Graphics.Capture.GraphicsCaptureSession", "MinUpdateInterval"))
+            {
+                // Newer Windows builds throttle WGC independently of our capture FPS pacer.
+                var previous = session.MinUpdateInterval;
+                session.MinUpdateInterval = TimeSpan.Zero;
+                diagnostic?.Invoke($"Capture WGC timing: previousMinUpdateIntervalTicks={previous.Ticks}, " +
+                    $"requestedMinUpdateIntervalTicks=0, effectiveMinUpdateIntervalTicks={session.MinUpdateInterval.Ticks}. " +
+                    "Positive FPS caps remain enforced by the application pacer.");
+            }
+            else
+            {
+                diagnostic?.Invoke("Capture WGC timing: MinUpdateInterval is unavailable on this Windows build; " +
+                    "the operating system controls capture update cadence.");
+            }
         }
         catch { Close(); throw; }
     }

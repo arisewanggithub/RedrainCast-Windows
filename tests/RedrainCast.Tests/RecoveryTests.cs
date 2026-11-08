@@ -143,6 +143,7 @@ public sealed class RecoveryTests
     [InlineData(false, 480, 90, false)]
     [InlineData(false, 480, 120, false)]
     [InlineData(false, 480, 60, true)]
+    [InlineData(false, 480, 0, true)]
     public async Task ThreeSocketPressureReconstructsBothOutputsAndPreservesSession(bool audio, int sourceAudioFrames, int fps, bool statistics)
     {
         using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -436,8 +437,10 @@ public sealed class RecoveryTests
         var hello = await RedrainCast.Send.Core.Wire.ReadAsync(stream, timeout.Token);
         Assert.True(hello.Json().GetProperty("streamRecovery").GetBoolean());
         await RedrainCast.Send.Core.Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0,
-            new { role = "receiver", versions = new[] { 3 }, name = "Fake", streamRecovery = true, streamRecoveryVersion = 1 }), timeout.Token);
+            new { role = "receiver", versions = new[] { 3 }, name = "Fake", uncappedFps = true,
+                streamRecovery = true, streamRecoveryVersion = 1 }), timeout.Token);
         var request = await RedrainCast.Send.Core.Wire.ReadAsync(stream, timeout.Token);
+        Assert.Equal(0, request.Json().GetProperty("video").GetProperty("maxFps").GetInt32());
         var token = new string('A', 64);
         await RedrainCast.Send.Core.Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, request.Session,
             new { tracks = new[] { 1 }, mediaToken = token }), timeout.Token);

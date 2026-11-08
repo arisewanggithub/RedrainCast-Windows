@@ -15,6 +15,8 @@ namespace RedrainCast.Send.Media;
 
 public static class MediaDiagnostics
 {
+    private static string FrameRateDescription(int fps) => fps == 0 ? "Uncapped" : $"{fps} FPS";
+
     public sealed record HdrColorProbeReport(EncodedVideo Frame, HdrVideoFormat Color,
         int Width, int Height, int MaximumCodeError, string Encoder);
 
@@ -34,7 +36,7 @@ public static class MediaDiagnostics
         using var input = CreateHdrProbeTexture(device, inputWidth, inputHeight);
         using var surface = device.CreateTexture2D(new Texture2DDescription(Format.P010, (uint)width, (uint)height,
             1, 1, BindFlags.RenderTarget));
-        using var converter = new GpuProcessor(device, inputWidth, inputHeight, width, height, settings.MaxFps,
+        using var converter = new GpuProcessor(device, inputWidth, inputHeight, width, height, settings.NominalFramesPerSecond,
             hdr: sourceColor.Hdr, nativeHdr10: settings.VideoColor?.Hdr10 == true);
         converter.ConvertInto(input, inputWidth, inputHeight, surface, sourceColor);
         var codeError = ValidateHdrProbeSurface(device, surface, width, height);
@@ -47,7 +49,7 @@ public static class MediaDiagnostics
         {
             token.ThrowIfCancellationRequested();
             if (submitted < 24 && encoder.CanAcceptInput)
-                encoder.Submit(surface, submitted++ * 10_000_000L / settings.MaxFps);
+                encoder.Submit(surface, submitted++ * 10_000_000L / settings.NominalFramesPerSecond);
             foreach (var frame in encoder.TakeOutput())
             {
                 VideoBitstream.ValidateConfiguration("h265", frame.Configuration, width, height, color);
@@ -144,6 +146,9 @@ public static class MediaDiagnostics
             ((IPEndPoint)listener.LocalEndpoint).Port, "Local diagnostic receiver", false),
             settings, source, state, stop.Token, audio);
         TcpClient? peer = null;
+        var mediaPeers = new List<TcpClient>();
+        using var reads = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var pendingReads = new List<Task<Message>?>();
         try
         {
             peer = await listener.AcceptTcpClientAsync(cancellationToken);
@@ -151,15 +156,36 @@ public static class MediaDiagnostics
             var hello = await Wire.ReadAsync(stream, cancellationToken);
             if (hello.Type != MessageType.Hello) throw new ProtocolException("Self-test expected HELLO.");
             await Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0,
-                JsonData.Object(("role", "receiver"), ("versions", JsonData.Value(new[] { 3 })), ("name", "Local diagnostic receiver"))), cancellationToken);
+                JsonData.Object(("role", "receiver"), ("versions", JsonData.Value(new[] { 3 })), ("name", "Local diagnostic receiver"),
+                    ("uncappedFps", true))), cancellationToken);
             var request = await Wire.ReadAsync(stream, cancellationToken);
             if (request.Type != MessageType.SessionRequest ||
                 request.Json().GetProperty("audio").GetProperty("enabled").GetBoolean() != settings.EnableAudio ||
-                request.Json().GetProperty("video").GetProperty("codec").GetString() != settings.VideoCodec)
+                request.Json().GetProperty("video").GetProperty("codec").GetString() != settings.VideoCodec ||
+                request.Json().GetProperty("video").GetProperty("maxFps").GetInt32() != settings.MaxFps)
                 throw new ProtocolException("Self-test received a different codec/audio request.");
             var session = request.Session;
+            var mediaToken = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
             await Wire.WriteAsync(stream, Message.Control(MessageType.SessionAccept, session,
-                JsonData.Object(("tracks", JsonData.Value(settings.EnableAudio ? new[] { 1, 2 } : [1])))), cancellationToken);
+                JsonData.Object(("tracks", JsonData.Value(settings.EnableAudio ? new[] { 1, 2 } : [1])),
+                    ("mediaToken", mediaToken))), cancellationToken);
+            var streams = new List<NetworkStream> { stream };
+            foreach (var channel in new[] { "video", "audio" })
+            {
+                var mediaPeer = await listener.AcceptTcpClientAsync(cancellationToken);
+                mediaPeers.Add(mediaPeer);
+                var media = mediaPeer.GetStream();
+                var association = await Wire.ReadAsync(media, cancellationToken);
+                if (association.Type != MessageType.Hello || association.Session != session ||
+                    StrictJson.String(association.Json(), "role", 16) != "media" ||
+                    StrictJson.String(association.Json(), "channel", 16) != channel ||
+                    StrictJson.String(association.Json(), "token", 64) != mediaToken)
+                    throw new ProtocolException("Self-test received an invalid media association.");
+                await Wire.WriteAsync(media, Message.Control(MessageType.Hello, session,
+                    JsonData.Object(("channel", channel))), cancellationToken);
+                streams.Add(media);
+            }
+            foreach (var lane in streams) pendingReads.Add(Wire.ReadAsync(lane, reads.Token).AsTask());
             var configured = 0;
             var expected = settings.EnableAudio ? 6 : 2;
             byte[] configuration = [];
@@ -169,7 +195,18 @@ public static class MediaDiagnostics
             long firstVideoPts = -1, firstAudioPts = -1, lastAudioPts = -1;
             while (true)
             {
-                var message = await Wire.ReadAsync(stream, cancellationToken);
+                var completed = pendingReads[0]?.IsCompleted == true
+                    ? pendingReads[0]!
+                    : await Task.WhenAny(pendingReads.OfType<Task<Message>>());
+                var lane = pendingReads.IndexOf(completed);
+                Message message;
+                try { message = await completed; }
+                catch (EndOfStreamException) when (lane != 0)
+                {
+                    pendingReads[lane] = null;
+                    continue;
+                }
+                pendingReads[lane] = Wire.ReadAsync(streams[lane], reads.Token).AsTask();
                 if (message.Session != session) throw new ProtocolException("Self-test session changed.");
                 switch (message.Type)
                 {
@@ -234,7 +271,12 @@ public static class MediaDiagnostics
         finally
         {
             stop.Cancel();
+            reads.Cancel();
+            foreach (var mediaPeer in mediaPeers) mediaPeer.Dispose();
             peer?.Dispose();
+            foreach (var pending in pendingReads.OfType<Task<Message>>())
+                try { await pending; }
+                catch (Exception error) when (error is OperationCanceledException or IOException or SocketException) { }
             await cast;
         }
     }
@@ -261,7 +303,7 @@ public static class MediaDiagnostics
             using var context = device.ImmediateContext.QueryInterface<ID3D11DeviceContext>();
             await using var surfaces = new GpuSurfacePool(device, Width, Height, detail => System.Diagnostics.Trace.TraceError(detail));
             using var encoder = new HardwareEncoder(device, Width, Height, settings);
-            using var processor = new GpuProcessor(device, Width, Height, Width, Height, settings.MaxFps);
+            using var processor = new GpuProcessor(device, Width, Height, Width, Height, settings.NominalFramesPerSecond);
             using var texture = device.CreateTexture2D(new Texture2DDescription(Format.B8G8R8A8_UNorm, (uint)Width, (uint)Height, 1, 1, BindFlags.RenderTarget));
             using var target = device.CreateRenderTargetView(texture);
             var pacer = new FramePacer(settings.MaxFps);
@@ -298,13 +340,13 @@ public static class MediaDiagnostics
         await using var video = new GeneratedVideo(settings);
         await using var audio = new ProbeAudio();
         var count = await LoopbackAsync(video, settings, _ => { }, token, audio);
-        return $"{codec} configured at {fps} FPS: {count} real hardware video access units plus at least 10 real WASAPI PCM packets through localhost; both-track readiness and Stop acknowledged. Diagnostic intentionally does not mute any output, record content or contact LAN peers.";
+        return $"{codec} configured at {FrameRateDescription(fps)}: {count} real hardware video access units plus at least 10 real WASAPI PCM packets through localhost; both-track readiness and Stop acknowledged. Diagnostic intentionally does not mute any output, record content or contact LAN peers.";
     }
 
     public static async Task<string> SelfTestAsync(CancellationToken cancellationToken, int fps = 60, string codec = "h264",
         int frameCount = 30, int width = 640, int height = 360, int bitrate = 8_000_000, bool captureTiming = false,
         bool staticContent = false, bool duplicateTimestamps = false, bool highEntropy = false,
-        Action<EncodedVideo>? observeOutput = null)
+        Action<EncodedVideo>? observeOutput = null, int? sourceFramesPerSecond = null, bool verifyExactTiming = false)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(frameCount, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(frameCount, 3600);
@@ -312,24 +354,53 @@ public static class MediaDiagnostics
             throw new ArgumentOutOfRangeException(nameof(width), "Probe dimensions must be even values from 64 to 3840.");
         var settings = new CaptureSettings(MaxSize: Math.Max(width, height), MaxFps: fps, VideoBitrate: bitrate, VideoCodec: codec);
         settings.Validate();
+        var sourceFps = sourceFramesPerSecond ?? (fps == 0 ? 240 : fps);
+        if (sourceFps is < 1 or > 1000) throw new ArgumentOutOfRangeException(nameof(sourceFramesPerSecond));
+        if (verifyExactTiming && duplicateTimestamps)
+            throw new ArgumentException("Exact timing verification requires fresh source timestamps.");
         using var device = WindowsVideoSource.CreateHardwareDevice();
         using var context = device.ImmediateContext.QueryInterface<ID3D11DeviceContext>();
         await using var surfaces = new GpuSurfacePool(device, width, height, detail => System.Diagnostics.Trace.TraceError(detail));
         using var encoder = new HardwareEncoder(device, width, height, settings);
-        using var processor = new GpuProcessor(device, width, height, width, height, fps);
+        using var processor = new GpuProcessor(device, width, height, width, height, settings.NominalFramesPerSecond);
         using var texture = device.CreateTexture2D(new Texture2DDescription(Format.B8G8R8A8_UNorm, (uint)width, (uint)height,
             1, 1, BindFlags.RenderTarget));
         using var target = device.CreateRenderTargetView(texture);
         using var pattern = highEntropy ? new GeneratedPattern(device) : null;
         var pacer = new FramePacer(fps);
+        using var proofWait = verifyExactTiming ? new CaptureWait(cancellationToken) : null;
         encoder.Start();
         var sent = 0;
         var received = 0;
         var sawIdr = false;
+        var keyFrames = 0;
         var lastPts = -1L;
         var lastInputPts = -1L;
+        var pendingTimes = new Queue<long>();
+        var verifiedTiming = 0;
+        var peakPending = 0;
+        var firstOutputTime = -1L;
+        var lastOutputTime = -1L;
+        var minimumOutputInterval = long.MaxValue;
+        var maximumOutputInterval = 0L;
+        var expectedDuration = TimeSpan.TicksPerSecond / settings.NominalFramesPerSecond;
+        if (verifyExactTiming)
+            encoder.OutputTiming += (timestamp, duration) =>
+            {
+                if (!pendingTimes.TryDequeue(out var expected) || timestamp != expected || duration != expectedDuration)
+                    throw new IOException($"Hardware changed sample timing: expectedTime100ns={expected}, actualTime100ns={timestamp}, " +
+                        $"expectedNominalDuration100ns={expectedDuration}, actualDuration100ns={duration}.");
+                if (firstOutputTime < 0) firstOutputTime = timestamp;
+                if (lastOutputTime >= 0)
+                {
+                    minimumOutputInterval = Math.Min(minimumOutputInterval, timestamp - lastOutputTime);
+                    maximumOutputInterval = Math.Max(maximumOutputInterval, timestamp - lastOutputTime);
+                }
+                lastOutputTime = timestamp;
+                verifiedTiming++;
+            };
         var watch = Stopwatch.StartNew();
-        var timeout = TimeSpan.FromSeconds(Math.Max(15, frameCount / (double)fps * 3 + 15 + frameCount / 120.0 * 0.3));
+        var timeout = TimeSpan.FromSeconds(Math.Max(15, frameCount / (double)sourceFps * 3 + 15 + frameCount / 120.0 * 0.3));
         while (received < frameCount)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -340,12 +411,17 @@ public static class MediaDiagnostics
                 VideoBitstream.ValidateConfiguration(codec, output.Configuration, width, height);
                 if (output.PtsUs < lastPts) throw new IOException("Hardware output timestamps moved backwards.");
                 lastPts = output.PtsUs;
-                sawIdr |= VideoBitstream.IsKeyFrame(codec, output.Data, output.Configuration);
+                if (VideoBitstream.IsKeyFrame(codec, output.Data, output.Configuration))
+                {
+                    sawIdr = true;
+                    keyFrames++;
+                }
                 observeOutput?.Invoke(output);
                 received++;
             }
             var now = (long)((Int128)Stopwatch.GetTimestamp() * TimeSpan.TicksPerSecond / Stopwatch.Frequency);
-            if (encoder.CanAcceptInput && (!captureTiming || pacer.ShouldCapture(now)))
+            if ((!verifyExactTiming || sent < frameCount) &&
+                encoder.CanAcceptInput && (!captureTiming || pacer.ShouldCapture(now)))
             {
                 using var surface = surfaces.TryRent();
                 if (surface is not null)
@@ -353,30 +429,56 @@ public static class MediaDiagnostics
                     if (pattern is not null) pattern.Render(target, width, height, sent);
                     else context.ClearRenderTargetView(target, new Color4(staticContent ? 0.3f : (sent % 30) / 30f, 0.3f, 0.7f, 1));
                     processor.ConvertInto(texture, width, height, surface.Texture);
-                    var inputPts = captureTiming ? now : sent * 10_000_000L / fps;
+                    var inputPts = captureTiming ? now : sent * TimeSpan.TicksPerSecond / sourceFps;
                     if (duplicateTimestamps && sent > 0 && sent % 60 == 0) inputPts = lastInputPts;
+                    if (verifyExactTiming)
+                    {
+                        if (inputPts <= lastInputPts) throw new IOException("Synthetic input timestamp was not fresh.");
+                        if (pendingTimes.Count >= 64) throw new IOException("Hardware timing verification exceeded its bounded pending-input budget.");
+                        pendingTimes.Enqueue(inputPts);
+                        peakPending = Math.Max(peakPending, pendingTimes.Count);
+                        if (sent == frameCount / 2) encoder.RequestKeyFrame();
+                    }
                     encoder.Submit(surface, inputPts);
                     lastInputPts = inputPts;
                     sent++;
-                    if (captureTiming && sent % 120 == 0) await Task.Delay(300, cancellationToken);
+                    if (captureTiming && !verifyExactTiming && sent % 120 == 0) await Task.Delay(300, cancellationToken);
                 }
             }
-            await Task.Delay(2, cancellationToken);
+            if (proofWait is not null) proofWait.Pause();
+            else await Task.Delay(2, cancellationToken);
         }
         if (!sawIdr) throw new IOException("Hardware encoder produced no authentic IDR.");
+        if (verifyExactTiming && frameCount >= 64 && keyFrames < 2)
+            throw new IOException("Hardware encoder did not produce a second random-access picture after the keyframe request.");
+        var encodedFps = received / watch.Elapsed.TotalSeconds;
+        if (verifyExactTiming && (verifiedTiming != frameCount || pendingTimes.Count != 0 || encoder.DroppedFrames != 0))
+            throw new IOException("Hardware did not preserve every synthetic input timestamp.");
+        if (verifyExactTiming && fps == 0 && encodedFps <= 60)
+            throw new IOException($"Uncapped hardware proof did not exceed the 60 FPS nominal hint: measured={encodedFps:F2} FPS; {encoder.Diagnostics}");
         if (frameCount >= 64 && surfaces.RecycledSamples < received - 32)
             throw new IOException($"Encoder input surfaces were not recycled: {surfaces.Diagnostics}");
         var bufferLengths = encoder.InputBufferLengths;
         if (bufferLengths.Current <= 0 || bufferLengths.Current != bufferLengths.Maximum)
             throw new IOException("Hardware encoder input did not have an explicit, full GPU-buffer length.");
-        return $"{encoder.Name}: GPU BGRA -> NV12 -> hardware {codec} {width}x{height} at {fps} FPS/{bitrate} bits/s, " +
+        return $"{encoder.Name}: GPU BGRA -> NV12 -> hardware {codec} {width}x{height} at {FrameRateDescription(fps)}/{bitrate} bits/s, " +
+            $"maxFps={fps}, nominalFps={settings.NominalFramesPerSecond}, syntheticSourceTiming={(captureTiming ? "variable QPC" : $"{sourceFps} FPS")}, " +
             $"captureTiming={captureTiming}, staticContent={staticContent}, duplicateTimestamps={duplicateTimestamps}, highEntropy={highEntropy}; " +
             $"sent={sent}, {received} access units, droppedInputs={encoder.DroppedFrames}, emptyOutputSamples={encoder.EmptyOutputSamples}, " +
+            $"measuredEncodeFps={encodedFps:F2}, exactTimestampAndDurationSamples={verifiedTiming}, nominalDuration100ns={expectedDuration}, peakPendingTiming={peakPending}/64; " +
+            $"keyFrames={keyFrames}, firstOutputTime100ns={firstOutputTime}, lastOutputTime100ns={lastOutputTime}, " +
+            $"minimumOutputInterval100ns={(minimumOutputInterval == long.MaxValue ? 0 : minimumOutputInterval)}, maximumOutputInterval100ns={maximumOutputInterval}; " +
             $"real codec configuration/keyframe, monotonic PTS, {watch.Elapsed.TotalMilliseconds:F0} ms; " +
             $"inputBufferLengthBefore={bufferLengths.Before}, inputBufferLength={bufferLengths.Current}, inputBufferMaximum={bufferLengths.Maximum}; " +
             $"gpuVendor=0x{encoder.VendorId:X4}, requestedCompatibility={(EncoderCompatibility.ForVendor(encoder.VendorId).Count == 0 ? "default" : "CameraRecord/BFrames=0")}; {surfaces.Diagnostics}. " +
             "This synthetic test does not measure live capture FPS.";
     }
+
+    public static Task<string> UncappedEncodeProbeAsync(CancellationToken cancellationToken, string codec = "h264",
+        int frameCount = 600, int sourceFramesPerSecond = 240, Action<EncodedVideo>? observeOutput = null) =>
+        SelfTestAsync(cancellationToken, fps: 0, codec: codec, frameCount: frameCount,
+            captureTiming: true, sourceFramesPerSecond: sourceFramesPerSecond, verifyExactTiming: true,
+            observeOutput: observeOutput);
 
     private sealed class GeneratedPattern : IDisposable
     {

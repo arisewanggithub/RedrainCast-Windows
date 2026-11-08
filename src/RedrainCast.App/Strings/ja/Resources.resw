@@ -77,7 +77,7 @@
   <data name="Portrait" xml:space="preserve"><value>縦向き</value></data>
   <data name="SendAudio" xml:space="preserve"><value>受信先に音声を送信 (この PC の再生音を消音)</value></data>
   <data name="ShowStatistics" xml:space="preserve"><value>受信側に再生統計を表示</value></data>
-  <data name="SettingsValidation" xml:space="preserve"><value>最大辺長は 64 から 3840 ピクセルの整数、FPS の上限は 1 から 120、ビットレートは {0} から 100 Mbps (小数点以下 6 桁まで) で入力してください。対応するコーデックと表示方向を選択してください。</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
+  <data name="SettingsValidation" xml:space="preserve"><value>最大辺長は 64 から 3840 ピクセルの整数、FPS の上限は無制限または 1 から 120、ビットレートは {0} から 100 Mbps (小数点以下 6 桁まで) で入力してください。対応するコーデックと表示方向を選択してください。</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
   <data name="SavedCodecUnavailable" xml:space="preserve"><value>保存済みのコーデックは現在の画面取得環境では利用できません。対応するコーデックを明示的に選択してから保存してください。</value></data>
   <data name="HelpBody" xml:space="preserve"><value>両方のデバイス (Windows PC または対応する Android デバイス) で RedrainCast を開き、同じ信頼できるローカルネットワークに接続してください。
 
@@ -205,4 +205,7 @@
   <data name="StatisticsSdrOutput" xml:space="preserve"><value>SDR 出力</value></data>
   <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (トーンマップ)</value></data>
   <data name="StatisticsBitDepth" xml:space="preserve"><value>{0} ビット</value><comment>{0} actual decoded surface bit depth.</comment></data>
+  <data name="Uncapped" xml:space="preserve"><value>無制限</value></data>
+  <data name="UncappedDefault" xml:space="preserve"><value>無制限（既定）</value></data>
+  <data name="UncappedFpsUnavailable" xml:space="preserve"><value>この受信機は無制限のキャプチャ FPS に対応していません。受信機を更新するか、共有設定で正の FPS 上限を選択してください。</value></data>
 </root>

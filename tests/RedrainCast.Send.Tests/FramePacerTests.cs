@@ -50,6 +50,8 @@ public sealed class FramePacerTests
     [InlineData(240, 120)]
     [InlineData(30, 60)]
     [InlineData(60, 120)]
+    [InlineData(1, 1)]
+    [InlineData(240, 1)]
     public void IntegerTickQuantizationRetainsTheRequestedCadence(int sourceFps, int cap)
     {
         var pacer = new FramePacer(cap);
@@ -101,12 +103,51 @@ public sealed class FramePacerTests
     [Fact]
     public void InvalidTimestampsAndRatesAreNotSilentlyAccepted()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => new FramePacer(0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new FramePacer(-1));
         Assert.Throws<ArgumentOutOfRangeException>(() => new FramePacer(121));
         var pacer = new FramePacer(120);
         Assert.Throws<ArgumentException>(() => pacer.ShouldCapture(-1));
         Assert.True(pacer.ShouldCapture(100));
         Assert.Throws<ArgumentException>(() => pacer.ShouldCapture(99));
+    }
+
+    [Fact]
+    public void UncappedAcceptsEveryFreshFrameWithoutADeadline()
+    {
+        var pacer = new FramePacer(0);
+        for (var index = 0; index < 2400; index++)
+            Assert.True(pacer.ShouldCapture(index * TimeSpan.TicksPerSecond / 240));
+        Assert.Throws<ArgumentException>(() => pacer.ShouldCapture(-1));
+        Assert.Throws<ArgumentException>(() => pacer.ShouldCapture(0));
+        Assert.True(pacer.ShouldCapture(long.MaxValue));
+    }
+
+    [Fact]
+    public void UncappedPendingInputCoalescesWithoutDuplicatesOrClockDelay()
+    {
+        var pacer = new DeferredFramePacer(0);
+        pacer.Offer(1);
+        Assert.True(pacer.TryTake(0, out var first));
+        Assert.Equal(1, first);
+        Assert.False(pacer.TryTake(0, out _));
+        pacer.Offer(1);
+        Assert.False(pacer.HasPending);
+        pacer.Offer(2);
+        pacer.Offer(3);
+        pacer.Offer(3);
+        Assert.True(pacer.TryTake(0, out var newest));
+        Assert.Equal(3, newest);
+        pacer.Offer(4);
+        pacer.DiscardPending();
+        Assert.False(pacer.TryTake(0, out _));
+        Assert.Throws<ArgumentException>(() => pacer.Offer(3));
+        Assert.Throws<ArgumentException>(() => pacer.Offer(-1));
+        pacer.Offer(5);
+        Assert.Throws<ArgumentException>(() => pacer.TryTake(-1, out _));
+        Assert.True(pacer.HasPending);
+        Assert.True(pacer.TryTake(1, out _));
+        pacer.Offer(6);
+        Assert.Throws<ArgumentException>(() => pacer.TryTake(0, out _));
     }
 
     [Fact]

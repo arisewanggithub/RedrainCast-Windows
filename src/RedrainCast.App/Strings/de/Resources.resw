@@ -77,7 +77,7 @@
   <data name="Portrait" xml:space="preserve"><value>Hochformat</value></data>
   <data name="SendAudio" xml:space="preserve"><value>Audio an Empfänger senden (lokale Wiedergabe wird stummgeschaltet)</value></data>
   <data name="ShowStatistics" xml:space="preserve"><value>Wiedergabestatistik auf dem Empfänger anzeigen</value></data>
-  <data name="SettingsValidation" xml:space="preserve"><value>Geben Sie eine ganzzahlige Abmessung von 64 bis 3840 Pixel, eine FPS-Obergrenze von 1 bis 120 und eine Bitrate von {0} bis 100 Mbps (bis zu sechs Nachkommastellen) ein. Wählen Sie einen unterstützten Codec und eine unterstützte Ausrichtung.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
+  <data name="SettingsValidation" xml:space="preserve"><value>Geben Sie eine ganzzahlige Abmessung von 64 bis 3840 Pixel, eine FPS-Obergrenze von 1 bis 120 oder Unbegrenzt und eine Bitrate von {0} bis 100 Mbps (bis zu sechs Nachkommastellen) ein. Wählen Sie einen unterstützten Codec und eine unterstützte Ausrichtung.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
   <data name="SavedCodecUnavailable" xml:space="preserve"><value>Der gespeicherte Codec ist in dieser Aufnahmekonfiguration nicht verfügbar. Wählen Sie vor dem Speichern ausdrücklich einen unterstützten Codec aus.</value></data>
   <data name="HelpBody" xml:space="preserve"><value>Öffnen Sie RedrainCast auf beiden Geräten: Windows-PCs oder kompatiblen Android-Geräten. Beide müssen sich im selben vertrauenswürdigen lokalen Netzwerk befinden.
 
@@ -205,4 +205,7 @@ Live-Vorschauen bleiben lokal und laufen nur, solange diese Auswahl geöffnet is
   <data name="StatisticsSdrOutput" xml:space="preserve"><value>SDR-Ausgabe</value></data>
   <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (Tonemapping)</value></data>
   <data name="StatisticsBitDepth" xml:space="preserve"><value>{0}-Bit</value><comment>{0} actual decoded surface bit depth.</comment></data>
+  <data name="Uncapped" xml:space="preserve"><value>Unbegrenzt</value></data>
+  <data name="UncappedDefault" xml:space="preserve"><value>Unbegrenzt (Standard)</value></data>
+  <data name="UncappedFpsUnavailable" xml:space="preserve"><value>Dieser Empfänger unterstützt keine unbegrenzte Aufnahmebildrate. Aktualisieren Sie den Empfänger oder wählen Sie eine positive FPS-Obergrenze in den Freigabeeinstellungen.</value></data>
 </root>

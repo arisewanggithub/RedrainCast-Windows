@@ -5,7 +5,16 @@ namespace RedrainCast.Receive.Tests;
 
 public sealed class VideoProcessingRateTests
 {
+    [Fact]
+    public void UncappedRateRemainsIndependentOfTheNegotiatedHdrFormat()
+    {
+        var request = new CastRequest("h265", null, 0, "auto", VideoColor: new(true));
+        Assert.True(request.ColorFormat.Hdr10);
+        Assert.Equal(0, request.VideoProcessingFramesPerSecond);
+    }
+
     [Theory]
+    [InlineData(0)]
     [InlineData(1)]
     [InlineData(60)]
     [InlineData(90)]
@@ -22,7 +31,6 @@ public sealed class VideoProcessingRateTests
     }
 
     [Theory]
-    [InlineData(0)]
     [InlineData(-1)]
     [InlineData(241)]
     [InlineData(int.MaxValue)]

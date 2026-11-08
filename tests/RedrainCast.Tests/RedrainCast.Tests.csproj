@@ -53,6 +53,8 @@
     <None Include="..\..\src\RedrainCast.Receive.Media\PresentationRequestState.cs" Link="fixtures\PresentationRequestState.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.Receive.Media\HardwareDecoder.cs" Link="fixtures\HardwareDecoder.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.Receive.Media\VideoPlayback.cs" Link="fixtures\VideoPlayback.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.Receive.Media\HardwareDecoder.cs" Link="fixtures\HardwareDecoder.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\HighFpsSelfTest.cs" Link="fixtures\HighFpsSelfTest.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.App\VideoHost.cs" Link="fixtures\VideoHost.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
   </ItemGroup>
 </Project>

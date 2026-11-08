@@ -6,17 +6,21 @@ using RedrainCast.Protocol;
 
 namespace RedrainCast.Send.Core;
 
-public sealed record CaptureSettings(int MaxSize = 1920, int MaxFps = 60, int VideoBitrate = 8_000_000,
+public sealed record CaptureSettings(int MaxSize = 1920, int MaxFps = 0, int VideoBitrate = 8_000_000,
     bool EnableAudio = false, string ReceiverOrientation = "auto", string VideoCodec = "h264",
     bool ShowPlaybackStatistics = false,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] HdrVideoFormat? VideoColor = null)
 {
-    public static IReadOnlyList<int> FpsPresets { get; } = Array.AsReadOnly<int>([15, 24, 25, 30, 48, 50, 60, 90, 120]);
+    public static IReadOnlyList<int> FpsPresets { get; } = Array.AsReadOnly<int>([0, 15, 24, 25, 30, 48, 50, 60, 90, 120]);
+
+    // Positive media-type hint, never a replacement for the uncapped capture limit.
+    [JsonIgnore]
+    public int NominalFramesPerSecond => MaxFps == 0 ? 60 : MaxFps;
 
     public void Validate()
     {
-        if (MaxSize is < 64 or > 3840 || MaxFps is < 1 or > 120 || VideoBitrate is < 100_000 or > 100_000_000)
-            throw new ArgumentException("Size must be 64-3840, FPS 1-120 and bitrate 100000-100000000 bits/s.");
+        if (MaxSize is < 64 or > 3840 || MaxFps is < 0 or > 120 || VideoBitrate is < 100_000 or > 100_000_000)
+            throw new ArgumentException("Size must be 64-3840, FPS uncapped (0) or 1-120 and bitrate 100000-100000000 bits/s.");
         if (ReceiverOrientation is not ("auto" or "landscape" or "portrait"))
             throw new ArgumentException("Invalid receiver orientation.");
         if (VideoCodec is not ("h264" or "h265" or "av1")) throw new ArgumentException("Choose H.264, H.265 or AV1.");
@@ -52,7 +56,7 @@ public sealed record CaptureSettings(int MaxSize = 1920, int MaxFps = 60, int Vi
             bitrateError = $"Enter a bitrate from {0.1m.ToString(culture)} to 100 Mbps.";
         else if (mbps * 1_000_000 != decimal.Truncate(mbps * 1_000_000))
             bitrateError = "Bitrate must represent a whole number of bits/s (up to six fractional digits in Mbps).";
-        if (fps is null or < 1 or > 120) fpsError = "Choose an FPS cap from 1 to 120.";
+        if (fps is null or < 0 or > 120) fpsError = "Choose Uncapped or an FPS cap from 1 to 120.";
         CaptureSettings? settings = null;
         if (dimensionError == null && bitrateError == null && fpsError == null)
         {

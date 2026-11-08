@@ -373,10 +373,107 @@ public sealed class SessionTests
         var hello = await Wire.ReadAsync(stream, token);
         Assert.Equal(MessageType.Hello, hello.Type);
         await Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0,
-            new { role = "receiver", versions = new[] { 3 }, name = "Test receiver" }), token);
+            new { role = "receiver", versions = new[] { 3 }, name = "Test receiver", uncappedFps = true }), token);
         var request = await Wire.ReadAsync(stream, token);
         Assert.Equal(MessageType.SessionRequest, request.Type);
         return request;
+    }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("false", false)]
+    [InlineData(null, true)]
+    [InlineData("false", true)]
+    public async Task UncappedRequiresExplicitAcknowledgementBeforeEitherRequestPath(string? capability, bool recovery)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var source = new Source { SupportsStreamRecovery = recovery };
+        var audio = new Audio();
+        var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
+            ((IPEndPoint)listener.LocalEndpoint).Port, "Old receiver", false),
+            new(EnableAudio: true), source, _ => { }, timeout.Token, audio);
+        using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
+        var stream = peer.GetStream();
+        var offer = await Wire.ReadAsync(stream, timeout.Token);
+        Assert.True(StrictJson.Boolean(offer.Json(), "uncappedFps"));
+        var hello = RedrainCast.Protocol.JsonData.Object(("role", "receiver"),
+            ("versions", RedrainCast.Protocol.JsonData.Value(new[] { 3 })), ("name", "Old receiver"),
+            ("streamRecovery", recovery), ("streamRecoveryVersion", 1));
+        if (capability is not null) hello["uncappedFps"] = System.Text.Json.Nodes.JsonNode.Parse(capability);
+        await Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0, hello), timeout.Token);
+        var error = await Assert.ThrowsAsync<UncappedFpsUnavailableException>(() => run.WaitAsync(timeout.Token));
+        Assert.Contains("Update the receiver or select a positive FPS cap", error.Message);
+        Assert.Equal(0, await stream.ReadAsync(new byte[1], timeout.Token));
+        Assert.False(source.Started);
+        Assert.False(audio.Started);
+        Assert.True(source.Disposed);
+        Assert.True(audio.Disposed);
+    }
+
+    [Theory]
+    [InlineData(0, true, false)]
+    [InlineData(0, true, true)]
+    [InlineData(1, null, false)]
+    [InlineData(60, false, false)]
+    [InlineData(120, null, true)]
+    public async Task NegotiationPreservesZeroOrPositiveCapsWithoutFallback(int fps, bool? capability, bool recovery)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var source = new Source { SupportsStreamRecovery = recovery };
+        var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
+            ((IPEndPoint)listener.LocalEndpoint).Port, "Receiver", false),
+            new(MaxFps: fps), source, _ => { }, timeout.Token);
+        using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
+        var stream = peer.GetStream();
+        Assert.True(StrictJson.Boolean((await Wire.ReadAsync(stream, timeout.Token)).Json(), "uncappedFps"));
+        var hello = RedrainCast.Protocol.JsonData.Object(("role", "receiver"),
+            ("versions", RedrainCast.Protocol.JsonData.Value(new[] { 3 })), ("name", "Receiver"),
+            ("streamRecovery", recovery), ("streamRecoveryVersion", 1));
+        if (capability is { } supported) hello["uncappedFps"] = supported;
+        await Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0, hello), timeout.Token);
+        var request = await Wire.ReadAsync(stream, timeout.Token);
+        Assert.Equal(MessageType.SessionRequest, request.Type);
+        Assert.Equal(fps, StrictJson.Integer(request.Json().GetProperty("video"), "maxFps"));
+        await Wire.WriteAsync(stream, Message.Control(MessageType.Reject, request.Session,
+            new { code = "BUSY", message = "Bounded admission test" }), timeout.Token);
+        await Assert.ThrowsAnyAsync<IOException>(() => run.WaitAsync(timeout.Token));
+        Assert.False(source.Started);
+        Assert.True(source.Disposed);
+    }
+
+    [Theory]
+    [InlineData(0, "\"true\"")]
+    [InlineData(60, "\"true\"")]
+    [InlineData(0, "null")]
+    [InlineData(60, "null")]
+    [InlineData(0, "1")]
+    [InlineData(60, "0")]
+    [InlineData(0, "{}")]
+    [InlineData(60, "[]")]
+    public async Task MalformedAcknowledgementIsRejectedEvenForCappedRequests(int fps, string capability)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var source = new Source();
+        var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
+            ((IPEndPoint)listener.LocalEndpoint).Port, "Malformed receiver", false),
+            new(MaxFps: fps), source, _ => { }, timeout.Token);
+        using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
+        var stream = peer.GetStream();
+        await Wire.ReadAsync(stream, timeout.Token);
+        var hello = RedrainCast.Protocol.JsonData.Object(("role", "receiver"),
+            ("versions", RedrainCast.Protocol.JsonData.Value(new[] { 3 })), ("name", "Malformed receiver"));
+        hello["uncappedFps"] = System.Text.Json.Nodes.JsonNode.Parse(capability);
+        await Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0, hello), timeout.Token);
+        var error = await Assert.ThrowsAsync<IOException>(() => run.WaitAsync(timeout.Token));
+        Assert.IsType<ProtocolException>(error.InnerException);
+        Assert.False(source.Started);
+        Assert.True(source.Disposed);
     }
 
     [Theory]
@@ -403,7 +500,7 @@ public sealed class SessionTests
         Assert.Equal(MessageType.Hello, (await Wire.ReadAsync(stream, timeout.Token)).Type);
         await Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0,
             new { role = "receiver", versions = new[] { 3 }, name = "Test receiver",
-                streamRecovery = recovery, streamRecoveryVersion = 1 }), timeout.Token);
+                uncappedFps = true, streamRecovery = recovery, streamRecoveryVersion = 1 }), timeout.Token);
         var request = await Wire.ReadAsync(stream, timeout.Token);
         Assert.Equal(MessageType.SessionRequest, request.Type);
         await Wire.WriteAsync(stream, Message.Control(MessageType.Reject, request.Session,
