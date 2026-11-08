@@ -65,6 +65,16 @@ public sealed class LocalizationWiringTests
     }
 
     [Fact]
+    public void SharingSettingsLocalizationProbeUsesTheFpsValueRatherThanTheItemContainer()
+    {
+        var proof = Source("LocalizationSelfTest");
+        Assert.Contains("fps.SelectedValue = 120;", proof);
+        Assert.Contains("fps.SelectedValue is not int cap || cap != 120", proof);
+        Assert.DoesNotContain("fps.SelectedItem = 120;", proof);
+        Assert.DoesNotContain("fps.SelectedItem is not int cap", proof);
+    }
+
+    [Fact]
     public void SystemEventsUseActualPreferredLanguagesExplicitMrtContextAndBoundedLifetime()
     {
         var source = Source("AppStrings");

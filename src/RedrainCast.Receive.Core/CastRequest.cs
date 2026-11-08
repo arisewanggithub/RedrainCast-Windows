@@ -11,7 +11,7 @@ public sealed record CastRequest(string VideoCodec, string? AudioCodec, int Fram
     public ReceiverOptions EffectiveOptions => Options ?? ReceiverOptions.None;
     public uint[] Tracks => AudioCodec is null ? [1u] : [1u, 2u];
 
-    // Session content rate, not a monitor refresh rate or measured throughput guarantee.
+    // Capture cap; zero means uncapped/unknown, not a zero-rate stream.
     public int VideoProcessingFramesPerSecond
     {
         get
@@ -19,8 +19,8 @@ public sealed record CastRequest(string VideoCodec, string? AudioCodec, int Fram
             try { ColorFormat.Validate(VideoCodec); }
             catch (FormatException error) { throw new ProtocolException(error.Message, "UNSUPPORTED_CONFIG"); }
             JsonObject.Require(VideoCodec is "h264" or "h265" or "av1" &&
-                ReceiverOrientation == "auto" && FramesPerSecond is >= 1 and <= 240,
-                "Supports hardware-only H.264, HEVC Main/Main10 and AV1 Profile 0, auto presentation, and requests from 1 to 240 FPS. HDR10 requires explicit negotiation. Actual codec/raster support and throughput depend on hardware. No substitution.",
+                ReceiverOrientation == "auto" && FramesPerSecond is >= 0 and <= 240,
+                "Supports hardware-only H.264, HEVC Main/Main10 and AV1 Profile 0, auto presentation, and uncapped or 1 to 240 FPS requests. HDR10 requires explicit negotiation. Actual codec/raster support and throughput depend on hardware. No substitution.",
                 "UNSUPPORTED_CONFIG");
             return FramesPerSecond;
         }
@@ -52,7 +52,7 @@ public sealed record CastRequest(string VideoCodec, string? AudioCodec, int Fram
             JsonObject.Number(video, "maxSize") is >= 0 and <= 16384 &&
             JsonObject.Number(video, "displayId") >= 0, "Invalid video limits.", "UNSUPPORTED_CONFIG");
         var fps = JsonObject.Number(video, "maxFps");
-        JsonObject.Require(fps is >= 1 and <= 240, "Invalid FPS.", "UNSUPPORTED_CONFIG");
+        JsonObject.Require(fps is >= 0 and <= 240, "Invalid FPS: use 0 for uncapped or an integer cap from 1 to 240.", "UNSUPPORTED_CONFIG");
         JsonObject.Require(JsonObject.Text(video, "orientation") is "0" or "90" or "180" or "270" or
             "@0" or "@90" or "@180" or "@270", "Invalid capture orientation.", "UNSUPPORTED_CONFIG");
         JsonObject.Require(video.TryGetProperty("crop", out var crop), "Missing crop.", "UNSUPPORTED_CONFIG");

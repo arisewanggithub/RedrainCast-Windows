@@ -77,7 +77,7 @@
   <data name="Portrait" xml:space="preserve"><value>Staand</value></data>
   <data name="SendAudio" xml:space="preserve"><value>Audio naar ontvanger verzenden (dempt lokaal afspelen)</value></data>
   <data name="ShowStatistics" xml:space="preserve"><value>Afspeelstatistieken op ontvanger tonen</value></data>
-  <data name="SettingsValidation" xml:space="preserve"><value>Voer een gehele afmeting van 64 tot 3840 pixels, een FPS-limiet van 1 tot 120 en een bitrate van {0} tot 100 Mbps in (maximaal zes decimalen). Kies een ondersteunde codec en schermstand.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
+  <data name="SettingsValidation" xml:space="preserve"><value>Voer een gehele afmeting van 64 tot 3840 pixels, Onbeperkt of een FPS-limiet van 1 tot 120 en een bitrate van {0} tot 100 Mbps in (maximaal zes decimalen). Kies een ondersteunde codec en schermstand.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
   <data name="SavedCodecUnavailable" xml:space="preserve"><value>De opgeslagen codec is niet beschikbaar in de huidige opnamecontext. Selecteer expliciet een ondersteunde codec voordat u opslaat.</value></data>
   <data name="HelpBody" xml:space="preserve"><value>Open RedrainCast op beide apparaten: Windows-pc's of compatibele Android-apparaten. Zorg dat ze op hetzelfde vertrouwde lokale netwerk zijn aangesloten.
 
@@ -205,4 +205,7 @@ Livevoorbeelden blijven lokaal en zijn alleen actief zolang dit keuzevenster ope
   <data name="StatisticsSdrOutput" xml:space="preserve"><value>SDR-uitvoer</value></data>
   <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (tonemapping)</value></data>
   <data name="StatisticsBitDepth" xml:space="preserve"><value>{0}-bit</value><comment>{0} actual decoded surface bit depth.</comment></data>
+  <data name="Uncapped" xml:space="preserve"><value>Onbeperkt</value></data>
+  <data name="UncappedDefault" xml:space="preserve"><value>Onbeperkt (standaard)</value></data>
+  <data name="UncappedFpsUnavailable" xml:space="preserve"><value>Deze ontvanger ondersteunt geen onbeperkte opname-FPS. Werk de ontvanger bij of kies een positieve FPS-limiet in de deelinstellingen.</value></data>
 </root>

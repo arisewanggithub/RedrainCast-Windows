@@ -106,6 +106,9 @@ public sealed class ListenerTests
     }
 
     [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(60)]
     [InlineData(90)]
     [InlineData(120)]
     [InlineData(240)]
@@ -130,6 +133,56 @@ public sealed class ListenerTests
             Assert.False(server.IsBusy);
         }
         Assert.Equal(2, factory.Opens);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UncappedSupportIsAdvertisedEvenWithoutAnOffer(bool? offer)
+    {
+        await using var server = Server();
+        server.Start(false);
+        using var peer = await ConnectAsync(server);
+        var hello = new Dictionary<string, object>
+        {
+            ["role"] = "sender", ["versions"] = new[] { 3 }, ["name"] = "Android uncapped test"
+        };
+        if (offer is { } value) hello["uncappedFps"] = value;
+        await SendAsync(peer, Packet.Control(PacketType.Hello, 0, hello));
+        var response = await ReadAsync(peer);
+        Assert.Equal(PacketType.Hello, response.Type);
+        Assert.True(JsonObject.Boolean(response.Object(), "uncappedFps"));
+    }
+
+    [Theory]
+    [InlineData("\"true\"")]
+    [InlineData("1")]
+    [InlineData("0")]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    [InlineData("true,\"uncappedFps\":false")]
+    public async Task MalformedUncappedOfferIsRejectedBeforeOpeningPlayback(string value)
+    {
+        var factory = new TestFactory();
+        await using var server = Server(factory);
+        server.Start(false);
+        using var peer = await ConnectAsync(server);
+        var payload = System.Text.Encoding.UTF8.GetBytes(
+            "{\"role\":\"sender\",\"versions\":[3],\"name\":\"Malformed\",\"uncappedFps\":" + value + "}");
+        // Write raw bytes so malformed JSON reaches the receiver rather than the writer's validator.
+        var valid = Packet.Control(PacketType.Hello, 0, new { role = "sender", versions = new[] { 3 }, name = "Malformed" });
+        using var bytes = new MemoryStream();
+        await Wire.WriteAsync(bytes, valid);
+        var header = bytes.ToArray()[..Wire.HeaderSize];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(header.AsSpan(8), (uint)payload.Length);
+        await peer.GetStream().WriteAsync(header);
+        await peer.GetStream().WriteAsync(payload);
+        var response = await ReadAsync(peer);
+        Assert.Equal(PacketType.Reject, response.Type);
+        Assert.Equal("PROTOCOL", JsonObject.Text(response.Object(), "code"));
+        Assert.Equal(0, factory.Opens);
     }
 
     [Theory]

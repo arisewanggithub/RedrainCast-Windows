@@ -634,7 +634,11 @@ public sealed partial class MainWindow : Window
             });
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
-        catch (Exception error) { ReportAction(error, "SendingFailed"); }
+        catch (Exception error)
+        {
+            ReportAction(error, error is UncappedFpsUnavailableException ||
+                error.InnerException is UncappedFpsUnavailableException ? "UncappedFpsUnavailable" : "SendingFailed");
+        }
         finally
         {
             sendStop = null;
@@ -757,8 +761,10 @@ public sealed partial class MainWindow : Window
         var size = new TextBox { Text = settings.MaxSize.ToString(editCulture), FlowDirection = FlowDirection.LeftToRight };
         var fps = new ComboBox
         {
-            ItemsSource = CaptureSettings.FpsPresets.Append(settings.MaxFps).Distinct().Order().ToArray(),
-            SelectedItem = settings.MaxFps, HorizontalAlignment = HorizontalAlignment.Stretch, FlowDirection = FlowDirection.LeftToRight
+            ItemsSource = CaptureSettings.FpsPresets.Append(settings.MaxFps).Distinct().Order()
+                .Select(cap => new ComboBoxItem { Tag = cap }).ToArray(),
+            SelectedValuePath = nameof(ComboBoxItem.Tag), SelectedValue = settings.MaxFps,
+            HorizontalAlignment = HorizontalAlignment.Stretch, FlowDirection = FlowDirection.LeftToRight
         };
         var bitrate = new TextBox { Text = (settings.VideoBitrate / 1_000_000m).ToString(editCulture), FlowDirection = FlowDirection.LeftToRight };
         var codec = new ComboBox { ItemsSource = codecSelection.Choices, FlowDirection = FlowDirection.LeftToRight,
@@ -782,6 +788,9 @@ public sealed partial class MainWindow : Window
         {
             size.Header = InputHeader("MaximumDimension");
             fps.Header = InputHeader("MaximumFPS");
+            foreach (var item in fps.Items.Cast<ComboBoxItem>())
+                item.Content = item.Tag is 0 ? L("UncappedDefault") :
+                    $"{((int)item.Tag).ToString(strings.Culture)} {L("UnitFrames")}";
             bitrate.Header = InputHeader("VideoBitrate");
             codec.Header = InputHeader("VideoCodec");
             orientation.Header = InputHeader("ReceiverOrientation");
@@ -826,7 +835,7 @@ public sealed partial class MainWindow : Window
                     _ => throw new ArgumentException("Choose a receiver orientation before saving.")
                 };
                 var input = CaptureSettings.ParseInput(size.Text, bitrate.Text,
-                    fps.SelectedItem is int cap ? cap : null,
+                    fps.SelectedValue is int cap ? cap : null,
                     receiverOrientation, editCulture, videoCodec, audio.IsChecked == true, playbackStats.IsChecked == true);
                 var next = input.Settings ?? throw new ArgumentException(string.Join(" ",
                     new[] { input.DimensionError, input.BitrateError, input.FpsError }.OfType<string>()));
@@ -946,6 +955,71 @@ public sealed partial class MainWindow : Window
         catch (Exception error) { closing = false; Report(error); }
     }
 
+    private async Task<string> VerifySharingSettingsAsync(CancellationToken token)
+    {
+        if (!isolated) throw new InvalidOperationException("Sharing settings verification requires an isolated app.");
+        var originalSettings = settings;
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(TimeSpan.FromSeconds(20));
+        try
+        {
+            await OpenDialogAsync();
+            if (currentDialog?.Content is not ScrollViewer { Content: StackPanel settingsPanel } ||
+                !settingsPanel.Children.OfType<ComboBox>().Select(combo => combo.Header is TextBlock header ? header.Text : combo.Header?.ToString())
+                    .SequenceEqual(new[] { L("MaximumFPS"), L("VideoCodec"), L("ReceiverOrientation") }))
+                throw new InvalidOperationException("Sharing settings lost the FPS/codec/orientation options or expose a transport selector.");
+            var fpsChoice = settingsPanel.Children.OfType<ComboBox>().First();
+            if (fpsChoice.IsEditable ||
+                !fpsChoice.Items.Cast<ComboBoxItem>().Select(item => (int)item.Tag).SequenceEqual(CaptureSettings.FpsPresets) ||
+                fpsChoice.SelectedValue is not int defaultFps || defaultFps != 0 ||
+                fpsChoice.Items.Cast<ComboBoxItem>().First().Content?.ToString() != L("UncappedDefault"))
+                throw new InvalidOperationException("The FPS dropdown must offer Uncapped by default and positive presets up to 120.");
+            fpsChoice.SelectedValue = 120;
+            if (fpsChoice.SelectedValue is not int selectedFps || selectedFps != 120)
+                throw new InvalidOperationException("The FPS dropdown could not select 120 FPS.");
+            await CloseDialogAsync();
+            settings = settings with { MaxFps = 47 };
+            await OpenDialogAsync();
+            if (currentDialog?.Content is not ScrollViewer { Content: StackPanel legacySettingsPanel } ||
+                legacySettingsPanel.Children.OfType<ComboBox>().First() is not { IsEditable: false, SelectedValue: int legacyFps } legacyFpsChoice ||
+                legacyFps != 47 || !legacyFpsChoice.Items.Cast<ComboBoxItem>().Select(item => (int)item.Tag)
+                    .SequenceEqual(CaptureSettings.FpsPresets.Append(47).Order()))
+                throw new InvalidOperationException("The FPS dropdown did not preserve the saved custom cap alongside the common presets.");
+            await CloseDialogAsync();
+            return "Settings offer a non-editable FPS dropdown defaulting to Uncapped, allow 120, preserve saved custom caps, and retain codec/orientation without a transport selector.";
+        }
+        finally
+        {
+            currentDialog?.Hide();
+            settings = originalSettings;
+        }
+
+        async Task OpenDialogAsync()
+        {
+            if (currentDialog is not null) throw new InvalidOperationException("An unexpected dialog is already open.");
+            Settings_Click(SettingsButton, new RoutedEventArgs());
+            while (currentDialog is null) await Task.Delay(25, deadline.Token);
+        }
+
+        async Task CloseDialogAsync()
+        {
+            currentDialog!.Hide();
+            while (currentDialog is not null) await Task.Delay(25, deadline.Token);
+        }
+    }
+
+    internal async Task RunSharingSettingsSelfTestAsync(string reportFile)
+    {
+        var checks = new List<string>();
+        string? failure = null;
+        try { checks.Add(await VerifySharingSettingsAsync(CancellationToken.None)); }
+        catch (Exception error) { failure = error.ToString(); }
+        await File.WriteAllTextAsync(reportFile, JsonData.Text(JsonData.Object(
+            ("passed", failure is null), ("checks", JsonData.Value(checks)), ("failure", failure),
+            ("inputInjected", false), ("captureUsed", false), ("audioUsed", false), ("settingsPersisted", false)),
+            indented: true));
+    }
+
     internal async Task RunSelfTestAsync(string reportFile, DiagnosticLog? journal = null)
     {
         var checks = new List<string>();
@@ -1042,35 +1116,7 @@ public sealed partial class MainWindow : Window
                 throw new InvalidOperationException("Receiving did not recover after the conflicting listener was released.");
             checks.Add("Real bind conflict retains its startup error, leaves sending enabled, and recovers after the port is released.");
             Phase("checking sharing settings");
-            Settings_Click(SettingsButton, new RoutedEventArgs());
-            await Task.Delay(150);
-            if (currentDialog?.Content is not ScrollViewer { Content: StackPanel settingsPanel } ||
-                !settingsPanel.Children.OfType<ComboBox>().Select(combo => combo.Header is TextBlock header ? header.Text : combo.Header?.ToString())
-                    .SequenceEqual(new[] { L("MaximumFPS"), L("VideoCodec"), L("ReceiverOrientation") }))
-                throw new InvalidOperationException("Sharing settings lost the FPS/codec/orientation options or expose a transport selector.");
-            var fpsChoice = settingsPanel.Children.OfType<ComboBox>().First();
-            if (fpsChoice.IsEditable || !fpsChoice.Items.Cast<int>().SequenceEqual(CaptureSettings.FpsPresets) ||
-                fpsChoice.SelectedItem is not int defaultFps || defaultFps != 60)
-                throw new InvalidOperationException("The FPS dropdown must offer the common presets up to 120 and default to 60.");
-            fpsChoice.SelectedItem = 120;
-            if (fpsChoice.SelectedItem is not int selectedFps || selectedFps != 120)
-                throw new InvalidOperationException("The FPS dropdown could not select 120 FPS.");
-            currentDialog.Hide();
-            using (var dialogClose = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
-                while (currentDialog is not null) await Task.Delay(25, dialogClose.Token);
-            var originalSettings = settings;
-            settings = settings with { MaxFps = 47 };
-            Settings_Click(SettingsButton, new RoutedEventArgs());
-            await Task.Delay(150);
-            if (currentDialog?.Content is not ScrollViewer { Content: StackPanel legacySettingsPanel } ||
-                legacySettingsPanel.Children.OfType<ComboBox>().First() is not { IsEditable: false, SelectedItem: int legacyFps } legacyFpsChoice ||
-                legacyFps != 47 || !legacyFpsChoice.Items.Cast<int>().SequenceEqual(CaptureSettings.FpsPresets.Append(47).Order()))
-                throw new InvalidOperationException("The FPS dropdown did not preserve the saved custom cap alongside the common presets.");
-            currentDialog.Hide();
-            using (var dialogClose = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
-                while (currentDialog is not null) await Task.Delay(25, dialogClose.Token);
-            settings = originalSettings;
-            checks.Add("Settings offer a non-editable common-FPS dropdown defaulting to 60, allow 120, preserve saved custom caps, and retain codec/orientation without a transport selector.");
+            checks.Add(await VerifySharingSettingsAsync(CancellationToken.None));
             var captureTargets = CaptureSource.Enumerate();
             if (!captureTargets.Any(target => !target.IsWindow) ||
                 !captureTargets.Any(target => target.IsWindow && target.Handle == WinRT.Interop.WindowNative.GetWindowHandle(this)))

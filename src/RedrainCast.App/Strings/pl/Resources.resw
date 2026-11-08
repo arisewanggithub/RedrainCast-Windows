@@ -77,7 +77,7 @@
   <data name="Portrait" xml:space="preserve"><value>Pionowa</value></data>
   <data name="SendAudio" xml:space="preserve"><value>Wysyłaj dźwięk do odbiornika (wycisza odtwarzanie lokalne)</value></data>
   <data name="ShowStatistics" xml:space="preserve"><value>Pokazuj statystyki odtwarzania na odbiorniku</value></data>
-  <data name="SettingsValidation" xml:space="preserve"><value>Wpisz wymiar w pełnych pikselach od 64 do 3840, limit FPS od 1 do 120 i przepływność od {0} do 100 Mbps (do sześciu cyfr po separatorze dziesiętnym). Wybierz obsługiwany kodek i orientację.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
+  <data name="SettingsValidation" xml:space="preserve"><value>Wpisz wymiar w pełnych pikselach od 64 do 3840, wybierz Bez limitu lub limit FPS od 1 do 120 i przepływność od {0} do 100 Mbps (do sześciu cyfr po separatorze dziesiętnym). Wybierz obsługiwany kodek i orientację.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
   <data name="SavedCodecUnavailable" xml:space="preserve"><value>Zapisany kodek jest niedostępny w bieżącym kontekście przechwytywania. Przed zapisaniem wybierz obsługiwany kodek.</value></data>
   <data name="HelpBody" xml:space="preserve"><value>Otwórz RedrainCast na obu urządzeniach: komputerach z systemem Windows lub zgodnych urządzeniach z systemem Android. Utrzymuj je w tej samej zaufanej sieci lokalnej.
 
@@ -205,4 +205,7 @@ Podglądy na żywo są lokalne i działają tylko wtedy, gdy to okno wyboru jest
   <data name="StatisticsSdrOutput" xml:space="preserve"><value>Wyjście SDR</value></data>
   <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (mapowanie tonów)</value></data>
   <data name="StatisticsBitDepth" xml:space="preserve"><value>{0}-bit</value><comment>{0} actual decoded surface bit depth.</comment></data>
+  <data name="Uncapped" xml:space="preserve"><value>Bez limitu</value></data>
+  <data name="UncappedDefault" xml:space="preserve"><value>Bez limitu (domyślnie)</value></data>
+  <data name="UncappedFpsUnavailable" xml:space="preserve"><value>Ten odbiornik nie obsługuje przechwytywania bez limitu FPS. Zaktualizuj odbiornik lub wybierz dodatni limit FPS w ustawieniach udostępniania.</value></data>
 </root>

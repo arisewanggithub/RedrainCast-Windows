@@ -77,7 +77,7 @@
   <data name="Portrait" xml:space="preserve"><value>Potret</value></data>
   <data name="SendAudio" xml:space="preserve"><value>Kirim audio ke penerima (membisukan pemutaran lokal)</value></data>
   <data name="ShowStatistics" xml:space="preserve"><value>Tampilkan statistik pemutaran di penerima</value></data>
-  <data name="SettingsValidation" xml:space="preserve"><value>Masukkan dimensi berupa bilangan bulat dari 64 hingga 3840 piksel, batas FPS dari 1 hingga 120, dan bitrate dari {0} hingga 100 Mbps (maksimal enam angka desimal). Pilih kodek dan orientasi yang didukung.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
+  <data name="SettingsValidation" xml:space="preserve"><value>Masukkan dimensi berupa bilangan bulat dari 64 hingga 3840 piksel, pilih Tanpa batas atau batas FPS dari 1 hingga 120, dan bitrate dari {0} hingga 100 Mbps (maksimal enam angka desimal). Pilih kodek dan orientasi yang didukung.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
   <data name="SavedCodecUnavailable" xml:space="preserve"><value>Kodek tersimpan tidak tersedia dalam konteks tangkapan ini. Pilih secara eksplisit kodek yang didukung sebelum menyimpan.</value></data>
   <data name="HelpBody" xml:space="preserve"><value>Buka RedrainCast di kedua perangkat: PC Windows atau perangkat Android yang kompatibel. Pastikan keduanya berada di jaringan lokal tepercaya yang sama.
 
@@ -205,4 +205,7 @@ Pratinjau langsung bersifat lokal dan hanya berjalan selama pemilih ini terbuka.
   <data name="StatisticsSdrOutput" xml:space="preserve"><value>Keluaran SDR</value></data>
   <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (pemetaan nada)</value></data>
   <data name="StatisticsBitDepth" xml:space="preserve"><value>{0}-bit</value><comment>{0} actual decoded surface bit depth.</comment></data>
+  <data name="Uncapped" xml:space="preserve"><value>Tanpa batas</value></data>
+  <data name="UncappedDefault" xml:space="preserve"><value>Tanpa batas (default)</value></data>
+  <data name="UncappedFpsUnavailable" xml:space="preserve"><value>Penerima ini tidak mendukung FPS pengambilan tanpa batas. Perbarui penerima atau pilih batas FPS positif di pengaturan berbagi.</value></data>
 </root>

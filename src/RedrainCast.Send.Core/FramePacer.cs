@@ -11,9 +11,9 @@ public sealed class FramePacer
 
     public FramePacer(int fps)
     {
-        if (fps is < 1 or > 120) throw new ArgumentOutOfRangeException(nameof(fps), "FPS must be from 1 to 120.");
+        if (fps is < 0 or > 120) throw new ArgumentOutOfRangeException(nameof(fps), "FPS must be 0 (uncapped) or from 1 to 120.");
         this.fps = fps;
-        toleranceTicks = Math.Min(TimeSpan.TicksPerMillisecond, TicksPerSecond / (fps * 20));
+        toleranceTicks = fps == 0 ? 0 : Math.Min(TimeSpan.TicksPerMillisecond, TicksPerSecond / (fps * 20));
     }
 
     public bool ShouldCapture(long timestamp100ns)
@@ -21,6 +21,7 @@ public sealed class FramePacer
         if (timestamp100ns < 0 || timestamp100ns < previousTimestamp)
             throw new ArgumentException("Capture timestamps must be nonnegative and monotonic.");
         previousTimestamp = timestamp100ns;
+        if (fps == 0) return true;
         if (origin < 0) { origin = timestamp100ns; return true; }
         var elapsed = (Int128)(timestamp100ns - origin) * fps;
         var deadline = nextFrame * TicksPerSecond;
@@ -40,6 +41,7 @@ public sealed class FramePacer
 public sealed class DeferredFramePacer(int fps)
 {
     private readonly FramePacer pacer = new(fps);
+    private readonly bool uncapped = fps == 0;
     public bool HasPending { get; private set; }
     private long latestTimestamp = -1;
 
@@ -47,6 +49,7 @@ public sealed class DeferredFramePacer(int fps)
     {
         if (sourceTimestamp < 0 || sourceTimestamp < latestTimestamp)
             throw new ArgumentException("Capture timestamps must be nonnegative and monotonic.");
+        if (uncapped && sourceTimestamp == latestTimestamp) return;
         latestTimestamp = sourceTimestamp;
         HasPending = true;
     }

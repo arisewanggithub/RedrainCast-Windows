@@ -48,7 +48,8 @@ Send and receive screens in one native Windows application. Windows 11 22H2+,
 - Incoming/outgoing setup races have one atomic winner; additional sessions
   cannot evict an active cast. This app excludes its own listener from discovery.
 - Settings retain maximum dimensions, FPS, bitrate, codec, orientation and audio.
-  Maximum FPS uses a dropdown with 15, 24, 25, 30, 48, 50, 60 (default), 90 and 120.
+  Maximum capture FPS uses a dropdown with **Uncapped (default)**, 15, 24, 25,
+  30, 48, 50, 60, 90 and 120.
   Existing saved custom caps remain selectable. This is the sender's capture limit,
   not a guaranteed capture, decode or display rate.
   Capture targets and active sessions are not persisted.
@@ -157,7 +158,7 @@ and each app filters its own identity without hiding other local app instances.
 Legacy advertisements without an ID remain supported and expire normally.
 This identifier is not authentication.
 
-The receive engine accepts 1–240 FPS requests for hardware H.264, HEVC and AV1, with
+The receive engine accepts uncapped (0) or 1–240 FPS requests for hardware H.264, HEVC and AV1, with
 optional PCM/AAC/Opus audio. The send engine uses Windows Graphics Capture,
 hardware Media Foundation H.264/HEVC/AV1, and optional receiver-only audio.
 There is no software video or codec fallback. Hardware support is device/driver
@@ -168,13 +169,17 @@ guarantee mute restoration.
 Receiver admission is not a throughput certification: actual codec, negotiated SDR
 or HDR10 profile, raster and hardware decoding/processing must configure successfully,
 and failures stay visible without software fallback or FPS coercion.
-The D3D11 video processor uses the session's requested content rate for both
+The D3D11 video processor uses the session's positive requested content rate for both
 input/output descriptors, including rebuilds and resize/rotation resets; these
 descriptors are not measured presentation FPS or a conversion to display Hz.
+For uncapped requests it uses a nominal 60/1 descriptor hint only; this does not
+pace capture, decoding or presentation. The decoder uses packet timestamps and
+does not set a frame-rate hint. Statistics show **Uncapped** for the capture limit
+while received, decoded and presented FPS remain independently measured.
 A 60 Hz panel can present the latest available picture while decoding a faster
 stream. Capture, decode and display rates depend on codec, resolution, source
-and hardware. The Windows sender still offers at most 120 FPS, defaults to 60
-and preserves existing saved custom limits. Discovery does not advertise an FPS
+and hardware. The Windows sender defaults to uncapped capture, offers positive
+caps through 120 FPS, and preserves existing saved limits. Discovery does not advertise an FPS
 capability. HDR AV1 and Qualcomm AV1 sending remain unsupported.
 
 `tools\Test-HighFpsReceiver.ps1 -App <published-exe> -ReportDirectory <new-directory>`
@@ -184,7 +189,7 @@ non-minimized foreground window and a visible, non-minimized owned helper are
 required. The receiver-only probe injects no input; foreground ownership is
 required only for input injection, which this probe does not perform.
 It generates one small 640x360 SDR H.264 key picture without capture, replays that
-synthetic picture for five seconds each at requested 90/120 FPS with source-clock
+synthetic picture for five seconds each at requested uncapped/90/120 FPS with source-clock
 timestamps, and rebuilds native playback halfway through each rate. No audio,
 capture worker, user-window capture, remote receiver or HDR/AV1 is involved.
 The existing 1 GiB/80%-budget GPU guard, 35-second internal/45-second external
@@ -242,7 +247,7 @@ and transport-override validation remains in force.
 | New Windows → new Windows, checked | Mutual `playbackStats`; explicit request | On; portable three-socket tests, both legacy-session and recovery paths |
 | New Windows → new Windows, unchecked | Capability may be mutual; request extension absent | Off; same portable tests |
 | Legacy Windows/current Android sender → new Windows | No option offer; no option acknowledgement | Normal cast, off; raw TCP fixtures, including an unnegotiated option that cannot activate |
-| New Windows → legacy Windows/current Android receiver, checked | No option acknowledgement; entire request extension absent | Normal streaming and Stop; raw TCP legacy receiver fixtures, persistent nonfatal notice |
+| New Windows → legacy Windows/Android receiver, checked, positive FPS cap selected | No option acknowledgement; entire statistics request extension absent | Normal streaming and Stop; raw TCP legacy receiver fixtures, persistent nonfatal notice |
 | Future peer, revision 1 with unknown name/member | Known intersection only | Known statistics work; unknown option ignored; raw TCP and parser tests |
 | Future peer, unknown revision | No common option schema | Legacy cast accepted, off; raw TCP and parser tests |
 | Malformed known fields / duplicate / oversized envelope | Reject `PROTOCOL` | Strict parser and raw TCP rejection tests |
@@ -251,8 +256,50 @@ Android evidence is **source inspection plus Windows-hosted wire fixtures**, not
 physical-phone validation. Inspected current Android `ReceiverLink.kt` offers
 rotation/recovery and validates their known types while ignoring other HELLO
 members; `ReceiverServer.kt` echoes only those capabilities. `Configuration.kt`
-accepts FPS 1–240, ignores unrelated request members, and explicitly denies
+at the time accepted FPS 1–240, ignored unrelated request members, and explicitly denied
 `mediaTransport`. No Android source, phone or ADB was modified or exercised.
+
+#### Uncapped capture FPS (optional wire-v3 extension)
+
+Control sender HELLO may offer `"uncappedFps":true`. The Windows receiver always
+advertises `"uncappedFps":true` in its control HELLO, even if the sender omitted
+the offer or offered false. A present offer must be Boolean; null, numbers,
+strings, arrays, objects and duplicate properties are rejected as `PROTOCOL`.
+`SESSION_REQUEST.video.maxFps` must be an exact JSON integer from 0 through 240:
+0 means uncapped/unknown capture rate, and 1–240 remain capture caps. Negative,
+over-range, fractional/exponent, string/coerced and duplicate values are rejected.
+Senders must send zero only when the receiver explicitly acknowledges true;
+otherwise they must report an update/select-cap error, not silently choose 60.
+The Windows sender offers this capability and defaults to zero for new settings;
+existing saved positive caps remain unchanged. A legacy receiver requires the user
+to update it or select a positive cap before any SESSION_REQUEST is sent.
+Both normal and recovery sessions use the same capability gate. Windows capture
+pacing is disabled at zero, but encoder credits, bounded surfaces and transport
+backpressure remain active. Media Foundation and D3D11 receive a positive nominal
+60 FPS media-type hint for uncapped streams, not a capture/encoding throttle.
+On Windows builds exposing `GraphicsCaptureSession.MinUpdateInterval`, every
+new or rearmed capture session explicitly requests zero update interval. Recent
+Windows versions otherwise apply a separate WGC default interval that can limit
+capture to roughly 50–60 FPS even on high-refresh displays. Positive FPS caps
+remain enforced by the application pacer. Diagnostics report the previous and
+effective OS interval, or explicitly report when the API is unavailable.
+Actual capture/encoding rates depend on source updates and hardware/driver support;
+uncapped does not promise unlimited FPS or physical display refresh rates.
+Audio, bitrate and resolution defaults are unchanged.
+Updated Android peers implement this extension; the earlier Android inspection
+above describes the legacy baseline, not the updated Android behavior.
+`--sharing-settings-self-test <report.json>` checks the real isolated settings
+dialog, including the default label, positive presets and a saved custom cap,
+without injected input, capture, audio or persisted settings changes. It shares
+the assertions used by the full UI self-test.
+
+Native sender validation uses generated GPU frames, not a user's display, audio,
+or network receiver. On the tested ARM64/NVIDIA setup, uncapped 640x360 H.264 and
+HEVC each encoded 600 frames above 300 FPS with nominal 60 FPS media types,
+exact source timestamps, no dropped inputs, and bounded surface/timing queues.
+Separate 30/60/120 FPS probes retained their pacing caps. This proves the nominal
+hint is not an application encoding throttle on that hardware; it does not
+certify other drivers, AV1, larger rasters, or live capture rates.
 
 #### Statistics definitions and limits
 

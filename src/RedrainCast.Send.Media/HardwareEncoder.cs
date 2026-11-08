@@ -58,9 +58,10 @@ public sealed class HardwareEncoder : IDisposable
     public uint VendorId { get; }
     public int DroppedFrames => Volatile.Read(ref droppedFrames);
     public int EmptyOutputSamples => Volatile.Read(ref emptyOutputSamples);
+    internal event Action<long, long>? OutputTiming;
     internal (int Before, int Current, int Maximum) InputBufferLengths => (
         Volatile.Read(ref inputBufferLengthBefore), Volatile.Read(ref inputBufferLength), Volatile.Read(ref inputBufferMaximum));
-    public string Diagnostics => $"encoder={Name}; gpuVendor=0x{VendorId:X4}, " +
+    public string Diagnostics => $"encoder={Name}; maxFps={settings.MaxFps}, nominalFps={settings.NominalFramesPerSecond}; gpuVendor=0x{VendorId:X4}, " +
         $"requestedCompatibility={(EncoderCompatibility.ForVendor(VendorId).Count == 0 ? "default" : "CameraRecord/BFrames=0")}; " +
         $"needInputEvents={Volatile.Read(ref needInputEvents)}, " +
         $"haveOutputEvents={Volatile.Read(ref haveOutputEvents)}, inputRequests={inputFlow.InputRequests}, " +
@@ -137,20 +138,20 @@ public sealed class HardwareEncoder : IDisposable
                     deviceManager = MFCreateDXGIDeviceManager();
                     deviceManager.ResetDevice(device).CheckError();
                     selected.ProcessMessage(TMessageType.MessageSetD3DManager, (nuint)deviceManager.NativePointer);
-                    using var outputType = MediaType(Subtype(settings.VideoCodec), width, height, settings.MaxFps, color);
+                    using var outputType = MediaType(Subtype(settings.VideoCodec), width, height, settings.NominalFramesPerSecond, color);
                     outputType.Set(MediaTypeAttributeKeys.AvgBitrate, (uint)settings.VideoBitrate).CheckError();
                     var profile = color.Hdr10 ? 2u : EncoderCompatibility.OutputProfile(settings.VideoCodec);
                     if (profile is { } requiredProfile)
                         outputType.Set(MediaTypeAttributeKeys.Mpeg2Profile, requiredProfile).CheckError();
                     diagnostic?.Invoke("Capture worker bootstrap: setting hardware encoder output type.");
                     selected.SetOutputType(0, outputType, 0);
-                    using var inputType = MediaType(InputSubtype, width, height, settings.MaxFps, color);
+                    using var inputType = MediaType(InputSubtype, width, height, settings.NominalFramesPerSecond, color);
                     diagnostic?.Invoke("Capture worker bootstrap: setting hardware encoder input type.");
                     selected.SetInputType(0, inputType, 0);
                     using (var actualOutput = selected.GetOutputCurrentType(0))
-                        ValidateFormat(actualOutput, Subtype(settings.VideoCodec), width, height, settings.MaxFps, color, profile);
+                        ValidateFormat(actualOutput, Subtype(settings.VideoCodec), width, height, settings.NominalFramesPerSecond, color, profile);
                     using (var actualInput = selected.GetInputCurrentType(0))
-                        ValidateFormat(actualInput, InputSubtype, width, height, settings.MaxFps, color);
+                        ValidateFormat(actualInput, InputSubtype, width, height, settings.NominalFramesPerSecond, color);
                     using var codec = new CodecControl(selected);
                     diagnostic?.Invoke("Capture worker bootstrap: configuring hardware encoder controls.");
                     codec.Configure(VendorId);
@@ -326,7 +327,9 @@ public sealed class HardwareEncoder : IDisposable
             throw new IOException("Hardware input surface did not retain its valid buffer length.");
         sample.AddBuffer(buffer);
         sample.SampleTime = pts100ns;
-        sample.SampleDuration = 10_000_000L / settings.MaxFps;
+        // This positive MF duration is only a nominal format hint, never a submission deadline.
+        // WGC's source timestamp remains authoritative for uncapped, variable-rate input.
+        sample.SampleDuration = 10_000_000L / settings.NominalFramesPerSecond;
         transform.ProcessInput(0, sample, 0);
         Interlocked.CompareExchange(ref firstInputTime, pts100ns, -1);
         Interlocked.Exchange(ref lastInputTime, pts100ns);
@@ -401,7 +404,9 @@ public sealed class HardwareEncoder : IDisposable
                     if (!current.AsSpan().SequenceEqual(configuration))
                         throw new ProtocolException("Hardware encoder changed configuration during the fixed-format session.");
                 }
-                output.Add(new(bytes, data.Sample.SampleTime / 10, configuration));
+                var outputTime = ReadOutputTimestamp(data.Sample);
+                OutputTiming?.Invoke(outputTime, data.Sample.SampleDuration);
+                output.Add(new(bytes, outputTime / 10, configuration));
             }
             finally
             {

@@ -77,7 +77,7 @@
   <data name="Portrait" xml:space="preserve"><value>แนวตั้ง</value></data>
   <data name="SendAudio" xml:space="preserve"><value>ส่งเสียงไปยังเครื่องรับ (ปิดเสียงที่เล่นบนเครื่องนี้)</value></data>
   <data name="ShowStatistics" xml:space="preserve"><value>แสดงสถิติการเล่นบนเครื่องรับ</value></data>
-  <data name="SettingsValidation" xml:space="preserve"><value>ป้อนขนาดด้านเป็นจำนวนเต็มตั้งแต่ 64 ถึง 3840 พิกเซล, เพดาน FPS ตั้งแต่ 1 ถึง 120 และบิตเรตตั้งแต่ {0} ถึง 100 Mbps (ทศนิยมไม่เกินหกตำแหน่ง) เลือกตัวแปลงสัญญาณและแนวการแสดงผลที่รองรับ</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
+  <data name="SettingsValidation" xml:space="preserve"><value>ป้อนขนาดด้านเป็นจำนวนเต็มตั้งแต่ 64 ถึง 3840 พิกเซล, เลือกไม่จำกัดหรือเพดาน FPS ตั้งแต่ 1 ถึง 120 และบิตเรตตั้งแต่ {0} ถึง 100 Mbps (ทศนิยมไม่เกินหกตำแหน่ง) เลือกตัวแปลงสัญญาณและแนวการแสดงผลที่รองรับ</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
   <data name="SavedCodecUnavailable" xml:space="preserve"><value>ตัวแปลงสัญญาณที่บันทึกไว้ใช้ไม่ได้กับการจับภาพในบริบทนี้ โปรดเลือกตัวแปลงสัญญาณที่รองรับด้วยตนเองก่อนบันทึก</value></data>
   <data name="HelpBody" xml:space="preserve"><value>เปิด RedrainCast บนอุปกรณ์ทั้งสอง: พีซี Windows หรืออุปกรณ์ Android ที่รองรับ ให้อุปกรณ์อยู่บนเครือข่ายภายในที่เชื่อถือได้เครือข่ายเดียวกัน
 
@@ -205,4 +205,7 @@
   <data name="StatisticsSdrOutput" xml:space="preserve"><value>เอาต์พุต SDR</value></data>
   <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (ปรับโทน)</value></data>
   <data name="StatisticsBitDepth" xml:space="preserve"><value>{0} บิต</value><comment>{0} actual decoded surface bit depth.</comment></data>
+  <data name="Uncapped" xml:space="preserve"><value>ไม่จำกัด</value></data>
+  <data name="UncappedDefault" xml:space="preserve"><value>ไม่จำกัด (ค่าเริ่มต้น)</value></data>
+  <data name="UncappedFpsUnavailable" xml:space="preserve"><value>ตัวรับนี้ไม่รองรับการจับภาพแบบไม่จำกัด FPS โปรดอัปเดตตัวรับหรือเลือกเพดาน FPS ที่เป็นบวกในการตั้งค่าการแชร์</value></data>
 </root>

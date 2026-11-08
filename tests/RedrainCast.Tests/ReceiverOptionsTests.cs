@@ -169,7 +169,7 @@ public sealed class ReceiverOptionsTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task CheckedNewSenderOmitsExtensionForCurrentAndroidOrOldWindowsReceiver(bool android)
+    public async Task CappedNewSenderOmitsStatisticsExtensionForLegacyAndroidOrWindowsReceiver(bool android)
     {
         using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(6));
         using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -177,17 +177,18 @@ public sealed class ReceiverOptionsTests
         var source = new Source(false);
         var statuses = new ConcurrentQueue<string>();
         var run = new SenderSession().RunAsync(new(IPAddress.Loopback, ((IPEndPoint)listener.LocalEndpoint).Port, "old", false),
-            new(ShowPlaybackStatistics: true), source, statuses.Enqueue, default);
+            new(MaxFps: 60, ShowPlaybackStatistics: true), source, statuses.Enqueue, default);
         using var peer = await listener.AcceptTcpClientAsync(limit.Token);
         var stream = peer.GetStream();
         var hello = await Wire.ReadAsync(stream, limit.Token);
         Assert.True(ReceiverOptionProtocol.Capabilities(hello.Object()).PlaybackStats);
-        // Current Android ReceiverServer echoes only mutually offered rotation/recovery, never receiverOptions.
+        // Legacy Android receivers do not acknowledge the statistics or uncapped-FPS extensions.
         await Wire.WriteAsync(stream, Packet.Control(PacketType.Hello, 0,
             Json(android ? """{"role":"receiver","versions":[3],"name":"Android"}""" :
                 """{"role":"receiver","versions":[3],"name":"old Windows"}""")), limit.Token);
         var request = await Wire.ReadAsync(stream, limit.Token);
         Assert.Equal(PacketType.SessionRequest, request.Type);
+        Assert.Equal(60, request.Object().GetProperty("video").GetProperty("maxFps").GetInt32());
         Assert.False(request.Object().TryGetProperty("receiverOptions", out _));
         Assert.True(source.Prepared);
         Assert.False(source.Started);

@@ -28,9 +28,10 @@ internal sealed class GpuProcessor : IDisposable
         $"surfaceFormat={outputFormat}, texturesAllocated={Interlocked.Read(ref allocatedTextures)}, " +
         $"nominalBytesPerTexture={checked((long)width * height * 3 / (outputFormat == Format.P010 ? 1 : 2))} (allocation count is cumulative, not live)";
 
-    public GpuProcessor(ID3D11Device device, int inputWidth, int inputHeight, int outputWidth, int outputHeight, int fps,
+    public GpuProcessor(ID3D11Device device, int inputWidth, int inputHeight, int outputWidth, int outputHeight, int nominalFps,
         bool hdr = false, bool nativeHdr10 = false)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(nominalFps, 1);
         this.device = device;
         width = outputWidth;
         height = outputHeight;
@@ -50,7 +51,8 @@ internal sealed class GpuProcessor : IDisposable
             enumerator = videoDevice.CreateVideoProcessorEnumerator(new()
             {
                 InputFrameFormat = VideoFrameFormat.Progressive,
-                InputFrameRate = new((uint)fps, 1), OutputFrameRate = new((uint)fps, 1),
+                // Positive format descriptors do not pace the one-input/one-output conversion.
+                InputFrameRate = new((uint)nominalFps, 1), OutputFrameRate = new((uint)nominalFps, 1),
                 InputWidth = (uint)inputWidth, InputHeight = (uint)inputHeight,
                 OutputWidth = (uint)outputWidth, OutputHeight = (uint)outputHeight,
                 Usage = VideoUsage.OptimalSpeed

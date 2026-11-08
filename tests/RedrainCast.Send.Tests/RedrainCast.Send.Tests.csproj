@@ -12,7 +12,9 @@
     <None Include="..\..\protocol\fixtures\*.json" Link="fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\RedrainCast.App\MainWindow.xaml" Link="fixtures\MainWindow.xaml" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\RedrainCast.Send.Media\WindowsVideoSource.cs" Link="fixtures\WindowsVideoSource.cs.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\RedrainCast.Send.Media\CaptureFrameSession.cs" Link="fixtures\CaptureFrameSession.cs.txt" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\RedrainCast.Send.Media\HardwareEncoder.cs" Link="fixtures\HardwareEncoder.cs.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\RedrainCast.Send.Media\MediaDiagnostics.cs" Link="fixtures\MediaDiagnostics.cs.txt" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\RedrainCast.Send.Media\ProcessVideoSource.cs" Link="fixtures\ProcessVideoSource.cs.txt" CopyToOutputDirectory="PreserveNewest" />
     <None Update="fixtures\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

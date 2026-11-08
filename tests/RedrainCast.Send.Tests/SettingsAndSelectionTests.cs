@@ -138,20 +138,24 @@ public sealed class SettingsAndSelectionTests
     }
 
     [Fact]
-    public void NewSettingsDefaultTo60AndSavedCustomOrExistingRatesArePreserved()
+    public void NewSettingsDefaultToUncappedAndSavedCustomOrExistingRatesArePreserved()
     {
-        Assert.Equal(60, new CaptureSettings().MaxFps);
-        Assert.Equal(new[] { 15, 24, 25, 30, 48, 50, 60, 90, 120 }, CaptureSettings.FpsPresets);
-        foreach (var fps in new[] { 27, 30, 48, 60, 90, 120 })
+        Assert.Equal(0, new CaptureSettings().MaxFps);
+        Assert.Equal(new[] { 0, 15, 24, 25, 30, 48, 50, 60, 90, 120 }, CaptureSettings.FpsPresets);
+        foreach (var fps in new[] { 0, 1, 27, 30, 48, 60, 90, 120 })
         {
             var settings = new CaptureSettings(MaxFps: fps);
             settings.Validate();
             Assert.Equal(settings, JsonSerializer.Deserialize<CaptureSettings>(JsonSerializer.Serialize(settings)));
             var request = JsonSerializer.SerializeToElement(settings.Request("Hardware"));
             Assert.Equal(fps, request.GetProperty("video").GetProperty("maxFps").GetInt32());
+            Assert.Equal(fps == 0 ? 60 : fps, settings.NominalFramesPerSecond);
         }
         Assert.Throws<ArgumentException>(() => new CaptureSettings(MaxFps: 121).Validate());
-        Assert.Throws<ArgumentException>(() => new CaptureSettings(MaxFps: 0).Validate());
+        Assert.Throws<ArgumentException>(() => new CaptureSettings(MaxFps: -1).Validate());
+        Assert.Equal(60, CaptureSettings.ReadSaved("""{"MaxFps":60}""").MaxFps);
+        Assert.Equal(0, CaptureSettings.ReadSaved("{}").MaxFps);
+        Assert.Equal(0, CaptureSettings.ParseInput("1920", "8", 0, "auto", CultureInfo.InvariantCulture).Settings!.MaxFps);
     }
 
     [Theory]
@@ -189,11 +193,24 @@ public sealed class SettingsAndSelectionTests
     }
 
     [Theory]
+    [InlineData("1920", "8", 0)]
+    [InlineData("1920", "8", 1)]
     [InlineData("64", "0.1", 15)]
     [InlineData("3840", "100", 120)]
     [InlineData("1920", "8.123456", 90)]
     public void ValidBoundariesAndFractionalMbpsAreAccepted(string size, string mbps, int fps)
     {
         Assert.NotNull(CaptureSettings.ParseInput(size, mbps, fps, "auto", CultureInfo.InvariantCulture).Settings);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(-1)]
+    [InlineData(121)]
+    public void InvalidFpsChoicesFailWithoutDefaultingToUncapped(int? fps)
+    {
+        var input = CaptureSettings.ParseInput("1920", "8", fps, "auto", CultureInfo.InvariantCulture);
+        Assert.Null(input.Settings);
+        Assert.Equal("Choose Uncapped or an FPS cap from 1 to 120.", input.FpsError);
     }
 }

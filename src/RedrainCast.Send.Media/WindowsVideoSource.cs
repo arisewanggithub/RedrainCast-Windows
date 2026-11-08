@@ -87,7 +87,7 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource, IHdrVideoSourc
     public string Statistics => $"stage={Volatile.Read(ref stage)}, stageAgeMs={Math.Max(0, Environment.TickCount64 - Interlocked.Read(ref stageAt))}; " +
         $"notifications={Volatile.Read(ref frameNotifications)}, captured={Volatile.Read(ref capturedFrames)}, converted={Volatile.Read(ref convertedFrames)}, " +
         $"submitted={Volatile.Read(ref submittedFrames)}, encoded={Volatile.Read(ref encodedFrames)}; dropped={preparedEncoder?.DroppedFrames ?? 0}; " +
-        $"output={Width}x{Height}, codec={settings.VideoCodec}, fps={settings.MaxFps}; {preparedEncoder?.Diagnostics ?? "encoder=not prepared"}; {surfaces?.Diagnostics}";
+        $"output={Width}x{Height}, codec={settings.VideoCodec}, maxFps={settings.MaxFps}, nominalFps={settings.NominalFramesPerSecond}; {preparedEncoder?.Diagnostics ?? "encoder=not prepared"}; {surfaces?.Diagnostics}";
 
     private void Stage(string value)
     {
@@ -224,7 +224,7 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource, IHdrVideoSourc
                 Interlocked.Increment(ref frameNotifications);
                 progress.Arrived();
             }
-            using var frames = new CaptureFrameSession(captureDevice, item, FrameArrived);
+            using var frames = new CaptureFrameSession(captureDevice, item, FrameArrived, diagnostic);
             frames.Recreate(pixelFormat, size);
             GpuProcessor? processor = null;
             ID3D11Texture2D? latest = null;
@@ -233,7 +233,7 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource, IHdrVideoSourc
             try
             {
                 Stage("creating GPU converter");
-                processor = new GpuProcessor(device, size.Width, size.Height, Width, Height, settings.MaxFps, color.Hdr, ColorFormat.Hdr10);
+                processor = new GpuProcessor(device, size.Width, size.Height, Width, Height, settings.NominalFramesPerSecond, color.Hdr, ColorFormat.Hdr10);
                 token.ThrowIfCancellationRequested();
                 Stage("starting hardware encoder");
                 encoder.Start();
@@ -283,7 +283,7 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource, IHdrVideoSourc
                         processor.Dispose();
                         processor = null;
                         frames.Recreate(pixelFormat, resized, rearmSession);
-                        processor = new GpuProcessor(device, resized.Width, resized.Height, Width, Height, settings.MaxFps, color.Hdr, ColorFormat.Hdr10);
+                        processor = new GpuProcessor(device, resized.Width, resized.Height, Width, Height, settings.NominalFramesPerSecond, color.Hdr, ColorFormat.Hdr10);
                         size = resized;
                         pendingSize = null;
                         if (rearmSession)

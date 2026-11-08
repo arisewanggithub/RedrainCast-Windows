@@ -77,7 +77,7 @@
   <data name="Portrait" xml:space="preserve"><value>纵向</value></data>
   <data name="SendAudio" xml:space="preserve"><value>向接收端发送音频（本地播放将静音）</value></data>
   <data name="ShowStatistics" xml:space="preserve"><value>在接收端显示播放统计</value></data>
-  <data name="SettingsValidation" xml:space="preserve"><value>请输入 64 到 3840 像素之间的整数边长、1 到 120 之间的帧率上限，以及 {0} 到 100 Mbps 之间的码率（最多六位小数）。请选择支持的编解码器和画面方向。</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
+  <data name="SettingsValidation" xml:space="preserve"><value>请输入 64 到 3840 像素之间的整数边长，选择不限帧率或 1 到 120 之间的帧率上限，以及 {0} 到 100 Mbps 之间的码率（最多六位小数）。请选择支持的编解码器和画面方向。</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
   <data name="SavedCodecUnavailable" xml:space="preserve"><value>已保存的编解码器在当前捕获环境中不可用。请先明确选择受支持的编解码器，再保存设置。</value></data>
   <data name="HelpBody" xml:space="preserve"><value>在两台设备上打开 RedrainCast：可使用 Windows 电脑或兼容的 Android 设备。请将两台设备连接到同一个受信任的局域网。
 
@@ -205,4 +205,7 @@
   <data name="StatisticsSdrOutput" xml:space="preserve"><value>SDR 输出</value></data>
   <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR（色调映射）</value></data>
   <data name="StatisticsBitDepth" xml:space="preserve"><value>{0} 位</value><comment>{0} actual decoded surface bit depth.</comment></data>
+  <data name="Uncapped" xml:space="preserve"><value>不限帧率</value></data>
+  <data name="UncappedDefault" xml:space="preserve"><value>不限帧率（默认）</value></data>
+  <data name="UncappedFpsUnavailable" xml:space="preserve"><value>此接收端不支持不限帧率的捕获。请更新接收端，或在共享设置中选择大于零的帧率上限。</value></data>
 </root>

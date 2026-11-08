@@ -77,7 +77,7 @@
   <data name="Portrait" xml:space="preserve"><value>Verticale</value></data>
   <data name="SendAudio" xml:space="preserve"><value>Invia l'audio al ricevitore (disattiva la riproduzione locale)</value></data>
   <data name="ShowStatistics" xml:space="preserve"><value>Mostra le statistiche di riproduzione sul ricevitore</value></data>
-  <data name="SettingsValidation" xml:space="preserve"><value>Inserisci una dimensione intera tra 64 e 3840 pixel, un limite FPS tra 1 e 120 e un bitrate tra {0} e 100 Mbps (fino a sei cifre decimali). Scegli un codec e un orientamento supportati.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
+  <data name="SettingsValidation" xml:space="preserve"><value>Inserisci una dimensione intera tra 64 e 3840 pixel, scegli Senza limite o un limite FPS tra 1 e 120 e un bitrate tra {0} e 100 Mbps (fino a sei cifre decimali). Scegli un codec e un orientamento supportati.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
   <data name="SavedCodecUnavailable" xml:space="preserve"><value>Il codec salvato non è disponibile in questo contesto di acquisizione. Seleziona esplicitamente un codec supportato prima di salvare.</value></data>
   <data name="HelpBody" xml:space="preserve"><value>Apri RedrainCast su entrambi i dispositivi: PC Windows o dispositivi Android compatibili. Mantienili sulla stessa rete locale attendibile.
 
@@ -205,4 +205,7 @@ Le anteprime in tempo reale sono locali e vengono eseguite solo mentre questa fi
   <data name="StatisticsSdrOutput" xml:space="preserve"><value>Uscita SDR</value></data>
   <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (toni adattati)</value></data>
   <data name="StatisticsBitDepth" xml:space="preserve"><value>{0} bit</value><comment>{0} actual decoded surface bit depth.</comment></data>
+  <data name="Uncapped" xml:space="preserve"><value>Senza limite</value></data>
+  <data name="UncappedDefault" xml:space="preserve"><value>Senza limite (predefinito)</value></data>
+  <data name="UncappedFpsUnavailable" xml:space="preserve"><value>Questo ricevitore non supporta l’acquisizione senza limite FPS. Aggiorna il ricevitore o scegli un limite FPS positivo nelle impostazioni di condivisione.</value></data>
 </root>

@@ -134,7 +134,8 @@ public static class PlaybackStatisticsDisplay
             [
                 new("video", "VIDEO STREAM", Cells(VideoFields,
                     [codec, dynamicRange, decodeFormat, presentation,
-                     Size(p.EncodedWidth, p.EncodedHeight), $"≤{request.FramesPerSecond.ToString(formatCulture)} {Unit("FPS")}",
+                     Size(p.EncodedWidth, p.EncodedHeight), request.FramesPerSecond == 0 ? T("Uncapped", "Uncapped") :
+                        $"≤{request.FramesPerSecond.ToString(formatCulture)} {Unit("FPS")}",
                      Size(canvasWidth, canvasHeight),
                      $"{p.RotationDegrees.ToString(formatCulture)}° · {orientation}",
                      WithUnit(rates.VideoMbps, "Mbps"), WithUnit(request.ConfiguredVideoBitrate / 1_000_000.0, "Mbps"), unavailable])),

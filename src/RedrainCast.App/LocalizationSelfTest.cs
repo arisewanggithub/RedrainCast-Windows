@@ -263,7 +263,7 @@ public sealed partial class MainWindow
             var audio = (CheckBox)panel.Children[5];
             dimension.Text = "1920";
             bitrate.Text = "1,5";
-            fps.SelectedItem = 120;
+            fps.SelectedValue = 120;
             orientation.SelectedIndex = 2;
             codec.SelectedItem = codecChoices.Find("h265");
             audio.IsChecked = true;
@@ -271,7 +271,7 @@ public sealed partial class MainWindow
             {
                 await NotifyAsync(language);
                 if (!ReferenceEquals(currentDialog, settingsDialog) || dimension.Text != "1920" || bitrate.Text != "1,5" ||
-                    fps.SelectedItem is not int cap || cap != 120 || orientation.SelectedIndex != 2 ||
+                    fps.SelectedValue is not int cap || cap != 120 || orientation.SelectedIndex != 2 ||
                     codec.SelectedItem is not CodecChoice { Codec: "h265" } || audio.IsChecked != true ||
                     settingsDialog.Title?.ToString() != L("SharingSettings") ||
                     settingsDialog.PrimaryButtonText != L("Save") || settingsDialog.CloseButtonText != L("Cancel"))

@@ -8,6 +8,9 @@ using RedrainCast.Protocol;
 
 namespace RedrainCast.Send.Core;
 
+public sealed class UncappedFpsUnavailableException() : NotSupportedException(
+    "Uncapped capture FPS requires an updated receiver. Update the receiver or select a positive FPS cap in Sharing settings.");
+
 public sealed class SenderSession
 {
     private sealed class ReceiverRejectionException(string code, string message, long session) : IOException($"{code}: {message}")
@@ -316,7 +319,7 @@ public sealed class SenderSession
             {
                 setup.CancelAfter(TimeSpan.FromSeconds(10));
                 var helloFields = JsonData.Object(("role", "sender"), ("versions", JsonData.Value(new[] { 3 })),
-                    ("name", "RedrainCast"));
+                    ("name", "RedrainCast"), ("uncappedFps", true));
                 helloFields["receiverOptions"] = ReceiverOptionCapabilities.Implemented.WireValue;
                 if (source is IHdrVideoSource) helloFields["hdrVideoVersion"] = HdrVideoProtocol.Version;
                 if (source is IRecoverableVideoSource { SupportsStreamRecovery: true })
@@ -334,6 +337,9 @@ public sealed class SenderSession
                     if (reply.Type != MessageType.Hello || reply.Session != 0)
                         throw new ProtocolException("Expected receiver HELLO.");
                     ValidateHello(reply.Json());
+                    var uncappedFps = reply.Json().TryGetProperty("uncappedFps", out _) &&
+                        StrictJson.Boolean(reply.Json(), "uncappedFps");
+                    if (settings.MaxFps == 0 && !uncappedFps) throw new UncappedFpsUnavailableException();
                     return reply;
                 }
 
@@ -550,6 +556,7 @@ public sealed class SenderSession
             ReferenceEquals(terminalError, associationFailure) && Volatile.Read(ref remoteStopping) != 0 &&
             ended.Task.IsCompletedSuccessfully)
             terminalError = null;
+        if (terminalError is UncappedFpsUnavailableException) ExceptionDispatchInfo.Capture(terminalError).Throw();
         if (terminalError != null) throw new IOException(terminalError.Message, terminalError);
     }
 

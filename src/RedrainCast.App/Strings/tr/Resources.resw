@@ -77,7 +77,7 @@
   <data name="Portrait" xml:space="preserve"><value>Dikey</value></data>
   <data name="SendAudio" xml:space="preserve"><value>Sesi alıcıya gönder (yerel oynatımın sesini kapatır)</value></data>
   <data name="ShowStatistics" xml:space="preserve"><value>Alıcıda oynatma istatistiklerini göster</value></data>
-  <data name="SettingsValidation" xml:space="preserve"><value>64 ile 3840 piksel arasında tam sayı bir boyut, 1 ile 120 arasında bir FPS üst sınırı ve {0} ile 100 Mbps arasında bir bit hızı (en fazla altı ondalık basamak) girin. Desteklenen bir codec bileşeni ve yön seçin.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
+  <data name="SettingsValidation" xml:space="preserve"><value>64 ile 3840 piksel arasında tam sayı bir boyut, Sınırsız veya 1 ile 120 arasında bir FPS üst sınırı ve {0} ile 100 Mbps arasında bir bit hızı (en fazla altı ondalık basamak) girin. Desteklenen bir codec bileşeni ve yön seçin.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
   <data name="SavedCodecUnavailable" xml:space="preserve"><value>Kaydedilen codec bileşeni bu yakalama bağlamında kullanılamıyor. Kaydetmeden önce desteklenen bir codec bileşenini kendiniz seçin.</value></data>
   <data name="HelpBody" xml:space="preserve"><value>Her iki cihazda da RedrainCast uygulamasını açın: Windows bilgisayarlar veya uyumlu Android cihazlar. Cihazları aynı güvenilir yerel ağa bağlı tutun.
 
@@ -205,4 +205,7 @@ Canlı önizlemeler yereldir ve yalnızca bu seçici açıkken çalışır.</val
   <data name="StatisticsSdrOutput" xml:space="preserve"><value>SDR çıkışı</value></data>
   <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (ton eşleme)</value></data>
   <data name="StatisticsBitDepth" xml:space="preserve"><value>{0} bit</value><comment>{0} actual decoded surface bit depth.</comment></data>
+  <data name="Uncapped" xml:space="preserve"><value>Sınırsız</value></data>
+  <data name="UncappedDefault" xml:space="preserve"><value>Sınırsız (varsayılan)</value></data>
+  <data name="UncappedFpsUnavailable" xml:space="preserve"><value>Bu alıcı sınırsız yakalama FPS değerini desteklemiyor. Alıcıyı güncelleyin veya paylaşım ayarlarında pozitif bir FPS sınırı seçin.</value></data>
 </root>

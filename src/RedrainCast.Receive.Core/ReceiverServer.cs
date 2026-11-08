@@ -421,6 +421,7 @@ public sealed class ReceiverServer : IAsyncDisposable
                         item.TryGetInt32(out _)), "Invalid version list.");
                 JsonObject.Require(versions.EnumerateArray().Any(item => item.ValueKind == JsonValueKind.Number &&
                     item.TryGetInt32(out var value) && value == Wire.Version), "Version 3 required.", "VERSION");
+                if (json.TryGetProperty("uncappedFps", out _)) _ = JsonObject.Boolean(json, "uncappedFps");
                 if (owner.IsBusy)
                 {
                     await SendAsync(Packet.Control(PacketType.Reject, 0, JsonData.Object(("code", "BUSY"), ("message", "Receiver already in use"))));
@@ -429,7 +430,7 @@ public sealed class ReceiverServer : IAsyncDisposable
                 var offersRotation = json.TryGetProperty("videoRotation", out _) && JsonObject.Boolean(json, "videoRotation");
                 videoRotation = offersRotation && owner.factory.SupportsVideoRotation;
                 var response = JsonData.Object(("role", "receiver"), ("versions", JsonData.Value(new[] { 3 })),
-                    ("name", owner.name));
+                    ("name", owner.name), ("uncappedFps", true));
                 if (json.TryGetProperty("hdrVideoVersion", out _))
                 {
                     var hdrVersion = JsonObject.Number(json, "hdrVideoVersion");

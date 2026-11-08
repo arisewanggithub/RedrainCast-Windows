@@ -77,7 +77,7 @@
   <data name="Portrait" xml:space="preserve"><value>Stående</value></data>
   <data name="SendAudio" xml:space="preserve"><value>Skicka ljud till mottagaren (tystar lokal uppspelning)</value></data>
   <data name="ShowStatistics" xml:space="preserve"><value>Visa uppspelningsstatistik på mottagaren</value></data>
-  <data name="SettingsValidation" xml:space="preserve"><value>Ange ett heltalsmått från 64 till 3840 pixlar, en övre bildfrekvensgräns från 1 till 120 FPS och en bithastighet från {0} till 100 Mbps (högst sex decimaler). Välj en kodek och en orientering som stöds.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
+  <data name="SettingsValidation" xml:space="preserve"><value>Ange ett heltalsmått från 64 till 3840 pixlar, välj Obegränsat eller en övre bildfrekvensgräns från 1 till 120 FPS och en bithastighet från {0} till 100 Mbps (högst sex decimaler). Välj en kodek och en orientering som stöds.</value><comment>{0} minimum bitrate formatted using the dialog's retained input culture, even after a language change.</comment></data>
   <data name="SavedCodecUnavailable" xml:space="preserve"><value>Den sparade kodeken är inte tillgänglig i den aktuella bildinsamlingsmiljön. Välj uttryckligen en kodek som stöds innan du sparar.</value></data>
   <data name="HelpBody" xml:space="preserve"><value>Öppna RedrainCast på båda enheterna: Windows-datorer eller kompatibla Android-enheter. Se till att de är anslutna till samma betrodda lokala nätverk.
 
@@ -205,4 +205,7 @@ Realtidsförhandsvisningarna är lokala och körs endast medan det här väljarf
   <data name="StatisticsSdrOutput" xml:space="preserve"><value>SDR-utmatning</value></data>
   <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (tonmappad)</value></data>
   <data name="StatisticsBitDepth" xml:space="preserve"><value>{0}-bit</value><comment>{0} actual decoded surface bit depth.</comment></data>
+  <data name="Uncapped" xml:space="preserve"><value>Obegränsat</value></data>
+  <data name="UncappedDefault" xml:space="preserve"><value>Obegränsat (standard)</value></data>
+  <data name="UncappedFpsUnavailable" xml:space="preserve"><value>Den här mottagaren stöder inte obegränsad inspelnings-FPS. Uppdatera mottagaren eller välj en positiv FPS-gräns i delningsinställningarna.</value></data>
 </root>
