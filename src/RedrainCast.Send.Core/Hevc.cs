@@ -185,12 +185,14 @@ public static class Hevc
         {
             var type = Type(unit);
             if (type > 31) continue;
+            if (type is not (<= 5 or >= 16 and <= 21))
+                throw new ProtocolException("HEVC leading/reserved pictures are unsupported.");
             var bits = new CodecBits(unit.AsSpan(2), true);
             var firstSlice = bits.Read(1) != 0;
             if (firstPicture && !firstSlice) throw new ProtocolException("HEVC access unit lacks its first slice.");
             if (!firstSlice) continue;
             if (!firstPicture) throw new ProtocolException("HEVC access unit contains more than one picture.");
-            if (type is >= 16 and <= 23) bits.Skip(1);
+            if (type is >= 16 and <= 21) bits.Skip(1);
             var ppsId = bits.Unsigned();
             var found = false;
             foreach (var parameter in pps)

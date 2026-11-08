@@ -28,6 +28,7 @@
     <None Update="fixtures\playback-statistics-display-contract.json" CopyToOutputDirectory="PreserveNewest"/>
     <Compile Include="..\..\src\RedrainCast.App\PeerStabilityProgress.cs" Link="PeerStabilityProgress.cs"/>
     <Compile Include="..\..\src\RedrainCast.App\RecoveryPcmSource.cs" Link="RecoveryPcmSource.cs"/>
+    <Compile Include="..\..\src\RedrainCast.App\RecoveryVideoProgress.cs" Link="RecoveryVideoProgress.cs"/>
     <Compile Include="..\..\src\RedrainCast.App\HighFpsProbeControl.cs" Link="HighFpsProbeControl.cs"/>
     <Compile Include="..\..\src\RedrainCast.App\PickerOperationLifetime.cs" Link="PickerOperationLifetime.cs"/>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0"/>

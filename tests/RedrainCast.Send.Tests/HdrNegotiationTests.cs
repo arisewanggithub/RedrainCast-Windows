@@ -141,7 +141,7 @@ public sealed class HdrNegotiationTests
         if (recovery)
         {
             response["streamRecovery"] = true;
-            response["streamRecoveryVersion"] = 1;
+            response["streamRecoveryVersion"] = 2;
         }
         await Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0, response), timeout.Token);
         var request = await Wire.ReadAsync(stream, timeout.Token);
@@ -332,14 +332,14 @@ public sealed class HdrNegotiationTests
         using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
         var response = Hello();
         response["streamRecovery"] = !finalRecovery;
-        response["streamRecoveryVersion"] = 1;
+        response["streamRecoveryVersion"] = 2;
         if (!finalRecovery) response["receiverOptions"] = ReceiverOptionCapabilities.Implemented.WireValue;
         await ReplyHello(peer.GetStream(), response, timeout.Token);
         await Assert.ThrowsAsync<EndOfStreamException>(() => Wire.ReadAsync(peer.GetStream(), timeout.Token).AsTask());
         using var finalPeer = await listener.AcceptTcpClientAsync(timeout.Token);
         response = Hello();
         response["streamRecovery"] = finalRecovery;
-        response["streamRecoveryVersion"] = 1;
+        response["streamRecoveryVersion"] = 2;
         if (finalRecovery) response["receiverOptions"] = ReceiverOptionCapabilities.Implemented.WireValue;
         if (finalHdr) response["receiveCapabilities"] = new HdrReceiverCapabilities(true, true, true).WireValue;
         await ReplyHello(finalPeer.GetStream(), response, timeout.Token);

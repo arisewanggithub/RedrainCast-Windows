@@ -5,7 +5,9 @@ namespace RedrainCast.Protocol;
 
 public static class StreamRecovery
 {
-    public const int Version = 1;
+    public const int Version = 2;
+    public const int WriteTimeoutSeconds = 10;
+    public const int StopAcknowledgementTimeoutSeconds = WriteTimeoutSeconds * 2 + 2;
     public const long MaximumKeyAgeUs = 250_000;
     public const string Request = "stream-recovery-request";
     public const string Key = "stream-recovery-key";

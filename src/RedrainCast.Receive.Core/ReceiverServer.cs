@@ -327,12 +327,12 @@ public sealed class ReceiverServer : IAsyncDisposable
             }
         }
 
-        private Task SendAsync(Packet packet, CancellationToken extraCancellation = default)
+        private Task SendAsync(Packet packet, CancellationToken extraCancellation = default, RecoveryPlayback? recovery = null)
         {
             lock (client)
             {
                 if (disposed) return Task.FromException(new IOException("Receiver connection has retired."));
-                var sending = SendOwnedAsync(packet, extraCancellation);
+                var sending = SendOwnedAsync(packet, extraCancellation, recovery);
                 pendingWrites.Add(sending);
                 _ = sending.ContinueWith(completed =>
                 {
@@ -344,7 +344,7 @@ public sealed class ReceiverServer : IAsyncDisposable
             }
         }
 
-        private async Task SendOwnedAsync(Packet packet, CancellationToken extraCancellation)
+        private async Task SendOwnedAsync(Packet packet, CancellationToken extraCancellation, RecoveryPlayback? recovery)
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token, extraCancellation);
             timeout.CancelAfter(TimeSpan.FromSeconds(10));
@@ -357,7 +357,17 @@ public sealed class ReceiverServer : IAsyncDisposable
                 // Epoch/Stop cancellation may retire a queued frame, never truncate a started control frame.
                 using var writing = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token);
                 writing.CancelAfter(TimeSpan.FromSeconds(10));
-                try { await Wire.WriteAsync(stream, packet, writing.Token); }
+                var started = false;
+                try
+                {
+                    Task Start()
+                    {
+                        started = true;
+                        return Wire.WriteAsync(stream, packet, writing.Token).AsTask();
+                    }
+                    await (recovery is null ? Start() : recovery.StartControlWrite(packet, Start, timeout.Token));
+                }
+                catch when (!started) { throw; }
                 catch (OperationCanceledException error) when (!cancellation.IsCancellationRequested)
                 {
                     brokenWriter = true;
@@ -496,15 +506,17 @@ public sealed class ReceiverServer : IAsyncDisposable
                     throw new ProtocolException(error.Message, "UNSUPPORTED_CONFIG");
                 }
                 controlLatency.Valid(Environment.TickCount64);
-                if (request.AudioCodec is not null)
+                if (streamRecovery || request.AudioCodec is not null)
                 {
                     queue.Dispose();
-                    queue = new ReceiveQueue(4 * 1024 * 1024 - 256 * 1024, audioReserveBytes: 256 * 1024);
+                    queue = streamRecovery
+                        ? new ReceiveQueue(ReceiveQueue.MaximumIndependentBytes, ReceiveQueue.AudioTrackBytes, true)
+                        : new ReceiveQueue(4 * 1024 * 1024 - 256 * 1024, audioReserveBytes: 256 * 1024);
                 }
                 playback = await owner.factory.OpenAsync(request, setup.Token);
                 if (streamRecovery)
                     playback = new RecoveryPlayback(owner.factory, request, playback, queue, session,
-                        packet => SendAsync(packet, playbackCancellation.Token),
+                        (packet, token) => SendAsync(packet, token, playbackForMedia as RecoveryPlayback),
                         detail => owner.notify(new("Recovery", detail)), playbackCancellation.Token);
                 playbackForMedia = playback;
                 expectedTracks = request.Tracks.Length;
@@ -512,6 +524,7 @@ public sealed class ReceiverServer : IAsyncDisposable
                 var acceptance = JsonData.Object(("tracks", JsonData.Value(request.Tracks)), ("mediaToken", mediaToken));
                 HdrVideoProtocol.AddFormat(acceptance, request.ColorFormat);
                 await SendAsync(Packet.Control(PacketType.SessionAccept, session, acceptance), setup.Token);
+                if (playback is RecoveryPlayback preparing) preparing.BeginSetup();
                 Interlocked.Exchange(ref startup, Environment.TickCount64);
                 owner.notify(new("Initializing", $"{request.VideoCodec}, {request.AudioCodec ?? "audio off"}"));
                 var trackState = new TrackState(request);
@@ -684,7 +697,7 @@ public sealed class ReceiverServer : IAsyncDisposable
                             if (!recovery.Admit(packet)) continue;
                             try { queue.Add(packet); }
                             catch (ProtocolException error) when (error.Code == "CONGESTION" && Wire.IsMedia(packet.Type))
-                            { recovery.Pressure(); continue; }
+                            { recovery.Pressure(packet.Track); continue; }
                         }
 
                         else await queue.AddAsync(packet, linked.Token);
@@ -814,15 +827,30 @@ public sealed class ReceiverServer : IAsyncDisposable
                     {
                         if (ready)
                         {
-                            Interlocked.Exchange(ref startup, Environment.TickCount64);
+                            if (playback is not RecoveryPlayback)
+                                Interlocked.Exchange(ref startup, Environment.TickCount64);
                             Interlocked.Decrement(ref tracksReady);
                             ready = false;
                         }
                         state.Configure(packet);
                         await playback.ConfigureAsync(packet, timeout.Token);
+                        if (playback is RecoveryPlayback recovering && !recovering.IsCurrentConfiguration(packet)) continue;
                         state.MarkReady(packet.Track);
-                        await SendAsync(new(PacketType.StreamReady, session, packet.Track, packet.Generation, -1, 0,
-                            JsonData.Bytes(JsonData.Object(("ok", true)))), playbackCancellation.Token);
+                        if (playback is RecoveryPlayback recovered) recovered.MarkReady(packet);
+                        using var readiness = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token,
+                            playback is RecoveryPlayback independent ? independent.ReadinessToken(packet) : default);
+                        try
+                        {
+                            await SendAsync(new(PacketType.StreamReady, session, packet.Track, packet.Generation, -1, 0,
+                                JsonData.Bytes(JsonData.Object(("ok", true)))), readiness.Token, playback as RecoveryPlayback);
+                        }
+                        catch (OperationCanceledException) when (playback is RecoveryPlayback retired &&
+                            !retired.IsCurrentConfiguration(packet) && !playbackCancellation.IsCancellationRequested)
+                        {
+                            continue;
+                        }
+                        if (playback is RecoveryPlayback configured && !configured.IsCurrentConfiguration(packet)) continue;
+                        if (playback is RecoveryPlayback initialized) initialized.ReadyWritten(packet);
                         ready = true;
                         Interlocked.Increment(ref tracksReady);
                     }
@@ -861,7 +889,12 @@ public sealed class ReceiverServer : IAsyncDisposable
                 while (await timer.WaitForNextTickAsync(playbackCancellation.Token))
                 {
                     if (Volatile.Read(ref stopping) != 0) continue;
-                    try { playback.CheckHealth(); }
+                    try
+                    {
+                        if (playback is RecoveryPlayback recovery)
+                            recovery.ScheduleProofPolling(playbackCancellation.Token);
+                        playback.CheckHealth();
+                    }
                     catch (ProtocolException) { throw; }
                     catch (TimeoutException error) { throw new ProtocolException(error.Message, "TIMEOUT"); }
                     catch (Exception error) { throw new ProtocolException($"Playback health failed: {error.Message}", "DECODER_FAILED"); }
@@ -873,7 +906,10 @@ public sealed class ReceiverServer : IAsyncDisposable
                     }
                     var tracksConfigured = Volatile.Read(ref tracksReady) == expectedTracks;
                     var generationStarted = Interlocked.Read(ref startup);
-                    var presentationExpired = playback is IVideoPlaybackProgress progress &&
+                    var independent = playback as RecoveryPlayback;
+                    if (independent is not null) generationStarted = independent.VideoReadyAtMilliseconds;
+                    var presentationExpired = (independent is null || !independent.State.Recovering) &&
+                        playback is IVideoPlaybackProgress progress &&
                         presentationDeadline.HasExpired(now, generationStarted, tracksConfigured, progress);
                     if (presentationSuspended != presentationDeadline.IsSuspended)
                     {
@@ -883,7 +919,7 @@ public sealed class ReceiverServer : IAsyncDisposable
                             : "Receiver window is visible; presentation deadline resumed."));
                     }
                     if (now - Interlocked.Read(ref lastInput) >= 10_000 ||
-                        !tracksConfigured && now - generationStarted >= 10_000 || presentationExpired)
+                        playback is not RecoveryPlayback && !tracksConfigured && now - generationStarted >= 10_000 || presentationExpired)
                         throw new ProtocolException("Session startup or incoming traffic timed out.", "TIMEOUT");
                     if (now >= nextPing)
                     {
@@ -909,12 +945,16 @@ public sealed class ReceiverServer : IAsyncDisposable
                 Interlocked.Exchange(ref stopping, 1);
                 playbackCancellation.Cancel();
             }
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            // Recovery drains started media/control frames before sending SESSION_END.
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(
+                streamRecovery ? StreamRecovery.StopAcknowledgementTimeoutSeconds : 2));
             try
             {
                 if (accepted)
                 {
                     await SendAsync(Packet.Control(PacketType.Stop, session, JsonData.Object(("reason", reason))), deadline.Token).WaitAsync(deadline.Token);
+                    if (streamRecovery)
+                        deadline.CancelAfter(TimeSpan.FromSeconds(StreamRecovery.StopAcknowledgementTimeoutSeconds));
                     await ended.Task.WaitAsync(deadline.Token);
                 }
             }

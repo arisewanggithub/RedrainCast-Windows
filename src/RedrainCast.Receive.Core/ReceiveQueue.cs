@@ -5,6 +5,8 @@ namespace RedrainCast.Receive.Core;
 public sealed class ReceiveQueue : IDisposable
 {
     public const int MaximumBytes = 8 * 1024 * 1024;
+    public const int AudioTrackBytes = 512 * 1024;
+    public const int MaximumIndependentBytes = MaximumBytes + AudioTrackBytes;
     public const int MaximumEntries = 512;
     public const long MaximumSpanUs = 500_000;
     private sealed record Entry(Packet Packet, long AdmittedAt);
@@ -12,13 +14,14 @@ public sealed class ReceiveQueue : IDisposable
     private readonly Queue<Entry>[] packets = [new(), new()];
     private readonly SemaphoreSlim[] signals = [new(0), new(0)];
     private readonly Packet?[] inFlight = new Packet?[2];
+    private readonly HashSet<Packet>[] held = [new(ReferenceEqualityComparer.Instance), new(ReferenceEqualityComparer.Instance)];
     private int mediaBytes;
-    private int controlBytes;
-    private int controls;
+    private readonly int[] controlBytes = new int[2], controls = new int[2];
     private readonly int maximumMediaBytes;
     public int MediaByteBudget => maximumMediaBytes;
     private readonly int audioReserveBytes;
     private int videoBytes;
+    private readonly bool independentTrackBudgets;
     private TaskCompletionSource space = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly long[] waitTotalUs = new long[2], waitMaximumUs = new long[2], mediaTaken = new long[2];
     public EncodedQueueStatistics Snapshot(uint track) => Snapshot(track, includeInFlight: true);
@@ -39,6 +42,8 @@ public sealed class ReceiveQueue : IDisposable
             }
             foreach (var entry in packets[track - 1]) Include(entry.Packet);
             if (includeInFlight) Include(inFlight[track - 1]);
+            foreach (var packet in held[track - 1])
+                if (!ReferenceEquals(packet, inFlight[track - 1])) Include(packet);
             return new(count, bytes, count == 0 ? 0 : maximum - minimum);
         }
     }
@@ -54,13 +59,18 @@ public sealed class ReceiveQueue : IDisposable
         }
     }
 
-    public ReceiveQueue(int maximumMediaBytes = MaximumBytes, int audioReserveBytes = 0)
+    public ReceiveQueue(int maximumMediaBytes = MaximumBytes, int audioReserveBytes = 0,
+        bool independentTrackBudgets = false)
     {
-        if (maximumMediaBytes is <= 0 or > MaximumBytes) throw new ArgumentOutOfRangeException(nameof(maximumMediaBytes));
+        if (maximumMediaBytes <= 0 || maximumMediaBytes > (independentTrackBudgets ? MaximumIndependentBytes : MaximumBytes))
+            throw new ArgumentOutOfRangeException(nameof(maximumMediaBytes));
         if (audioReserveBytes < 0 || audioReserveBytes >= maximumMediaBytes)
             throw new ArgumentOutOfRangeException(nameof(audioReserveBytes));
         this.maximumMediaBytes = maximumMediaBytes;
         this.audioReserveBytes = audioReserveBytes;
+        if (independentTrackBudgets && audioReserveBytes == 0)
+            throw new ArgumentException("Independent budgets require an audio partition.", nameof(audioReserveBytes));
+        this.independentTrackBudgets = independentTrackBudgets;
     }
 
     public void Add(Packet packet)
@@ -69,14 +79,19 @@ public sealed class ReceiveQueue : IDisposable
         {
             var media = Wire.IsMedia(packet.Type);
             JsonObject.Require(packet.Track is 1 or 2, "Queued packets require an enabled track.");
-            JsonObject.Require(packets.Sum(items => items.Count) + inFlight.Count(item => item is not null) < MaximumEntries,
-                "Receiver queue entry limit reached.", "CONGESTION");
+            var index = (int)packet.Track - 1;
+            JsonObject.Require(packets[index].Count + held[index].Count +
+                (inFlight[index] is null || held[index].Contains(inFlight[index]!) ? 0 : 1) < MaximumEntries,
+                $"Receiver track {packet.Track} queue entry limit reached.", "CONGESTION");
             if (media)
             {
                 JsonObject.Require(packet.Payload.Length <= maximumMediaBytes - mediaBytes,
                     $"Receiver media exceeds its {maximumMediaBytes}-byte queue budget.", "CONGESTION");
                 JsonObject.Require(packet.Track != 1 || packet.Payload.Length <= maximumMediaBytes - audioReserveBytes - videoBytes,
                     "Receiver video exceeds its queue budget reserved for audio.", "CONGESTION");
+                JsonObject.Require(!independentTrackBudgets || packet.Track != 2 ||
+                    packet.Payload.Length <= audioReserveBytes - (mediaBytes - videoBytes),
+                    "Receiver audio exceeds its independent queue byte budget.", "CONGESTION");
                 var minimum = packet.PtsUs;
                 var maximum = packet.PtsUs;
                 foreach (var queued in packets.SelectMany(items => items).Select(entry => entry.Packet))
@@ -85,6 +100,16 @@ public sealed class ReceiveQueue : IDisposable
                         minimum = Math.Min(minimum, queued.PtsUs);
                         maximum = Math.Max(maximum, queued.PtsUs);
                     }
+                foreach (var retained in held[index])
+                {
+                    minimum = Math.Min(minimum, retained.PtsUs);
+                    maximum = Math.Max(maximum, retained.PtsUs);
+                }
+                if (independentTrackBudgets && inFlight[index] is { } active && Wire.IsMedia(active.Type))
+                {
+                    minimum = Math.Min(minimum, active.PtsUs);
+                    maximum = Math.Max(maximum, active.PtsUs);
+                }
                 JsonObject.Require(maximum - minimum <= MaximumSpanUs,
                     $"Receiver track {packet.Track} queue exceeds 500 ms: min={minimum}, max={maximum}, bytes={mediaBytes}, entries={packets.Sum(items => items.Count)}.", "CONGESTION");
                 mediaBytes += packet.Payload.Length;
@@ -92,10 +117,10 @@ public sealed class ReceiveQueue : IDisposable
             }
             else
             {
-                JsonObject.Require(controls < 64 && packet.Payload.Length <= 256 * 1024 - controlBytes,
+                JsonObject.Require(controls[index] < 64 && packet.Payload.Length <= 256 * 1024 - controlBytes[index],
                     "Receiver configuration queue limit reached.", "CONGESTION");
-                controls++;
-                controlBytes += packet.Payload.Length;
+                controls[index]++;
+                controlBytes[index] += packet.Payload.Length;
             }
             packets[packet.Track - 1].Enqueue(new(packet, System.Diagnostics.Stopwatch.GetTimestamp()));
             MediaTiming.Record(MediaStage.QueueAdmit, packet.Session, packet.Track, packet.Generation,
@@ -170,22 +195,49 @@ public sealed class ReceiveQueue : IDisposable
             if (packet.Track is not (1 or 2) || !ReferenceEquals(inFlight[packet.Track - 1], packet))
                 throw new InvalidOperationException("Completing an unowned track packet.");
             inFlight[packet.Track - 1] = null;
-            if (Wire.IsMedia(packet.Type))
+            if (Wire.IsMedia(packet.Type) && !held[packet.Track - 1].Contains(packet))
             {
                 mediaBytes -= packet.Payload.Length;
                 if (packet.Track == 1) videoBytes -= packet.Payload.Length;
             }
-            else { controls--; controlBytes -= packet.Payload.Length; }
+            else if (!Wire.IsMedia(packet.Type))
+            { controls[packet.Track - 1]--; controlBytes[packet.Track - 1] -= packet.Payload.Length; }
             SpaceChanged();
         }
     }
 
-    public void DiscardQueuedMedia()
+    internal void HoldMedia(Packet packet)
     {
+        lock (gate)
+        {
+            if (!Wire.IsMedia(packet.Type) || !ReferenceEquals(inFlight[packet.Track - 1], packet))
+                throw new InvalidOperationException("Only an owned media packet can enter preroll.");
+            held[packet.Track - 1].Add(packet);
+        }
+    }
+
+    internal void ReleaseHeld(Packet packet)
+    {
+        lock (gate)
+        {
+            if (!held[packet.Track - 1].Remove(packet)) throw new InvalidOperationException("Releasing unowned preroll.");
+            if (!ReferenceEquals(inFlight[packet.Track - 1], packet))
+            {
+                mediaBytes -= packet.Payload.Length;
+                if (packet.Track == 1) videoBytes -= packet.Payload.Length;
+            }
+            SpaceChanged();
+        }
+    }
+
+    public void DiscardQueuedMedia(uint? affectedTrack = null)
+    {
+        if (affectedTrack is not (null or 1 or 2)) throw new ArgumentOutOfRangeException(nameof(affectedTrack));
         lock (gate)
         {
             for (var track = 0; track < packets.Length; track++)
             {
+                if (affectedTrack is { } selected && selected != track + 1) continue;
                 var keep = new Queue<Entry>();
                 while (packets[track].TryDequeue(out var entry))
                 {
@@ -209,5 +261,6 @@ public sealed class ReceiveQueue : IDisposable
         foreach (var signal in signals) signal.Dispose();
         foreach (var queue in packets) queue.Clear();
         Array.Clear(inFlight);
+        foreach (var retained in held) retained.Clear();
     }
 }

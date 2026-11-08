@@ -88,7 +88,7 @@ public sealed partial class MainWindow
                     lock (states) states.Add(state);
                     Diagnostic($"Recovery sender: {state}");
                 }, stop.Token, new RecoveryPcmSource()));
-            while (factory.Configurations < 2 || !RecoveredStreaming() || video.PresentedFrames < 10 ||
+            while (factory.Configurations < 2 || !RecoveredStreaming() || !factory.HasRecoveredOutput ||
                    video.PlayedAudioFrames < 4800)
             {
                 if (cast.IsCompleted) { await cast; throw new IOException("Native recovery cast ended before proofs."); }
@@ -101,11 +101,11 @@ public sealed partial class MainWindow
                 }
                 await Task.Delay(25, timeout.Token);
             }
-            presented = video.PresentedFrames; played = video.PlayedAudioFrames;
+            presented = factory.RecoveredPresentedFrames; played = video.PlayedAudioFrames;
             lock (states)
             {
                 maximumDecodedKeyProofAgeUs = states.Where(state => state.StartsWith("Recovery decoded KEY:", StringComparison.Ordinal))
-                    .Select(state => long.Parse(state.Split("sourceAgeUs=")[1], System.Globalization.CultureInfo.InvariantCulture))
+                    .Select(state => long.Parse(state.Split("sourceAgeUs=")[1].Split(',')[0].Trim(), System.Globalization.CultureInfo.InvariantCulture))
                     .DefaultIfEmpty().Max();
                 if (maximumDecodedKeyProofAgeUs < 300_000)
                     throw new IOException("Native recovery did not exercise the required delayed decoded-KEY proof.");
@@ -150,7 +150,7 @@ public sealed partial class MainWindow
             indented: true));
         bool RecoveredStreaming()
         {
-            lock (states) return states.Any(state => state.StartsWith("Recovery COMPLETE: generation=2,", StringComparison.Ordinal)) &&
+            lock (states) return states.Any(state => state.StartsWith("Recovery COMPLETE: track=1, generation=2,", StringComparison.Ordinal)) &&
                 states.Contains("Streaming");
         }
     }
@@ -158,6 +158,18 @@ public sealed partial class MainWindow
     private sealed class DelayedRecoveryFactory(VideoHost host) : IPlaybackFactory
     {
         public int Configurations;
+        private RecoveryVideoProgress? recoveryProgress;
+        public bool HasRecoveredOutput => Volatile.Read(ref recoveryProgress)?.HasOutput(
+            host.DecodedFrames, host.PresentedFrames, host.LastPresentedPtsUs, 1, 10) == true;
+        public long RecoveredPresentedFrames => Volatile.Read(ref recoveryProgress) is { } progress
+            ? host.PresentedFrames - progress.PresentedBaseline : 0;
+        public void Configured(uint generation) =>
+            Volatile.Write(ref recoveryProgress, new(generation, host.DecodedFrames, host.PresentedFrames));
+        public void SetRecoveryKey(long pts)
+        {
+            if (Volatile.Read(ref recoveryProgress) is { } progress)
+                Volatile.Write(ref recoveryProgress, progress with { KeyPtsUs = pts });
+        }
         public string Description => "Real hardware playback with a test-only bounded decoder delay.";
         public bool SupportsStreamRecovery => true;
         public bool SupportsVideoRotation => host.SupportsVideoRotation;
@@ -173,6 +185,7 @@ public sealed partial class MainWindow
     {
         private int seen;
         private bool first;
+        public long? SourcePositionUs => inner.SourcePositionUs;
         public long? DecodedRecoveryKeyPtsUs => inner.DecodedRecoveryKeyPtsUs;
         public long? FirstRecoverySourceAudioPtsUs => inner.FirstRecoverySourceAudioPtsUs;
         public bool HasPresentedVideo => ((IVideoPlaybackProgress)inner).HasPresentedVideo;
@@ -181,7 +194,28 @@ public sealed partial class MainWindow
         public bool IsPresentationSuspended => ((IVideoPlaybackProgress)inner).IsPresentationSuspended;
         public string Diagnostics => inner.Diagnostics;
         public void CheckHealth() => inner.CheckHealth();
-        public void SetRecoveryKey(long pts) => inner.SetRecoveryKey(pts);
+        public void CheckTrackHealth(uint track) => inner.CheckTrackHealth(track);
+        public void BeginTrackRecovery(uint track) => inner.BeginTrackRecovery(track);
+        public void BeginSessionStop() => inner.BeginSessionStop();
+        public void UpdateEncodedQueueDepth(uint track, int packets) => inner.UpdateEncodedQueueDepth(track, packets);
+        public IDisposable? EnterTrack(uint track) => inner.EnterTrack(track);
+        public void Observe(RedrainCast.Receive.Core.Packet packet) => inner.Observe(packet);
+        public void SetRecoveryKey(long pts)
+        {
+            inner.SetRecoveryKey(pts);
+            owner.SetRecoveryKey(pts);
+        }
+        public void SetAudioRecoveryCutoff(long pts) => inner.SetAudioRecoveryCutoff(pts);
+        public async ValueTask ConfigureRecoveryTrackAsync(RedrainCast.Receive.Core.Packet packet, bool midstream, CancellationToken token)
+        {
+            if (packet.Track == 1)
+            {
+                seen = 0;
+                first = Interlocked.Increment(ref owner.Configurations) == 1;
+            }
+            await inner.ConfigureRecoveryTrackAsync(packet, midstream, token);
+            if (packet.Track == 1 && midstream) owner.Configured(packet.Generation);
+        }
         public async ValueTask ConfigureRecoveryAsync(RedrainCast.Receive.Core.Packet video, RedrainCast.Receive.Core.Packet? audio, bool midstream, CancellationToken token)
         {
             first = Interlocked.Increment(ref owner.Configurations) == 1;

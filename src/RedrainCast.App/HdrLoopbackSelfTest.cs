@@ -40,13 +40,14 @@ public sealed partial class MainWindow
             new(MaxSize: probe.Width, MaxFps: 30, VideoCodec: "h265"), source, state =>
             {
                 journal.Write($"HDR loopback sender: {state}");
-                if (state.StartsWith("Recovery COMPLETE: generation=2,", StringComparison.Ordinal))
+                if (state.StartsWith("Recovery COMPLETE: track=1, generation=2,", StringComparison.Ordinal))
                     Volatile.Write(ref recoveryCompleted, true);
             }, stop.Token);
         try
         {
-            while (factory.Playback is not { } playback || playback.DecodedFrames < (recovery ? 16 : 8) ||
-                playback.PresentedFrames == 0 || recovery && !Volatile.Read(ref recoveryCompleted))
+            while (factory.Playback is not { } playback ||
+                (recovery ? !playback.HasRecoveredOutput || !Volatile.Read(ref recoveryCompleted) :
+                    playback.DecodedFrames < 8 || playback.PresentedFrames == 0))
             {
                 if (cast.IsCompleted)
                 {
@@ -58,8 +59,8 @@ public sealed partial class MainWindow
             var active = factory.Playback!;
             active.CheckHealth();
             var generation = receiver.RecoveryState?.ActiveGeneration ?? 1;
-            var decoded = active.DecodedFrames;
-            var presented = active.PresentedFrames;
+            var decoded = recovery ? active.RecoveredDecodedFrames : active.DecodedFrames;
+            var presented = recovery ? active.RecoveredPresentedFrames : active.PresentedFrames;
             var surfaces = active.HardwareSurfaceCount;
             if (recovery && (generation < 2 || factory.Configurations < 2))
                 throw new IOException("HDR recovery loopback did not repeat exact color metadata in a new generation.");
@@ -186,7 +187,15 @@ public sealed partial class MainWindow
         public long DecodedFrames => inner.DecodedFrames;
         public long PresentedFrames => inner.Statistics(1)?.Presented ?? 0;
         public int HardwareSurfaceCount => inner.HardwareSurfaceCount;
+        private RecoveryVideoProgress? recoveryProgress;
+        public long RecoveredDecodedFrames => Volatile.Read(ref recoveryProgress) is { } progress
+            ? inner.DecodedFrames - progress.DecodedBaseline : 0;
+        public long RecoveredPresentedFrames => Volatile.Read(ref recoveryProgress) is { } progress
+            ? PresentedFrames - progress.PresentedBaseline : 0;
+        public bool HasRecoveredOutput => Volatile.Read(ref recoveryProgress)?.HasOutput(
+            inner.DecodedFrames, PresentedFrames, inner.LastPresentedPtsUs, 16, 1) == true;
         public bool Disposed => Volatile.Read(ref disposed) != 0;
+        public long? SourcePositionUs => inner.SourcePositionUs;
         public long? DecodedRecoveryKeyPtsUs => inner.DecodedRecoveryKeyPtsUs;
         public long? FirstRecoverySourceAudioPtsUs => inner.FirstRecoverySourceAudioPtsUs;
         public bool HasPresentedVideo => inner.HasPresentedVideo;
@@ -197,7 +206,17 @@ public sealed partial class MainWindow
         public IDisposable? EnterTrack(uint track) => inner.EnterTrack(track);
         public void Observe(Packet packet) => inner.Observe(packet);
         public void CheckHealth() => inner.CheckHealth();
-        public void SetRecoveryKey(long ptsUs) => inner.SetRecoveryKey(ptsUs);
+        public void CheckTrackHealth(uint track) => inner.CheckTrackHealth(track);
+        public void BeginTrackRecovery(uint track) => inner.BeginTrackRecovery(track);
+        public void BeginSessionStop() => inner.BeginSessionStop();
+        public void UpdateEncodedQueueDepth(uint track, int packets) => inner.UpdateEncodedQueueDepth(track, packets);
+        public void SetRecoveryKey(long ptsUs)
+        {
+            inner.SetRecoveryKey(ptsUs);
+            if (Volatile.Read(ref recoveryProgress) is { } progress)
+                Volatile.Write(ref recoveryProgress, progress with { KeyPtsUs = ptsUs });
+        }
+        public void SetAudioRecoveryCutoff(long ptsUs) => inner.SetAudioRecoveryCutoff(ptsUs);
         public async ValueTask ConfigureAsync(Packet configuration, CancellationToken token)
         {
             owner.Configured(configuration);
@@ -207,6 +226,13 @@ public sealed partial class MainWindow
         {
             owner.Configured(video);
             await inner.ConfigureRecoveryAsync(video, audio, midstream, token);
+        }
+        public async ValueTask ConfigureRecoveryTrackAsync(Packet configuration, bool midstream, CancellationToken token)
+        {
+            if (configuration.Track == 1) owner.Configured(configuration);
+            await inner.ConfigureRecoveryTrackAsync(configuration, midstream, token);
+            if (configuration.Track == 1 && midstream)
+                Volatile.Write(ref recoveryProgress, new(configuration.Generation, inner.DecodedFrames, PresentedFrames));
         }
         public async ValueTask PresentAsync(Packet packet, CancellationToken token)
         {

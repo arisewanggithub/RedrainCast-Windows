@@ -44,7 +44,8 @@ public sealed class HighFpsWiringTests
         Assert.Contains("var nominalFps = fps == 0 ? 60 : fps;", probe);
         Assert.Contains("emitted / (double)sourceFps", probe);
         Assert.DoesNotContain("emitted / (double)fps", probe);
-        Assert.Contains("video.DecodedFrames / seconds <= 60", probe);
+        Assert.Contains("decoded / seconds <= 60", probe);
+        Assert.Contains("snapshot.Samples.Skip(samplesBefore.Samples.Length)", probe);
         Assert.Contains("measurements.Count == 6", probe);
         Assert.DoesNotContain("measurements.Count == 4", probe);
     }

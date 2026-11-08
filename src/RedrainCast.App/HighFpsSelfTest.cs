@@ -56,9 +56,9 @@ public sealed partial class MainWindow
                     await protocol.SendAsync(Packet.Control(PacketType.Hello, 0,
                         JsonData.Object(("role", "sender"), ("versions", JsonData.Value(new[] { 3 })),
                             ("name", "Synthetic high-FPS receiver probe"), ("uncappedFps", true), ("streamRecovery", true),
-                            ("streamRecoveryVersion", 1))), deadline.Token);
+                            ("streamRecoveryVersion", StreamRecovery.Version))), deadline.Token);
                     var hello = await ReadControlAsync(PacketType.Hello);
-                    if (!hello.Object().GetProperty("streamRecovery").GetBoolean())
+                    if (!StreamRecovery.Negotiated(hello.Object(), acknowledgement: true))
                         throw new IOException("Native recovery support was not negotiated.");
                     if (!JsonObject.Boolean(hello.Object(), "uncappedFps"))
                         throw new IOException("Uncapped FPS support was not advertised.");
@@ -78,7 +78,6 @@ public sealed partial class MainWindow
                         if ((await ReceiverWire.ReadAsync(socket.GetStream(), deadline.Token)).Type != PacketType.Hello)
                             throw new IOException("Synthetic media socket attachment failed.");
                     }
-                    var epoch = video.PlaybackEpoch;
                     uint currentGeneration = 0;
                     var sentPts = new HashSet<long>();
                     for (uint generation = 1; generation <= 2; generation++)
@@ -91,15 +90,20 @@ public sealed partial class MainWindow
                                 ("csd", JsonData.Value(new[] { Convert.ToBase64String(picture.Configuration) }))))), deadline.Token);
                         await ReadControlAsync(PacketType.StreamReady);
                         if (video.RequestedFramesPerSecond != fps || video.ProcessorInputFramesPerSecond != nominalFps ||
-                            video.ProcessorOutputFramesPerSecond != nominalFps || video.PlaybackEpoch != epoch + generation - 1)
+                            video.ProcessorOutputFramesPerSecond != nominalFps)
                             throw new IOException("Initial or rebuilt presenter did not preserve the requested content rate.");
                         video.CheckDiagnosticGpuBudget();
+                        var decodedBefore = video.DecodedFrames;
+                        var presentedBefore = video.PresentedFrames;
+                        var skippedBefore = video.SkippedFrames;
+                        var samplesBefore = video.PresentationSnapshot();
                         var first = QpcUs();
                         await SendPictureAsync(first);
                         foreach (var state in new[] { StreamRecovery.Key, StreamRecovery.Complete })
                         {
                             var proof = (await ReadControlAsync(PacketType.Status)).Object();
                             if (proof.GetProperty("state").GetString() != state ||
+                                JsonObject.Number(proof, "track") != 1 ||
                                 StreamRecovery.Timestamp(proof, "keyPtsUs") != first)
                                 throw new IOException("Native decoded-key proof changed the synthetic source PTS.");
                         }
@@ -124,26 +128,30 @@ public sealed partial class MainWindow
                         var pumpSeconds = clock.Elapsed.TotalSeconds;
                         await Task.Delay(150, deadline.Token);
                         var seconds = (QpcUs() - first) / 1_000_000.0;
-                        if (fps == 0 && (video.DecodedFrames / seconds <= 60 ||
+                        var decoded = video.DecodedFrames - decodedBefore;
+                        var presented = video.PresentedFrames - presentedBefore;
+                        var skipped = video.SkippedFrames - skippedBefore;
+                        if (fps == 0 && (decoded / seconds <= 60 ||
                             !video.PresentationDiagnostics.Contains("requestedFps=Uncapped", StringComparison.Ordinal)))
                             throw new IOException("Uncapped decoding did not exceed the nominal hint or diagnostics lost the uncapped request.");
-                        if (video.PresentedFrames < 5 || video.DecodedFrames < 5 || video.HardwareSurfaceCount < 1 ||
+                        if (presented < 5 || decoded < 5 || video.HardwareSurfaceCount < 1 ||
                             HomePage.Visibility != Visibility.Collapsed || roles.Role != CastRole.Receiving ||
                             AppWindow.Presenter.Kind != AppWindowPresenterKind.FullScreen || video.PlayedAudioFrames != 0 ||
                             video.IsPresentationSuspended)
                             throw new IOException("Synthetic reception did not expose hardware fullscreen video without audio.");
                         var snapshot = video.PresentationSnapshot();
-                        var samples = snapshot.Samples;
+                        var samples = snapshot.Samples.Skip(samplesBefore.Samples.Length).ToArray();
+                        var dropped = snapshot.Dropped - samplesBefore.Dropped;
                         var ptsUntouched = samples.All(sample => sentPts.Contains(sample.PtsUs));
                         var monotonic = samples.Zip(samples.Skip(1), (a, b) => b.PtsUs >= a.PtsUs).All(value => value);
-                        if (samples.Length < 5 || snapshot.Dropped != 0 || !ptsUntouched || !monotonic)
+                        if (samples.Length < 5 || dropped != 0 || !ptsUntouched || !monotonic)
                             throw new IOException("Bounded real-presenter snapshots did not prove unchanged monotonic source PTS.");
                         recordedPresentations += samples.Length;
-                        droppedPresentationSamples += snapshot.Dropped;
+                        droppedPresentationSamples += dropped;
                         var sourceSeconds = (sentPts.Max() - first) / 1_000_000.0;
                         var presentationSeconds = Stopwatch.GetElapsedTime(samples[0].Qpc, samples[^1].Qpc).TotalSeconds;
                         presentationEvidence.Add(JsonData.Object(("fps", fps), ("generation", generation),
-                            ("sourcePtsUs", JsonData.Value(sentPts.Order().ToArray())), ("samples", ReportJson.Value(samples)), ("Dropped", snapshot.Dropped)));
+                            ("sourcePtsUs", JsonData.Value(sentPts.Order().ToArray())), ("samples", ReportJson.Value(samples)), ("Dropped", dropped)));
                         measurements.Add(JsonData.Object(
                             ("fps", fps), ("generation", generation), ("PlaybackEpoch", video.PlaybackEpoch),
                             ("processorInputFps", video.ProcessorInputFramesPerSecond),
@@ -151,13 +159,13 @@ public sealed partial class MainWindow
                             ("denominator", 1), ("configurationCorrect", true), ("ProcessorConfigurations", video.ProcessorConfigurations),
                             ("seconds", seconds), ("pumpSeconds", pumpSeconds), ("emitted", emitted),
                             ("sourceWindowSeconds", sourceSeconds), ("presentationWindowSeconds", presentationSeconds),
-                            ("sourceFps", (emitted - 1) / sourceSeconds), ("decoded", video.DecodedFrames), ("decodedFps", video.DecodedFrames / seconds),
-                            ("presented", video.PresentedFrames), ("presentedFps", (samples.Length - 1) / presentationSeconds),
-                            ("skipped", video.SkippedFrames), ("notPresentedAtSample", video.DecodedFrames - video.PresentedFrames),
+                            ("sourceFps", (emitted - 1) / sourceSeconds), ("decoded", decoded), ("decodedFps", decoded / seconds),
+                            ("presented", presented), ("presentedFps", (samples.Length - 1) / presentationSeconds),
+                            ("skipped", skipped), ("notPresentedAtSample", decoded - presented),
                             ("lastPresentedPtsUs", video.LastPresentedPtsUs), ("HardwareSurfaceCount", video.HardwareSurfaceCount),
                             ("DecoderDiagnostics", video.DecoderDiagnostics), ("PresentationDiagnostics", video.PresentationDiagnostics),
                             ("PlaybackDiagnostics", video.PlaybackDiagnostics), ("ptsUntouched", ptsUntouched), ("monotonic", monotonic),
-                            ("recordedPresentations", samples.Length), ("presentationSamplesDropped", snapshot.Dropped), ("throughputCertified", false)));
+                            ("recordedPresentations", samples.Length), ("presentationSamplesDropped", dropped), ("throughputCertified", false)));
                     }
                     phase = $"{fps} Stop/SESSION_END";
                     await protocol.SendAsync(Packet.Control(PacketType.Stop, session,

@@ -228,7 +228,7 @@ public sealed class RecoverySenderAssociationRejectionTests
             control = await listener.AcceptTcpClientAsync(Limit.Token);
             Assert.Equal(MessageType.Hello, (await ReadAsync()).Type);
             await SendAsync(MessageType.Hello, new { role = "receiver", versions = new[] { 3 },
-                name = "Test receiver", uncappedFps = true, streamRecovery = true, streamRecoveryVersion = 1 });
+                name = "Test receiver", uncappedFps = true, streamRecovery = true, streamRecoveryVersion = 2 });
             var request = await ReadAsync();
             Assert.Equal(MessageType.SessionRequest, request.Type);
             session = request.Session;

@@ -202,8 +202,10 @@ public sealed class SenderSession
                         _ = StrictJson.Integer(json, "nonce");
                         break;
                     case MessageType.Status:
-                        _ = StrictJson.String(json, "state", 80);
+                        var receiverState = StrictJson.String(json, "state", 80);
                         _ = StrictJson.String(json, "message", 2048);
+                        if (receiverState is StreamRecovery.Request or StreamRecovery.Key or StreamRecovery.Complete)
+                            throw new ProtocolException("Stream recovery STATUS was not negotiated.");
                         break;
                     case MessageType.Error:
                         var peerError = TerminalFailure.PeerError(json);

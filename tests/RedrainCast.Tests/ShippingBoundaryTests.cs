@@ -41,7 +41,7 @@ public sealed class ShippingBoundaryTests
         Assert.DoesNotContain("recordingOptions", source);
         Assert.DoesNotContain("RecordRecovery", source);
         Assert.Contains("new RecoveryPlayback(", source);
-        Assert.Contains("packet => SendAsync(packet, playbackCancellation.Token)", source);
+        Assert.Contains("(packet, token) => SendAsync(packet, token, playbackForMedia as RecoveryPlayback)", source);
         Assert.Contains("playbackRetirement ?? RetirePlaybackAsync(playback)", source);
     }
 

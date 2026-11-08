@@ -8,10 +8,15 @@ namespace RedrainCast.Receive.Media;
 public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRecoveryPlayback
 {
     private readonly GpuPresenter presenter;
-    private readonly HardwareDecoder decoder;
+    private HardwareDecoder decoder;
     private readonly Func<ValueTask> detach;
     private readonly Func<string, ValueTask> status;
     private readonly AudioPlayback? audio;
+    private readonly PlaybackClock clock;
+    private bool independentRecovery;
+    private bool videoAnchored;
+    private volatile bool videoSuspended;
+    private volatile bool sessionStopped;
     private readonly string codecName;
     private readonly HdrVideoFormat expectedFormat;
     private int rendered;
@@ -62,10 +67,62 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
     private long recoveryKey = -1, decodedRecoveryKey = -1;
     public long? DecodedRecoveryKeyPtsUs => Interlocked.Read(ref decodedRecoveryKey) is var pts && pts >= 0 ? pts : null;
     public long? FirstRecoverySourceAudioPtsUs => audio?.FirstRecoverySourcePtsUs;
+    public long? SourcePositionUs => clock.CurrentUs;
     public void SetRecoveryKey(long keyPtsUs)
     {
         Interlocked.Exchange(ref recoveryKey, keyPtsUs);
-        audio?.SetRecoveryCutoff(keyPtsUs);
+    }
+    public void SetAudioRecoveryCutoff(long cutoffPtsUs)
+    {
+        if (audio is null) throw new ProtocolException("Audio recovery was not requested.");
+        audio.SetRecoveryCutoff(cutoffPtsUs);
+    }
+    public void UpdateEncodedQueueDepth(uint track, int packets)
+    {
+        if (track == 2) audio?.SetEncodedQueueDepth(packets);
+    }
+    public void BeginTrackRecovery(uint track)
+    {
+        if (track == 1) videoSuspended = true;
+        else audio?.SuspendForRecovery();
+    }
+    public void BeginSessionStop()
+    {
+        sessionStopped = true;
+        videoSuspended = true;
+        audio?.StopSession();
+    }
+    public void CheckTrackHealth(uint track)
+    {
+        if (track == 1) CheckVideoHealth();
+        else audio?.CheckHealth();
+    }
+    public async ValueTask ConfigureRecoveryTrackAsync(Packet configuration, bool midstream, CancellationToken token)
+    {
+        independentRecovery = true;
+        if (configuration.Track == 2)
+        {
+            if (audio is null) throw new ProtocolException("Audio recovery was not requested.");
+            await audio.ConfigureAsync(configuration, token, midstream);
+            return;
+        }
+        if (midstream)
+        {
+            lock (nativeGate)
+            {
+                token.ThrowIfCancellationRequested();
+                pendingFrame?.Dispose(); pendingFrame = null;
+                lastFrame?.Dispose(); lastFrame = null;
+                decoder.Dispose();
+                decoder = new HardwareDecoder(presenter.Device, codecName, expectedFormat);
+            }
+        }
+        Interlocked.Exchange(ref recoveryKey, -1);
+        Interlocked.Exchange(ref decodedRecoveryKey, -1);
+        await ConfigureAsync(configuration, token);
+        token.ThrowIfCancellationRequested();
+        if (sessionStopped) throw new OperationCanceledException("Video session has stopped.", token);
+        videoSuspended = false;
     }
     public async ValueTask ConfigureRecoveryAsync(Packet video, Packet? audioConfiguration, bool midstream, CancellationToken token)
     {
@@ -101,13 +158,14 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
     public long PlayedAudioFrames => audio?.PlayedFrames ?? 0;
     public IDisposable? EnterTrack(uint track) => track == 2 && audio is not null ? WasapiOutput.AudioThread() : null;
     public VideoPlayback(GpuPresenter presenter, HardwareDecoder decoder, Func<ValueTask> detach, Func<string, ValueTask> status,
-        AudioPlayback? audio, string codecName = "h264", HdrVideoFormat? color = null)
+        AudioPlayback? audio, string codecName = "h264", HdrVideoFormat? color = null, PlaybackClock? clock = null)
     {
         this.presenter = presenter;
         this.decoder = decoder;
         this.detach = detach;
         this.status = status;
         this.audio = audio;
+        this.clock = clock ?? new PlaybackClock(audioExpected: audio is not null);
         this.codecName = codecName;
         expectedFormat = color ?? HdrVideoFormat.Sdr;
         expectedFormat.Validate(codecName);
@@ -178,6 +236,7 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
             Interlocked.Exchange(ref statisticsPeakSkewUs, 0);
             Volatile.Write(ref rendered, 0);
             configuredGeneration = configuration.Generation;
+            videoAnchored = false;
             timingSession = configuration.Session;
             Volatile.Write(ref lastAvTiming, null);
             Volatile.Write(ref decodedCurrentGeneration, 0);
@@ -206,6 +265,11 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
         var waitingAt = Stopwatch.GetTimestamp();
         lock (nativeGate)
         {
+            if (!videoAnchored)
+            {
+                clock.AnchorVideo(media.PtsUs);
+                videoAnchored = true;
+            }
             Interlocked.Exchange(ref maximumGateWaitUs, Math.Max(Interlocked.Read(ref maximumGateWaitUs), (long)Stopwatch.GetElapsedTime(waitingAt).TotalMicroseconds));
             var begin = Stopwatch.GetTimestamp();
             frames = decoder.Decode(media);
@@ -217,7 +281,8 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
         var totalDecoded = Interlocked.Add(ref decodedFrames, frames.Count);
         if (frames.Count > 0) Volatile.Write(ref decodedCurrentGeneration, 1);
         var expectedKey = Interlocked.Read(ref recoveryKey);
-        if (expectedKey >= 0 && frames.Any(frame => frame.PtsUs >= expectedKey))
+        if (expectedKey >= 0 && frames.Any(frame => frame.PtsUs >= expectedKey &&
+            (!independentRecovery || clock.CurrentUs is not { } source || source - frame.PtsUs <= StreamRecovery.MaximumKeyAgeUs)))
             Interlocked.CompareExchange(ref decodedRecoveryKey, expectedKey, -1);
         try
         {
@@ -227,6 +292,12 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
             {
                 if (frame.PtsUs < 0) throw new ProtocolException("Hardware decoder lost the source timestamp.");
                 cancellationToken.ThrowIfCancellationRequested();
+                if (independentRecovery && clock.CurrentUs is { } source &&
+                    source - frame.PtsUs > StreamRecovery.MaximumKeyAgeUs)
+                {
+                    Interlocked.Increment(ref skippedFrames);
+                    continue;
+                }
                 lock (nativeGate)
                 {
                     CheckVideoHealth();
@@ -252,6 +323,7 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
                     Volatile.Read(ref lastFrame) is not null && presenter.HasPendingRedraw ? 5 : 250;
                 if (WaitHandle.WaitAny([renderWake, token.WaitHandle], delay) == 1) token.ThrowIfCancellationRequested();
                 token.ThrowIfCancellationRequested();
+                if (videoSuspended || sessionStopped) continue;
                 if (!Monitor.TryEnter(nativeGate)) continue;
                 var first = false;
                 try
@@ -259,6 +331,7 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
                     if (pendingFrame is { } frame)
                     {
                         if (!presenter.Present(frame)) continue;
+                        clock.VideoPresented(frame.PtsUs);
                         awake.SetPlaying(true);
                         pendingFrame = null;
                         lastFrame?.Dispose();

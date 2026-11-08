@@ -116,7 +116,7 @@ public sealed class ReceiverOptionsTests
         using var client = new TcpClient();
         await client.ConnectAsync(IPAddress.Loopback, server.Port, limit.Token);
         var hello = android
-            ? """{"role":"sender","versions":[3],"name":"RedrainCast","videoRotation":true,"streamRecovery":true,"streamRecoveryVersion":1}"""
+            ? """{"role":"sender","versions":[3],"name":"RedrainCast","videoRotation":true,"streamRecovery":true,"streamRecoveryVersion":2}"""
             : """{"role":"sender","versions":[3],"name":"legacy Windows"}""";
         await Wire.WriteAsync(client.GetStream(), Packet.Control(PacketType.Hello, 0, Json(hello)), limit.Token);
         var response = await Wire.ReadAsync(client.GetStream(), limit.Token);
@@ -300,7 +300,10 @@ public sealed class ReceiverOptionsTests
         public long? DecodedRecoveryKeyPtsUs { get; private set; }
         public long? FirstRecoverySourceAudioPtsUs => null;
         public void SetRecoveryKey(long pts) { }
+        public void SetAudioRecoveryCutoff(long pts) { }
         public ValueTask ConfigureAsync(Packet packet, CancellationToken token) => ValueTask.CompletedTask;
+        public ValueTask ConfigureRecoveryTrackAsync(Packet configuration, bool midstream, CancellationToken token) =>
+            ConfigureAsync(configuration, token);
         public ValueTask ConfigureRecoveryAsync(Packet video, Packet? audio, bool midstream, CancellationToken token) => ValueTask.CompletedTask;
         public ValueTask PresentAsync(Packet packet, CancellationToken token)
         {

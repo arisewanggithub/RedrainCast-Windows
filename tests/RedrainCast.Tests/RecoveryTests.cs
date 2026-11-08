@@ -19,8 +19,8 @@ public sealed class RecoveryTests
     [InlineData("{}", false)]
     [InlineData("""{"streamRecovery":false,"streamRecoveryVersion":1}""", false)]
     [InlineData("""{"streamRecovery":true}""", false)]
-    [InlineData("""{"streamRecovery":true,"streamRecoveryVersion":2}""", false)]
-    [InlineData("""{"streamRecovery":true,"streamRecoveryVersion":1}""", true)]
+    [InlineData("""{"streamRecovery":true,"streamRecoveryVersion":2}""", true)]
+    [InlineData("""{"streamRecovery":true,"streamRecoveryVersion":1}""", false)]
     public void CapabilityRequiresExactMutualRevision(string json, bool expected) =>
         Assert.Equal(expected, StreamRecovery.Negotiated(JsonDocument.Parse(json).RootElement));
 
@@ -30,6 +30,49 @@ public sealed class RecoveryTests
     [InlineData("""{"streamRecoveryVersion":"1"}""")]
     public void InvalidCapabilityFailsExplicitly(string json) =>
         Assert.Throws<FormatException>(() => StreamRecovery.Negotiated(JsonDocument.Parse(json).RootElement));
+
+    [Fact]
+    public void TrueAcknowledgementRequiresTheExactOfferedRecoveryRevision()
+    {
+        Assert.Equal(2, StreamRecovery.Version);
+        var correct = JsonSerializer.SerializeToElement(new
+        {
+            streamRecovery = true,
+            streamRecoveryVersion = StreamRecovery.Version
+        });
+        var incompatible = JsonSerializer.SerializeToElement(new
+        {
+            streamRecovery = true,
+            streamRecoveryVersion = StreamRecovery.Version + 1
+        });
+        Assert.True(StreamRecovery.Negotiated(correct, acknowledgement: true));
+        Assert.Throws<FormatException>(() => StreamRecovery.Negotiated(incompatible, acknowledgement: true));
+        Assert.Throws<FormatException>(() =>
+            StreamRecovery.Negotiated(JsonDocument.Parse("""{"streamRecovery":true}""").RootElement, acknowledgement: true));
+        Assert.False(StreamRecovery.Negotiated(incompatible));
+    }
+
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(2, true)]
+    [InlineData(3, false)]
+    public async Task ReceiverAcknowledgesOnlyIndependentRecoveryRevision(int revision, bool expected)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await using var server = new ReceiverServer("Recovery negotiation", new FakeFactory(false), _ => { }, 0, IPAddress.Loopback);
+        server.Start(false);
+        using var control = new TcpClient();
+        await control.ConnectAsync(IPAddress.Loopback, server.Port, timeout.Token);
+        await RedrainCast.Receive.Core.Wire.WriteAsync(control.GetStream(), Packet.Control(PacketType.Hello, 0,
+            new { role = "sender", versions = new[] { 3 }, name = "Test",
+                streamRecovery = true, streamRecoveryVersion = revision }), timeout.Token);
+        var response = await RedrainCast.Receive.Core.Wire.ReadAsync(control.GetStream(), timeout.Token);
+        Assert.Equal(PacketType.Hello, response.Type);
+        var hello = response.Object();
+        Assert.Equal(expected, StreamRecovery.Negotiated(hello, acknowledgement: true));
+        if (expected) Assert.Equal(2, hello.GetProperty("streamRecoveryVersion").GetInt32());
+        else Assert.False(hello.TryGetProperty("streamRecovery", out _));
+    }
 
     [Theory]
     [InlineData("0", true)]
@@ -68,6 +111,24 @@ public sealed class RecoveryTests
         valid.Begin(100);
         valid.Complete(10099);
         Assert.False(valid.Pending);
+    }
+
+    [Fact]
+    public void IndependentRecoveryDeadlinesDoNotClearOrExtendEachOther()
+    {
+        var video = new RecoveryDeadline();
+        var audio = new RecoveryDeadline();
+        video.Begin(100);
+        audio.Begin(1_100);
+        video.Begin(9_000);
+        audio.Begin(9_000);
+
+        video.Complete(10_099);
+        Assert.False(video.Pending);
+        Assert.True(audio.Pending);
+        audio.Check(11_099);
+        Assert.Throws<TimeoutException>(() => audio.Complete(11_100));
+        Assert.True(audio.Pending);
     }
 
     [Fact]
@@ -144,11 +205,18 @@ public sealed class RecoveryTests
     [InlineData(false, 480, 120, false)]
     [InlineData(false, 480, 60, true)]
     [InlineData(false, 480, 0, true)]
-    public async Task ThreeSocketPressureReconstructsBothOutputsAndPreservesSession(bool audio, int sourceAudioFrames, int fps, bool statistics)
+    public async Task ThreeSocketVideoRecoveryKeepsHealthyAudioAndPreservesSession(bool audio, int sourceAudioFrames, int fps, bool statistics)
     {
         using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         using var stop = new CancellationTokenSource();
         var factory = new FakeFactory(audio) { ReceiverOptions = new(statistics) };
+        if (audio)
+            factory.Construction = async token =>
+            {
+                var before = Volatile.Read(ref factory.AudioPresented);
+                while (Volatile.Read(ref factory.AudioPresented) <= before)
+                    await Task.Delay(10, token);
+            };
         var notices = new List<string>();
         await using var server = new ReceiverServer("Recovery fake output", factory, notice =>
         {
@@ -169,13 +237,12 @@ public sealed class RecoveryTests
             state => { lock (states) states.Add(state); }, stop.Token, sound);
         try
         {
-            while (factory.RecoveredAudio < (audio ? 1 : 0) || factory.RecoveredVideo < 1 ||
-                   !TwiceStreaming())
+            while (Volatile.Read(ref factory.RecoveredVideo) < 1)
             {
                 if (cast.IsCompleted) { await cast; throw new IOException(string.Join("\n", notices)); }
                 await Task.Delay(20, limit.Token);
             }
-            Assert.True(factory.Opens >= 2);
+            Assert.Equal(1, factory.Opens);
             Assert.All(factory.Requests, request => Assert.Equal(fps, request.VideoProcessingFramesPerSecond));
             Assert.All(factory.Requests, request => Assert.Equal(statistics, request.EffectiveOptions.PlaybackStats));
             Assert.True(source.SyncRequests >= 2);
@@ -184,7 +251,9 @@ public sealed class RecoveryTests
             {
                 Assert.Single(factory.AudioThreadEntries);
                 Assert.Empty(factory.AudioThreadExits);
-                Assert.True(factory.Outputs[0].Disposed);
+                Assert.False(factory.Outputs[0].Disposed);
+                Assert.Equal(0, Volatile.Read(ref factory.RecoveredAudio));
+                Assert.True(Volatile.Read(ref factory.AudioPresented) > 0);
             }
             stop.Cancel();
             await cast.WaitAsync(limit.Token);
@@ -198,9 +267,66 @@ public sealed class RecoveryTests
         {
             stop.Cancel();
             try { await cast.WaitAsync(limit.Token); }
-            catch (Exception error) { throw new IOException(string.Join("\n", notices), error); }
+            catch (Exception error)
+            {
+                string[] senderStates;
+                lock (states) senderStates = states.ToArray();
+                throw new IOException(string.Join("\n", notices.Concat(senderStates)), error);
+            }
         }
-        bool TwiceStreaming() { lock (states) return states.Count(s => s == "Streaming") >= 2; }
+    }
+
+    [Theory]
+    [InlineData(1u)]
+    [InlineData(2u)]
+    public async Task InitialTrackReadinessOrderRetainsAudioPrimingWithoutSendingEarlyMedia(uint delayedTrack)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var stop = new CancellationTokenSource();
+        var configuring = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var factory = new FakeFactory(true) { StallMilliseconds = 0 };
+        factory.InitialTrackConstruction = async (track, token) =>
+        {
+            if (track != delayedTrack) return;
+            configuring.TrySetResult();
+            await release.Task.WaitAsync(token);
+        };
+        var sound = new GeneratedAudio();
+        factory.ValidateAudio = packet =>
+        {
+            Assert.True(sound.Original.TryGetValue(packet.PtsUs, out var original));
+            Assert.Equal(original, packet.Payload);
+        };
+        await using var server = new ReceiverServer("Initial readiness fake", factory, _ => { }, 0, IPAddress.Loopback);
+        server.Start(false);
+        await using var source = new GeneratedSource();
+        var cast = new SenderSession().RunAsync(new(IPAddress.Loopback, server.Port, "Test", false),
+            new(MaxSize: source.Width, EnableAudio: true), source, _ => { }, stop.Token, sound);
+        try
+        {
+            await configuring.Task.WaitAsync(timeout.Token);
+            await Task.Delay(750, timeout.Token);
+            Assert.NotEmpty(sound.Original);
+            Assert.Equal(0, Volatile.Read(ref factory.AudioPresented));
+            Assert.Equal(0, Volatile.Read(ref factory.VideoPresented));
+            release.TrySetResult();
+            while (Volatile.Read(ref factory.AudioPresented) == 0 || Volatile.Read(ref factory.VideoPresented) == 0)
+            {
+                if (cast.IsCompleted) { await cast; throw new IOException("Cast ended before both initial tracks became usable."); }
+                await Task.Delay(10, timeout.Token);
+            }
+            Assert.Equal(1, factory.Opens);
+            Assert.Equal(0, Volatile.Read(ref factory.RecoveredAudio));
+            stop.Cancel();
+            await cast.WaitAsync(timeout.Token);
+        }
+        finally
+        {
+            release.TrySetResult();
+            stop.Cancel();
+            await cast.WaitAsync(timeout.Token);
+        }
     }
 
     [Fact]
@@ -272,11 +398,11 @@ public sealed class RecoveryTests
                 await Task.Delay(10, timeout.Token);
             }
             Assert.Equal(1, factory.Opens);
-            Assert.DoesNotContain(states, s => s.StartsWith("Recovering video generation", StringComparison.Ordinal));
+            Assert.DoesNotContain(states, s => s.StartsWith("Recovering track 1 generation", StringComparison.Ordinal));
             if (decodeDelay > 0)
             {
                 var proof = Assert.Single(states, s => s.StartsWith("Recovery decoded KEY:", StringComparison.Ordinal));
-                var age = long.Parse(proof.Split("sourceAgeUs=")[1], System.Globalization.CultureInfo.InvariantCulture);
+                var age = long.Parse(proof.Split("sourceAgeUs=")[1].Split(',')[0].Trim(), System.Globalization.CultureInfo.InvariantCulture);
                 Assert.True(age >= 300_000, $"Test did not exercise a legitimately delayed decoded proof: {age}us.");
             }
             stop.Cancel();
@@ -286,15 +412,14 @@ public sealed class RecoveryTests
     }
 
     [Fact]
-    public async Task AudioPrefixActuallyEvictedFromBoundedQueueStartsOneNewAttempt()
+    public async Task DelayedVideoKeyProofDoesNotGateHealthySourceAudio()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(6));
         using var stop = new CancellationTokenSource();
         var factory = new FakeFactory(true) { FirstKeyProofDelayMilliseconds = 1100, StallMilliseconds = 0 };
         var states = new ConcurrentQueue<string>();
-        await using var server = new ReceiverServer("Evicted PCM prefix fake", factory, _ => { }, 0, IPAddress.Loopback);
+        await using var server = new ReceiverServer("Delayed video key fake", factory, _ => { }, 0, IPAddress.Loopback);
         server.Start(false);
-        // Keep key requests live, but avoid unrelated video queue pressure while PCM ages out.
         await using var source = new GeneratedSource
         {
             CanEmitDependentFrames = () => factory.FirstOutput?.DecodedRecoveryKeyPtsUs is not null
@@ -309,21 +434,23 @@ public sealed class RecoveryTests
             new(MaxSize: source.Width, EnableAudio: true), source, states.Enqueue, stop.Token, sound);
         try
         {
-            while (!states.Contains("Streaming"))
+            while (Volatile.Read(ref factory.AudioPresented) == 0)
             {
-                if (cast.IsCompleted) { await cast; throw new IOException("Evicted prefix recovery failed."); }
+                if (cast.IsCompleted) { await cast; throw new IOException("Cast ended before source audio was submitted."); }
                 await Task.Delay(10, timeout.Token);
             }
-            Assert.Equal(2, factory.Opens);
-            var retry = Assert.Single(states, s => s.StartsWith("Recovering video generation", StringComparison.Ordinal));
-            Assert.Contains("source PCM starts", retry);
-            var gap = long.Parse(retry.Split("source PCM starts ")[1].Split("us")[0], System.Globalization.CultureInfo.InvariantCulture);
-            Assert.True(gap > 250_000, $"Retained source PCM must actually miss the key window: {gap}us.");
+            Assert.Null(factory.FirstOutput?.DecodedRecoveryKeyPtsUs);
+            while (!states.Contains("Streaming"))
+            {
+                if (cast.IsCompleted) { await cast; throw new IOException("Delayed key recovery failed."); }
+                await Task.Delay(10, timeout.Token);
+            }
+            Assert.Equal(1, factory.Opens);
+            Assert.Equal(0, Volatile.Read(ref factory.RecoveredAudio));
+            Assert.DoesNotContain(states, s => s.StartsWith("Recovering track 2", StringComparison.Ordinal));
             var proof = Assert.Single(states, s => s.StartsWith("Recovery decoded KEY: generation=1,", StringComparison.Ordinal));
-            var firstKey = long.Parse(proof.Split("keyPtsUs=")[1].Split(',')[0], System.Globalization.CultureInfo.InvariantCulture);
-            var age = long.Parse(proof.Split("sourceAgeUs=")[1], System.Globalization.CultureInfo.InvariantCulture);
+            var age = long.Parse(proof.Split("sourceAgeUs=")[1].Split(',')[0].Trim(), System.Globalization.CultureInfo.InvariantCulture);
             Assert.True(age >= 1_000_000, $"The initial decoded proof must retain its real delay: {age}us.");
-            Assert.Contains(sound.Original.Keys, pts => pts < firstKey + 250_000);
             Assert.DoesNotContain(states, s => s.Contains("decoded KEY proof is stale", StringComparison.Ordinal));
             stop.Cancel();
             await cast.WaitAsync(timeout.Token);
@@ -352,17 +479,15 @@ public sealed class RecoveryTests
         await Assert.ThrowsAsync<IOException>(() => cast.WaitAsync(timeout.Token));
         Assert.InRange(clock.Elapsed.TotalSeconds, 9, 12);
         Assert.Equal(1, factory.Opens);
-        Assert.DoesNotContain(states, s => s.StartsWith("Recovering video generation", StringComparison.Ordinal));
+        Assert.DoesNotContain(states, s => s.StartsWith("Recovering track 1 generation", StringComparison.Ordinal));
         Assert.DoesNotContain("Streaming", states);
         Assert.Single(states, s => s.StartsWith("Recovery decoded KEY: generation=1,", StringComparison.Ordinal));
     }
 
-    [Theory]
-    [InlineData("raw", true)]
-    [InlineData("aac", true)]
-    [InlineData("opus", false)]
-    public async Task ReceiverRequestsOnlyProvenLostAudioCoverage(string codec, bool requestsReset)
+    [Fact]
+    public async Task RecoveredAudioMayStartBeyondTheVideoKeyWithoutAnotherReset()
     {
+        const string codec = "raw";
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var factory = new FakeFactory(true) { StallMilliseconds = 0 };
         await using var server = new ReceiverServer("Coverage fake output", factory, _ => { }, 0, IPAddress.Loopback);
@@ -371,7 +496,7 @@ public sealed class RecoveryTests
         await control.ConnectAsync(IPAddress.Loopback, server.Port, timeout.Token);
         var stream = control.GetStream();
         await RedrainCast.Receive.Core.Wire.WriteAsync(stream, Packet.Control(PacketType.Hello, 0,
-            new { role = "sender", versions = new[] { 3 }, name = "Test", streamRecovery = true, streamRecoveryVersion = 1 }), timeout.Token);
+            new { role = "sender", versions = new[] { 3 }, name = "Test", streamRecovery = true, streamRecoveryVersion = StreamRecovery.Version }), timeout.Token);
         Assert.Equal(PacketType.Hello, (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Type);
         var request = JsonSerializer.SerializeToNode(new CaptureSettings(EnableAudio: true).Request("Fake"))!;
         request["audio"]!["codec"] = codec;
@@ -388,33 +513,164 @@ public sealed class RecoveryTests
                 new { role = "media", channel, token = mediaToken }), timeout.Token);
             Assert.Equal(PacketType.Hello, (await RedrainCast.Receive.Core.Wire.ReadAsync(socket.GetStream(), timeout.Token)).Type);
         }
+        var fixture = H264Fixture();
+        var frame = fixture.GetProperty("frames")[0];
         await RedrainCast.Receive.Core.Wire.WriteAsync(video.GetStream(), new(PacketType.StreamConfig, 1, 1, 1, -1, 0,
-            JsonSerializer.SerializeToUtf8Bytes(new { codec = "h264", width = 640, height = 360, csd = new[] { "AAAAAQ==" } })), timeout.Token);
-        await RedrainCast.Receive.Core.Wire.WriteAsync(audio.GetStream(), new(PacketType.StreamConfig, 1, 2, 1, -1, 0,
             JsonSerializer.SerializeToUtf8Bytes(new
             {
-                codec, sampleRate = 48000, channels = 2, sampleFormat = "s16le",
-                csd = codec switch { "aac" => new[] { "EZA=" }, "opus" => ["T3B1c0hlYWQBAjgBgLsAAAAAAA=="], _ => [] },
-                codecDelayNs = 6500000, seekPrerollNs = 80000000
+                codec = "h264", width = fixture.GetProperty("width").GetInt32(), height = fixture.GetProperty("height").GetInt32(),
+                csd = new[] { frame.GetProperty("configuration").GetString() }
             })), timeout.Token);
+        var audioConfiguration = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            codec, sampleRate = 48000, channels = 2, sampleFormat = "s16le",
+            csd = Array.Empty<string>(),
+            codecDelayNs = 6500000, seekPrerollNs = 80000000
+        });
+        await RedrainCast.Receive.Core.Wire.WriteAsync(audio.GetStream(), new(PacketType.StreamConfig, 1, 2, 1, -1, 0,
+            audioConfiguration), timeout.Token);
         for (var i = 0; i < 2; i++)
             Assert.Equal(PacketType.StreamReady, (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Type);
-        const long keyPts = 1_000_000;
-        await RedrainCast.Receive.Core.Wire.WriteAsync(video.GetStream(), new(PacketType.VideoFrame, 1, 1, 1, keyPts, 1, [1]), timeout.Token);
+        var keyPts = QpcUs();
+        await RedrainCast.Receive.Core.Wire.WriteAsync(video.GetStream(), new(PacketType.VideoFrame, 1, 1, 1, keyPts, 1,
+            Convert.FromBase64String(frame.GetProperty("data").GetString()!)), timeout.Token);
         Assert.Equal(StreamRecovery.Key, (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Object().GetProperty("state").GetString());
-        var audioPts = codec == "raw" ? keyPts + 250_001 : keyPts;
-        byte[] data = codec switch { "opus" => [248, 255, 254], "aac" => [1], _ => new byte[1920] };
-        await RedrainCast.Receive.Core.Wire.WriteAsync(audio.GetStream(), new(PacketType.AudioPacket, 1, 2, 1, audioPts, 0, data), timeout.Token);
-        if (requestsReset)
-            Assert.Equal(StreamRecovery.Request, (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Object().GetProperty("state").GetString());
-        else
-        {
-            using var noReset = new CancellationTokenSource(TimeSpan.FromMilliseconds(350));
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => RedrainCast.Receive.Core.Wire.ReadAsync(stream, noReset.Token).AsTask());
-        }
+        Assert.Equal(StreamRecovery.Complete, (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Object().GetProperty("state").GetString());
+        var recoveryConfiguration = System.Text.Json.Nodes.JsonNode.Parse(audioConfiguration)!;
+        recoveryConfiguration["recoveryPtsUs"] = StreamRecovery.Timestamp(keyPts);
+        await RedrainCast.Receive.Core.Wire.WriteAsync(audio.GetStream(), new(PacketType.StreamConfig, 1, 2, 2, -1, 0,
+            JsonSerializer.SerializeToUtf8Bytes(recoveryConfiguration)), timeout.Token);
+        var audioReady = await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token);
+        Assert.Equal(PacketType.StreamReady, audioReady.Type);
+        Assert.Equal(2u, audioReady.Track);
+        Assert.Equal(2u, audioReady.Generation);
+        var audioPts = keyPts + 250_001;
+        var data = SourcePcm(480);
+        await RedrainCast.Receive.Core.Wire.WriteAsync(audio.GetStream(), new(PacketType.AudioPacket, 1, 2, 2, audioPts, 0, data), timeout.Token);
+        var recovery = (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Object();
+        Assert.Equal(StreamRecovery.Complete, recovery.GetProperty("state").GetString());
+        Assert.Equal(2, recovery.GetProperty("track").GetInt32());
+        Assert.Equal(2, recovery.GetProperty("generation").GetInt32());
+        Assert.Equal(audioPts, StreamRecovery.Timestamp(recovery, "audioPtsUs"));
+        Assert.False(recovery.TryGetProperty("keyPtsUs", out _));
         await RedrainCast.Receive.Core.Wire.WriteAsync(stream, Packet.Control(PacketType.Stop, 1, new { reason = "test" }), timeout.Token);
         Assert.Equal(PacketType.SessionEnd, (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Type);
         Assert.All(factory.Outputs, output => Assert.True(output.Disposed));
+    }
+
+    [Fact]
+    public async Task ThreeSocketAudioReconstructionKeepsRenderingHealthyVideo()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        var constructing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var factory = new FakeFactory(true) { StallMilliseconds = 0 };
+        factory.TrackConstruction = async (track, token) =>
+        {
+            if (track != 2) return;
+            constructing.TrySetResult();
+            await release.Task.WaitAsync(token);
+        };
+        await using var server = new ReceiverServer("Independent audio recovery fake", factory, _ => { }, 0, IPAddress.Loopback);
+        server.Start(false);
+        using var control = new TcpClient { NoDelay = true };
+        using var video = new TcpClient { NoDelay = true };
+        using var audio = new TcpClient { NoDelay = true };
+        await control.ConnectAsync(IPAddress.Loopback, server.Port, timeout.Token);
+        var stream = control.GetStream();
+        await RedrainCast.Receive.Core.Wire.WriteAsync(stream, Packet.Control(PacketType.Hello, 0,
+            new { role = "sender", versions = new[] { 3 }, name = "Test",
+                streamRecovery = true, streamRecoveryVersion = StreamRecovery.Version }), timeout.Token);
+        var hello = await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token);
+        Assert.True(StreamRecovery.Negotiated(hello.Object(), acknowledgement: true));
+        var request = new CaptureSettings(EnableAudio: true).Request("Fake");
+        await RedrainCast.Receive.Core.Wire.WriteAsync(stream, Packet.Control(PacketType.SessionRequest, 1, request), timeout.Token);
+        var acceptance = await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token);
+        Assert.Equal(PacketType.SessionAccept, acceptance.Type);
+        var mediaToken = acceptance.Object().GetProperty("mediaToken").GetString()!;
+        foreach (var (socket, channel) in new[] { (video, "video"), (audio, "audio") })
+        {
+            await socket.ConnectAsync(IPAddress.Loopback, server.Port, timeout.Token);
+            await RedrainCast.Receive.Core.Wire.WriteAsync(socket.GetStream(), Packet.Control(PacketType.Hello, 1,
+                new { role = "media", channel, token = mediaToken }), timeout.Token);
+            Assert.Equal(PacketType.Hello, (await RedrainCast.Receive.Core.Wire.ReadAsync(socket.GetStream(), timeout.Token)).Type);
+        }
+
+        var fixture = H264Fixture();
+        var key = fixture.GetProperty("frames")[0];
+        var dependent = fixture.GetProperty("frames")[1];
+        var videoConfig = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            codec = "h264", width = fixture.GetProperty("width").GetInt32(), height = fixture.GetProperty("height").GetInt32(),
+            csd = new[] { key.GetProperty("configuration").GetString() }
+        });
+        var audioConfig = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            codec = "raw", sampleRate = 48000, channels = 2, sampleFormat = "s16le", csd = Array.Empty<string>()
+        });
+        try
+        {
+            await RedrainCast.Receive.Core.Wire.WriteAsync(video.GetStream(),
+                new(PacketType.StreamConfig, 1, 1, 1, -1, 0, videoConfig), timeout.Token);
+            await RedrainCast.Receive.Core.Wire.WriteAsync(audio.GetStream(),
+                new(PacketType.StreamConfig, 1, 2, 1, -1, 0, audioConfig), timeout.Token);
+            for (var index = 0; index < 2; index++)
+                Assert.Equal(PacketType.StreamReady, (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Type);
+
+            var videoPts = QpcUs();
+            await RedrainCast.Receive.Core.Wire.WriteAsync(video.GetStream(),
+                new(PacketType.VideoFrame, 1, 1, 1, videoPts, 1, Convert.FromBase64String(key.GetProperty("data").GetString()!)),
+                timeout.Token);
+            foreach (var expected in new[] { StreamRecovery.Key, StreamRecovery.Complete })
+            {
+                var proof = (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Object();
+                Assert.Equal(expected, proof.GetProperty("state").GetString());
+                Assert.Equal(1, proof.GetProperty("track").GetInt32());
+                Assert.Equal(videoPts, StreamRecovery.Timestamp(proof, "keyPtsUs"));
+            }
+            await RedrainCast.Receive.Core.Wire.WriteAsync(audio.GetStream(),
+                new(PacketType.AudioPacket, 1, 2, 1, QpcUs(), 0, SourcePcm(480)), timeout.Token);
+            while (Volatile.Read(ref factory.AudioPresented) == 0) await Task.Delay(10, timeout.Token);
+
+            var cutoff = QpcUs() + 20_000;
+            var nextAudio = System.Text.Json.Nodes.JsonNode.Parse(audioConfig)!;
+            nextAudio["recoveryPtsUs"] = StreamRecovery.Timestamp(cutoff);
+            await RedrainCast.Receive.Core.Wire.WriteAsync(audio.GetStream(),
+                new(PacketType.StreamConfig, 1, 2, 2, -1, 0, JsonSerializer.SerializeToUtf8Bytes(nextAudio)), timeout.Token);
+            await constructing.Task.WaitAsync(timeout.Token);
+            var before = Volatile.Read(ref factory.VideoPresented);
+            for (var index = 0; index < 5; index++)
+            {
+                await RedrainCast.Receive.Core.Wire.WriteAsync(video.GetStream(),
+                    new(PacketType.VideoFrame, 1, 1, 1, QpcUs(), 0, Convert.FromBase64String(dependent.GetProperty("data").GetString()!)),
+                    timeout.Token);
+                await Task.Delay(10, timeout.Token);
+            }
+            while (Volatile.Read(ref factory.VideoPresented) <= before) await Task.Delay(10, timeout.Token);
+            Assert.Equal(1, factory.Opens);
+            Assert.False(factory.Outputs[0].Disposed);
+
+            release.TrySetResult();
+            var ready = await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token);
+            Assert.Equal(PacketType.StreamReady, ready.Type);
+            Assert.Equal(2u, ready.Track);
+            Assert.Equal(2u, ready.Generation);
+            var sourceAudioPts = Math.Max(cutoff, QpcUs());
+            await RedrainCast.Receive.Core.Wire.WriteAsync(audio.GetStream(),
+                new(PacketType.AudioPacket, 1, 2, 2, sourceAudioPts, 0, SourcePcm(480)), timeout.Token);
+            var audioProof = (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Object();
+            Assert.Equal(StreamRecovery.Complete, audioProof.GetProperty("state").GetString());
+            Assert.Equal(2, audioProof.GetProperty("track").GetInt32());
+            Assert.Equal(2, audioProof.GetProperty("generation").GetInt32());
+            Assert.Equal(sourceAudioPts, StreamRecovery.Timestamp(audioProof, "audioPtsUs"));
+            Assert.False(audioProof.TryGetProperty("keyPtsUs", out _));
+            Assert.True(Volatile.Read(ref factory.RecoveredAudio) > 0);
+
+            await RedrainCast.Receive.Core.Wire.WriteAsync(stream,
+                Packet.Control(PacketType.Stop, 1, new { reason = "test" }), timeout.Token);
+            Assert.Equal(PacketType.SessionEnd, (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Type);
+        }
+        finally { release.TrySetResult(); }
     }
 
     [Theory]
@@ -438,7 +694,7 @@ public sealed class RecoveryTests
         Assert.True(hello.Json().GetProperty("streamRecovery").GetBoolean());
         await RedrainCast.Send.Core.Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0,
             new { role = "receiver", versions = new[] { 3 }, name = "Fake", uncappedFps = true,
-                streamRecovery = true, streamRecoveryVersion = 1 }), timeout.Token);
+                streamRecovery = true, streamRecoveryVersion = StreamRecovery.Version }), timeout.Token);
         var request = await RedrainCast.Send.Core.Wire.ReadAsync(stream, timeout.Token);
         Assert.Equal(0, request.Json().GetProperty("video").GetProperty("maxFps").GetInt32());
         var token = new string('A', 64);
@@ -460,9 +716,10 @@ public sealed class RecoveryTests
         {
             ["state"] = invalid == "future-request" || invalid == "missing-generation" ? StreamRecovery.Request :
                 invalid == "complete-before-key" ? StreamRecovery.Complete : StreamRecovery.Key,
-            ["message"] = "Test", ["generation"] = invalid == "future-request" ? 2 : 1,
+            ["message"] = "Test", ["track"] = 1, ["generation"] = invalid == "future-request" ? 2 : 1,
             ["keyPtsUs"] = invalid == "noncanonical-key" ? "01" : StreamRecovery.Timestamp(key.PtsUs + (invalid == "wrong-key" ? 1 : 0))
         };
+        if (invalid is "future-request" or "missing-generation") body.Remove("keyPtsUs");
         if (invalid == "missing-generation") body.Remove("generation");
         await RedrainCast.Send.Core.Wire.WriteAsync(stream, invalid == "duplicate-ready" ? ready :
             Message.Control(MessageType.Status, request.Session, body), timeout.Token);
@@ -555,7 +812,7 @@ public sealed class RecoveryTests
         var stream = control.GetStream();
         await RedrainCast.Receive.Core.Wire.WriteAsync(stream, Packet.Control(PacketType.Hello, 0,
             new { role = "sender", versions = new[] { 3 }, name = "High-FPS fake",
-                streamRecovery = true, streamRecoveryVersion = 1 }), timeout.Token);
+                streamRecovery = true, streamRecoveryVersion = StreamRecovery.Version }), timeout.Token);
         Assert.Equal(PacketType.Hello, (await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token)).Type);
         var request = JsonSerializer.SerializeToNode(new CaptureSettings(EnableAudio: false).Request("Fake"))!;
         request["video"]!["maxFps"] = fps;
@@ -570,17 +827,22 @@ public sealed class RecoveryTests
                 new { role = "media", channel, token = mediaToken }), timeout.Token);
             Assert.Equal(PacketType.Hello, (await RedrainCast.Receive.Core.Wire.ReadAsync(socket.GetStream(), timeout.Token)).Type);
         }
+        var fixture = H264Fixture();
+        var frame = fixture.GetProperty("frames")[0];
         for (uint generation = 1; generation <= 2; generation++)
         {
             await RedrainCast.Receive.Core.Wire.WriteAsync(video.GetStream(), new(PacketType.StreamConfig, 1, 1, generation, -1, 0,
-                JsonSerializer.SerializeToUtf8Bytes(new { codec = "h264", width = 640, height = 360,
-                    csd = new[] { "AAAAAQ==" } })), timeout.Token);
+                JsonSerializer.SerializeToUtf8Bytes(new
+                {
+                    codec = "h264", width = fixture.GetProperty("width").GetInt32(), height = fixture.GetProperty("height").GetInt32(),
+                    csd = new[] { frame.GetProperty("configuration").GetString() }
+                })), timeout.Token);
             var ready = await RedrainCast.Receive.Core.Wire.ReadAsync(stream, timeout.Token);
             Assert.Equal(PacketType.StreamReady, ready.Type);
             Assert.Equal(generation, ready.Generation);
         }
-        Assert.Equal(2, factory.Opens);
-        Assert.Equal(2, factory.Requests.Count);
+        Assert.Equal(1, factory.Opens);
+        Assert.Single(factory.Requests);
         Assert.All(factory.Requests, captured =>
         {
             Assert.Equal(fps, captured.VideoProcessingFramesPerSecond);
@@ -654,19 +916,23 @@ public sealed class RecoveryTests
                 await Task.Delay(InitialDeliveryDelayMilliseconds, token);
                 for (var offset = 0; offset < InitialDeliveryDelayMilliseconds; offset += 10)
                 {
-                    var packet = new AudioPacket(new byte[480 * 4], first + offset * 1000L);
+                    var packet = new AudioPacket(SourcePcm(480), first + offset * 1000L);
                     Original[packet.PtsUs] = packet.Data;
                     yield return packet;
                 }
+                while (QpcUs() < first + InitialDeliveryDelayMilliseconds * 1000L)
+                    await Task.Delay(1, token);
             }
             while (true)
             {
                 var pts = QpcUs();
-                var bytes = new byte[frames * 4];
+                var bytes = SourcePcm(frames);
                 var packet = new AudioPacket(bytes, pts);
                 foreach (var part in PcmPackets.Split(packet)) Original[part.PtsUs] = part.Data;
                 yield return packet;
-                await Task.Delay(frames * 1000 / 48000, token);
+                var endPtsUs = RecoveryAudio.End(pts, frames);
+                while (QpcUs() < endPtsUs)
+                    await Task.Delay(1, token);
             }
         }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
@@ -677,8 +943,10 @@ public sealed class RecoveryTests
         private FakeOutput? firstOutput;
         public FakeOutput? FirstOutput => Volatile.Read(ref firstOutput);
         public Func<CancellationToken, Task>? Construction;
+        public Func<uint, CancellationToken, Task>? TrackConstruction;
+        public Func<uint, CancellationToken, Task>? InitialTrackConstruction;
         public Action<Packet>? ValidateAudio;
-        public int Opens, RecoveredAudio, RecoveredVideo;
+        public int Opens, RecoveredAudio, RecoveredVideo, AudioPresented, VideoPresented;
         public ConcurrentQueue<int> AudioThreadEntries { get; } = new();
         public ConcurrentQueue<int> AudioThreadExits { get; } = new();
         public string Description => "EXPLICIT FAKE native outputs";
@@ -705,9 +973,12 @@ public sealed class RecoveryTests
     private sealed class FakeOutput(FakeFactory owner, bool recovered, bool audio) : IStreamRecoveryPlayback, IVideoPlaybackProgress
     {
         private int videoCount;
-        private long key = -1;
+        private long key = -1, audioCutoff = -1, sourcePosition = -1, firstRecoveryAudio = -1;
         private long keyObservedAt;
+        private readonly bool originallyRecovered = recovered;
+        private bool recoveredVideo = recovered, recoveredAudio = recovered;
         public bool Disposed;
+        public long? SourcePositionUs => Interlocked.Read(ref sourcePosition) is var pts && pts >= 0 ? pts : null;
         public IDisposable? EnterTrack(uint track)
         {
             if (track != 2 || !audio) return null;
@@ -723,18 +994,52 @@ public sealed class RecoveryTests
         private long decodedKey = -1;
         public long? DecodedRecoveryKeyPtsUs =>
             Interlocked.Read(ref decodedKey) is var pts && pts >= 0 &&
-            (recovered || Environment.TickCount64 - Interlocked.Read(ref keyObservedAt) >= owner.FirstKeyProofDelayMilliseconds)
+            (recoveredVideo || Environment.TickCount64 - Interlocked.Read(ref keyObservedAt) >= owner.FirstKeyProofDelayMilliseconds)
                 ? pts : null;
-        public long? FirstRecoverySourceAudioPtsUs { get; private set; }
+        public long? FirstRecoverySourceAudioPtsUs =>
+            Interlocked.Read(ref firstRecoveryAudio) is var pts && pts >= 0 ? pts : null;
+        public async ValueTask ConfigureRecoveryTrackAsync(Packet configuration, bool midstream, CancellationToken token)
+        {
+            if (midstream && owner.TrackConstruction is { } construct)
+                await construct(configuration.Track, token);
+            if (!midstream && owner.InitialTrackConstruction is { } initial)
+                await initial(configuration.Track, token);
+            if (configuration.Track == 1)
+            {
+                if (midstream && owner.Construction is { } build) await build(token);
+                await Task.Delay(midstream ? 25 : owner.ConfigureDelayMilliseconds, token);
+                token.ThrowIfCancellationRequested();
+                Assert.False(Disposed);
+                recoveredVideo = midstream;
+                videoCount = 0;
+                Interlocked.Exchange(ref decodedKey, -1);
+            }
+            else
+            {
+                Assert.True(audio);
+                token.ThrowIfCancellationRequested();
+                Assert.False(Disposed);
+                recoveredAudio = midstream;
+                Interlocked.Exchange(ref firstRecoveryAudio, -1);
+                audioCutoff = -1;
+            }
+        }
         public async ValueTask ConfigureRecoveryAsync(Packet video, Packet? sound, bool midstream, CancellationToken token)
         {
             Assert.Equal(audio, sound is not null);
-            Assert.Equal(recovered, midstream);
-            if (recovered && owner.Construction is { } build) await build(token);
-            await Task.Delay(recovered ? 25 : owner.ConfigureDelayMilliseconds, token);
+            Assert.Equal(originallyRecovered, midstream);
+            if (originallyRecovered && owner.Construction is { } build) await build(token);
+            await Task.Delay(originallyRecovered ? 25 : owner.ConfigureDelayMilliseconds, token);
             Assert.False(Disposed);
         }
-        public void SetRecoveryKey(long pts) { key = pts; Interlocked.Exchange(ref keyObservedAt, Environment.TickCount64); }
+        public void SetRecoveryKey(long pts)
+        {
+            if (key == pts) return;
+            key = pts;
+            Interlocked.Exchange(ref decodedKey, -1);
+            Interlocked.Exchange(ref keyObservedAt, Environment.TickCount64);
+        }
+        public void SetAudioRecoveryCutoff(long pts) => Interlocked.Exchange(ref audioCutoff, pts);
         public ValueTask ConfigureAsync(Packet packet, CancellationToken token) => ValueTask.CompletedTask;
         public async ValueTask PresentAsync(Packet packet, CancellationToken token)
         {
@@ -745,21 +1050,39 @@ public sealed class RecoveryTests
                 if (videoCount == 1 && owner.KeyDecodeDelayMilliseconds > 0)
                     await Task.Delay(owner.KeyDecodeDelayMilliseconds, token);
                 Interlocked.Exchange(ref decodedKey, key);
-                if (!recovered && videoCount == 10 && owner.StallMilliseconds > 0)
+                Interlocked.Increment(ref owner.VideoPresented);
+                if (!recoveredVideo && videoCount == 10 && owner.StallMilliseconds > 0)
                     await Task.Delay(owner.StallMilliseconds, token);
-                if (recovered) Interlocked.Increment(ref owner.RecoveredVideo);
+                if (recoveredVideo) Interlocked.Increment(ref owner.RecoveredVideo);
             }
             else
             {
                 owner.ValidateAudio?.Invoke(packet);
-                var skip = RecoveryAudio.Skip(packet.PtsUs, key, packet.Payload.Length / 4);
+                Assert.Contains(packet.Payload, value => value != 0);
+                Interlocked.Increment(ref owner.AudioPresented);
+                var cutoff = Interlocked.Read(ref audioCutoff);
+                var skip = cutoff < 0 ? 0 : RecoveryAudio.Skip(packet.PtsUs, cutoff, packet.Payload.Length / 4);
                 var pts = packet.PtsUs + skip * 1_000_000L / 48000;
-                Assert.True(pts >= key);
-                FirstRecoverySourceAudioPtsUs ??= pts;
-                if (recovered) Interlocked.Increment(ref owner.RecoveredAudio);
+                Interlocked.Exchange(ref sourcePosition, pts);
+                if (skip < packet.Payload.Length / 4)
+                    Interlocked.CompareExchange(ref firstRecoveryAudio, pts, -1);
+                if (recoveredAudio) Interlocked.Increment(ref owner.RecoveredAudio);
             }
         }
         public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
     }
+    private static JsonElement H264Fixture()
+    {
+        using var json = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "synthetic-h264.json")));
+        return json.RootElement.GetProperty("generations")[0].Clone();
+    }
+
+    private static byte[] SourcePcm(int frames)
+    {
+        var data = new byte[frames * 4];
+        for (var index = 0; index < data.Length; index++) data[index] = (byte)(index % 251 + 1);
+        return data;
+    }
+
     private static long QpcUs() => (long)((Int128)Stopwatch.GetTimestamp() * 1_000_000 / Stopwatch.Frequency);
 }

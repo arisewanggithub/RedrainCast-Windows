@@ -41,6 +41,19 @@ public static class VideoBitstream
 
     public static void ValidateFrame(string codec, byte[] data, byte[] configuration)
     {
+        if (codec is "h264" or "h265")
+        {
+            var declared = AnnexB.Units(configuration);
+            foreach (var unit in AnnexB.Units(data))
+            {
+                var parameter = codec == "h264" ? (unit[0] & 31) is 7 or 8 : (unit[0] >> 1 & 63) is 32 or 33 or 34;
+                if (parameter && !declared.Any(candidate => candidate.AsSpan().SequenceEqual(unit)))
+                    throw new ProtocolException("Video picture contains unannounced parameter sets.");
+            }
+        }
+        else if (codec == "av1" && Av1.HasSequenceHeader(data) &&
+            !Av1.SequenceHeader(data).AsSpan().SequenceEqual(configuration))
+            throw new ProtocolException("Video picture contains an unannounced sequence header.");
         switch (codec)
         {
             case "h264": H264.ValidateAccessUnit(data); break;
