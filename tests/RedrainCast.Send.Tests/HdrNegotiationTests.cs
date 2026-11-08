@@ -86,7 +86,7 @@ public sealed class HdrNegotiationTests
         var source = new Source { NativeHdrEligible = false, PreparationDelay = prepared.Task };
         var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
             ((IPEndPoint)listener.LocalEndpoint).Port, "HDR peer", false),
-            new(VideoCodec: "h265"), source, _ => { }, timeout.Token);
+            new(MaxFps: 60, VideoCodec: "h265"), source, _ => { }, timeout.Token);
         Assert.True(source.Configured);
         Assert.True(source.Prepared);
         Assert.False(listener.Pending());
@@ -107,13 +107,19 @@ public sealed class HdrNegotiationTests
     }
 
     [Theory]
-    [InlineData(false, false, false, false)]
-    [InlineData(true, false, true, false)]
-    [InlineData(false, true, true, false)]
-    [InlineData(false, false, false, true)]
-    [InlineData(true, false, true, true)]
-    [InlineData(false, true, true, true)]
-    public async Task HdrModeIsChosenFromHelloBeforePreparingCapture(bool native, bool conversion, bool expectedHdr, bool recovery)
+    [InlineData(false, false, false, false, 60)]
+    [InlineData(true, false, true, false, 60)]
+    [InlineData(false, true, true, false, 60)]
+    [InlineData(false, false, false, true, 60)]
+    [InlineData(true, false, true, true, 60)]
+    [InlineData(false, true, true, true, 60)]
+    [InlineData(false, false, false, false, 0)]
+    [InlineData(true, false, true, false, 0)]
+    [InlineData(false, true, true, false, 0)]
+    [InlineData(false, false, false, true, 0)]
+    [InlineData(true, false, true, true, 0)]
+    [InlineData(false, true, true, true, 0)]
+    public async Task HdrModeIsChosenFromHelloBeforePreparingCapture(bool native, bool conversion, bool expectedHdr, bool recovery, int fps)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -122,14 +128,16 @@ public sealed class HdrNegotiationTests
         var notices = new List<string>();
         var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
             ((IPEndPoint)listener.LocalEndpoint).Port, "HDR peer", false),
-            new(VideoCodec: "h265"), source, notices.Add, timeout.Token);
+            new(MaxFps: fps, VideoCodec: "h265"), source, notices.Add, timeout.Token);
         using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
         var stream = peer.GetStream();
         var hello = await Wire.ReadAsync(stream, timeout.Token);
         Assert.Equal(1, hello.Json().GetProperty("hdrVideoVersion").GetInt32());
+        Assert.True(StrictJson.Boolean(hello.Json(), "uncappedFps"));
         Assert.False(source.Prepared);
         var response = JsonData.Object(("role", "receiver"), ("versions", JsonData.Value(new[] { 3 })), ("name", "HDR peer"));
         response["receiveCapabilities"] = new HdrReceiverCapabilities(true, native, conversion).WireValue;
+        response["uncappedFps"] = true;
         if (recovery)
         {
             response["streamRecovery"] = true;
@@ -138,6 +146,7 @@ public sealed class HdrNegotiationTests
         await Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0, response), timeout.Token);
         var request = await Wire.ReadAsync(stream, timeout.Token);
         Assert.Equal(MessageType.SessionRequest, request.Type);
+        Assert.Equal(fps, request.Json().GetProperty("video").GetProperty("maxFps").GetInt32());
         Assert.Equal(expectedHdr, HdrVideoProtocol.Format(request.Json()).Hdr10);
         Assert.Equal(source.ColorFormat, HdrVideoProtocol.Format(request.Json()));
         Assert.True(source.Prepared);
@@ -158,7 +167,7 @@ public sealed class HdrNegotiationTests
         var source = new Source();
         var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
             ((IPEndPoint)listener.LocalEndpoint).Port, "Legacy peer", false,
-            Capabilities: new(true, true, true)), new(VideoCodec: "h265"), source, _ => { }, timeout.Token);
+            Capabilities: new(true, true, true)), new(MaxFps: 60, VideoCodec: "h265"), source, _ => { }, timeout.Token);
         using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
         var stream = peer.GetStream();
         await Wire.ReadAsync(stream, timeout.Token);
@@ -197,7 +206,7 @@ public sealed class HdrNegotiationTests
         };
         var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
             ((IPEndPoint)listener.LocalEndpoint).Port, "Manual peer", false),
-            new(VideoCodec: "h265"), source, _ => { }, stop.Token);
+            new(MaxFps: 60, VideoCodec: "h265"), source, _ => { }, stop.Token);
         using var preflight = await listener.AcceptTcpClientAsync(timeout.Token);
         using var firstSetup = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
         firstSetup.CancelAfter(TimeSpan.FromSeconds(modern ? 45 : 10));
@@ -282,7 +291,7 @@ public sealed class HdrNegotiationTests
         var source = new Source { Preparation = token => preparation.Task.WaitAsync(token) };
         var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
             ((IPEndPoint)listener.LocalEndpoint).Port, "Legacy peer", false),
-            new(VideoCodec: "h265"), source, _ => { }, stop.Token);
+            new(MaxFps: 60, VideoCodec: "h265"), source, _ => { }, stop.Token);
         using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
         await ReplyHello(peer.GetStream(), Hello(), timeout.Token);
         await Assert.ThrowsAsync<EndOfStreamException>(() => Wire.ReadAsync(peer.GetStream(), timeout.Token).AsTask());
@@ -319,7 +328,7 @@ public sealed class HdrNegotiationTests
         var source = new Source { SupportsStreamRecovery = true };
         var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
             ((IPEndPoint)listener.LocalEndpoint).Port, "Manual peer", false),
-            new(VideoCodec: "h265", ShowPlaybackStatistics: true), source, _ => { }, timeout.Token);
+            new(MaxFps: 60, VideoCodec: "h265", ShowPlaybackStatistics: true), source, _ => { }, timeout.Token);
         using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
         var response = Hello();
         response["streamRecovery"] = !finalRecovery;
@@ -359,7 +368,7 @@ public sealed class HdrNegotiationTests
         var source = new Source { PreparationDelay = prepared.Task };
         var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
             ((IPEndPoint)listener.LocalEndpoint).Port, "Future peer", false),
-            new(VideoCodec: "h265"), source, _ => { }, timeout.Token);
+            new(MaxFps: 60, VideoCodec: "h265"), source, _ => { }, timeout.Token);
         using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
         var response = Hello();
         response["receiveCapabilities"] = new HdrReceiverCapabilities(true, true, true).WireValue;
@@ -392,7 +401,7 @@ public sealed class HdrNegotiationTests
         var source = new Source();
         var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
             ((IPEndPoint)listener.LocalEndpoint).Port, "Invalid peer", false),
-            new(VideoCodec: "h265"), source, _ => { }, timeout.Token);
+            new(MaxFps: 60, VideoCodec: "h265"), source, _ => { }, timeout.Token);
         using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
         var response = Hello();
         response["receiveCapabilities"] = JsonNode.Parse(payload);
@@ -418,7 +427,7 @@ public sealed class HdrNegotiationTests
         var source = new Source();
         var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
             ((IPEndPoint)listener.LocalEndpoint).Port, "Busy peer", false),
-            new(VideoCodec: "h265"), source, _ => { }, timeout.Token);
+            new(MaxFps: 60, VideoCodec: "h265"), source, _ => { }, timeout.Token);
         using var preflight = await listener.AcceptTcpClientAsync(timeout.Token);
         TcpClient? finalPeer = null;
         try
@@ -455,7 +464,7 @@ public sealed class HdrNegotiationTests
         var source = new Source();
         var run = new SenderSession().RunAsync(new(IPAddress.Loopback,
             ((IPEndPoint)listener.LocalEndpoint).Port, "HDR peer", false),
-            new(VideoCodec: "h265"), source, _ => { }, timeout.Token);
+            new(MaxFps: 60, VideoCodec: "h265"), source, _ => { }, timeout.Token);
         using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
         var stream = peer.GetStream();
         await Wire.ReadAsync(stream, timeout.Token);
