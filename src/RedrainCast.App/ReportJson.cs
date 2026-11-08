@@ -10,6 +10,8 @@ namespace RedrainCast.App;
 
 internal static class ReportJson
 {
+    public static JsonNode Value(PlaybackStatistics value) =>
+        JsonSerializer.SerializeToNode(value, ReportJsonContext.Default.PlaybackStatistics)!;
     public static JsonNode? Value(ColorProbeReport? value) =>
         JsonSerializer.SerializeToNode(value, ReportJsonContext.Default.ColorProbeReport);
     public static JsonNode Value(PresentedVideoSample[] value) =>
@@ -20,11 +22,21 @@ internal static class ReportJson
         JsonSerializer.SerializeToNode(value, ReportJsonContext.Default.ReceiverRecoveryState);
     public static JsonNode? Value(PeerPlaybackSnapshot? value) =>
         JsonSerializer.SerializeToNode(value, ReportJsonContext.Default.PeerPlaybackSnapshot);
+    public static JsonNode? Value(HdrRenderDiagnosticReport? value) =>
+        JsonSerializer.SerializeToNode(value, ReportJsonContext.Default.HdrRenderDiagnosticReport);
+    public static JsonNode? Value(HdrDecodedColorProbeReport? value) =>
+        JsonSerializer.SerializeToNode(value, ReportJsonContext.Default.HdrDecodedColorProbeReport);
+    public static JsonNode Value(HdrLoopbackReport[] value) =>
+        JsonSerializer.SerializeToNode(value, ReportJsonContext.Default.HdrLoopbackReportArray)!;
 }
 
 [JsonSerializable(typeof(ColorProbeReport))]
+[JsonSerializable(typeof(PlaybackStatistics))]
 [JsonSerializable(typeof(PresentedVideoSample[]))]
 [JsonSerializable(typeof(MediaTimingSnapshot))]
 [JsonSerializable(typeof(ReceiverRecoveryState))]
 [JsonSerializable(typeof(PeerPlaybackSnapshot))]
+[JsonSerializable(typeof(HdrRenderDiagnosticReport))]
+[JsonSerializable(typeof(HdrDecodedColorProbeReport))]
+[JsonSerializable(typeof(HdrLoopbackReport[]))]
 internal partial class ReportJsonContext : JsonSerializerContext;

@@ -198,4 +198,11 @@ Podglądy na żywo są lokalne i działają tylko wtedy, gdy to okno wyboru jest
   <data name="StatisticsUnavailable" xml:space="preserve"><value>Statystyki odtwarzania są niedostępne; transmisja może być kontynuowana bez nakładki.</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>Źródło przechwytywania zmieniło się podczas odczytywania dostępnych kodeków. Otwórz ustawienia ponownie lub jeszcze raz naciśnij Zapisz.</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>Wybierz inne okno lub ekran, a nie główne okno tej aplikacji.</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>Zakres strumienia</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>Profil / bity</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>Wyjście</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>Wyjście HDR</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>Wyjście SDR</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (mapowanie tonów)</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0}-bit</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

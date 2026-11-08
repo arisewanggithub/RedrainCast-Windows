@@ -198,4 +198,11 @@ Bản xem trước trực tiếp chỉ chạy tại máy và chỉ khi trình ch
   <data name="StatisticsUnavailable" xml:space="preserve"><value>Thống kê phát không khả dụng; vẫn có thể tiếp tục truyền màn hình mà không có lớp phủ thống kê.</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>Nguồn thu hình đã thay đổi trong khi đọc danh sách bộ mã hóa. Mở lại cài đặt hoặc thử lại thao tác Lưu.</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>Chọn cửa sổ khác hoặc một màn hình, không phải cửa sổ chính của ứng dụng này.</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>Dải luồng</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>Cấu hình / bit</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>Đầu ra</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>Đầu ra HDR</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>Đầu ra SDR</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (ánh xạ tông)</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0}-bit</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

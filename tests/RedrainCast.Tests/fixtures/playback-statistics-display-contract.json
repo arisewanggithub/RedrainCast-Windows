@@ -1,5 +1,5 @@
 {
-  "displayContractVersion": 1,
+  "displayContractVersion": 2,
   "wireContractChanged": false,
   "title": "Playback statistics",
   "kpis": [
@@ -15,6 +15,9 @@
       "title": "VIDEO STREAM",
       "fields": [
         { "id": "videoCodec", "label": "Codec" },
+        { "id": "videoDynamicRange", "label": "Stream range", "meaning": "Validated incoming format, HDR10 or SDR, plus actual decoded transfer when known (PQ is a transfer, not a display wire protocol)." },
+        { "id": "videoDecodeFormat", "label": "Profile / depth", "meaning": "Actual decoder codec profile and decoded surface component bit depth; unknown components remain N/A, never inferred from negotiation or output buffer precision." },
+        { "id": "presentationOutput", "label": "Output", "meaning": "Cached actual presentation path: HDR output, SDR (tone-mapped), SDR output, or N/A before successful presentation. Incoming HDR does not imply HDR output." },
         { "id": "encodedSize", "label": "Encoded size", "unit": "px" },
         { "id": "captureLimit", "label": "Capture limit", "unit": "FPS", "meaning": "Requested maximum, not observed rate." },
         { "id": "canvasSize", "label": "Receiver canvas", "unit": "px", "meaning": "Physical pixel viewport, not DIP or source raster." },
@@ -63,6 +66,9 @@
     "audioCodecs": { "raw": "PCM", "pcm": "PCM", "opus": "Opus", "aac": "AAC" },
     "audioOff": "Off",
     "unknown": "N/A",
+    "hdrStreamExample": "HDR10 · PQ",
+    "hdrDecodeExample": "Main 10 · 10-bit",
+    "presentationOutputs": ["HDR output", "SDR (tone-mapped)", "SDR output"],
     "notApplicable": "—",
     "numericCulture": "Invariant decimal formatting",
     "sizes": "width × height",
@@ -73,6 +79,12 @@
     "sampleIntervalMilliseconds": 1000
   },
   "platformDifferences": [
+    {
+      "id": "presentationOutput",
+      "windows": "Last successful swap-chain submission or redraw with applied monitor policy. HDR output uses FP16 scRGB; this does not identify the physical display wire protocol.",
+      "android": "Actual configured presentation path and output policy, never inferred solely from HDR stream metadata or display HDR capabilities.",
+      "commonLimit": "SDR content remains an SDR stream on HDR displays. Output is N/A without a known successfully applied presentation path."
+    },
     {
       "id": "presentedFps",
       "windows": "Successful swap-chain submissions, excluding redraws.",

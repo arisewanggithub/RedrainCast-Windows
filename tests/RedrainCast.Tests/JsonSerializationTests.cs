@@ -22,6 +22,18 @@ public sealed class JsonSerializationTests
         Assert.Equal(new CaptureSettings(), CaptureSettings.ReadSaved(expected));
     }
 
+    [Fact]
+    public void NegotiatedHdrSettingsTravelToWorkerButCannotBeRestoredAsUserPreferences()
+    {
+        var color = new HdrVideoFormat(true, new(1000, 50, 1000, 400));
+        var settings = new CaptureSettings(VideoCodec: "h265", VideoColor: color);
+        var json = SettingsJson(settings);
+        Assert.Equal(settings, JsonSerializer.Deserialize(json, CaptureSettingsJsonContext.Default.CaptureSettings));
+        Assert.Throws<NotSupportedException>(() => CaptureSettings.ReadSaved(json));
+        Assert.Equal(color, HdrVideoProtocol.Format(StrictJson.Parse(JsonData.Bytes(settings.Request("Hardware", color: color)))));
+        Assert.DoesNotContain("VideoColor", SettingsJson(new()));
+    }
+
     [Theory]
     [InlineData("h264", false, "auto", 27)]
     [InlineData("h265", true, "portrait", 90)]

@@ -1,4 +1,27 @@
+using RedrainCast.Protocol;
+
 namespace RedrainCast.Receive.Core;
+
+public enum VideoTransfer { Bt709, Smpte170M, Gamma22, Gamma28, Srgb, Pq, Hlg }
+public enum VideoPresentationOutput { Sdr, Hdr, SdrToneMapped }
+public sealed record DecodedVideoStatistics(HdrVideoFormat StreamFormat, VideoTransfer? Transfer,
+    string? CodecProfile, int? BitDepth);
+public sealed record VideoPresentationStatistics(VideoPresentationOutput Output)
+{
+    private static readonly VideoPresentationStatistics sdr = new(VideoPresentationOutput.Sdr);
+    private static readonly VideoPresentationStatistics hdr = new(VideoPresentationOutput.Hdr);
+    private static readonly VideoPresentationStatistics toneMapped = new(VideoPresentationOutput.SdrToneMapped);
+    public static VideoPresentationStatistics ForStream(HdrVideoFormat format, bool nativeHdr) =>
+        !format.Hdr10 ? sdr : nativeHdr ? hdr : toneMapped;
+}
+public sealed class VideoPresentationStatisticsCache
+{
+    private VideoPresentationStatistics? snapshot;
+    public VideoPresentationStatistics? Snapshot => Volatile.Read(ref snapshot);
+    public void Presented(HdrVideoFormat format, bool nativeHdr) =>
+        Volatile.Write(ref snapshot, VideoPresentationStatistics.ForStream(format, nativeHdr));
+    public void Reset() => Volatile.Write(ref snapshot, null);
+}
 
 public sealed record TrackStatistics(long Packets, long PayloadBytes, long? LastPacketAgeMs);
 public sealed record EncodedQueueStatistics(int Entries, long Bytes, long PtsSpanUs);
@@ -10,7 +33,8 @@ public sealed record AudioStatistics(int BufferedFrames, int TargetFrames, uint 
     long DevicePlayedFrames, long SilenceFrames, long DiscardedFrames);
 public sealed record PlaybackStatistics(long Epoch, uint Generation, long Received, long Decoded, long Presented,
     long Skipped, int EncodedWidth, int EncodedHeight, int RotationDegrees, bool Occluded,
-    AudioStatistics? Audio, AvTimingSample? Sync, long PeakAbsoluteSkewUs);
+    AudioStatistics? Audio, AvTimingSample? Sync, long PeakAbsoluteSkewUs,
+    DecodedVideoStatistics? Video = null, VideoPresentationStatistics? Presentation = null);
 public sealed record PlaybackRates(double? ReceivedFps, double? DecodedFps, double? PresentedFps,
     double? VideoMbps, double? AudioMbps, double? SkippedPercent, double? SilenceMs, double? DiscardedMs);
 

@@ -198,4 +198,11 @@
   <data name="StatisticsUnavailable" xml:space="preserve"><value>無法取得播放統計資料；投放仍可繼續，但不會顯示統計覆疊層。</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>讀取編解碼器選項時，擷取來源已變更。請重新開啟設定，或再次按「儲存」。</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>請選擇其他視窗或顯示器，而非此應用程式的主視窗。</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>串流動態範圍</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>設定檔 / 位元深度</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>輸出</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>HDR 輸出</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>SDR 輸出</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR（色調對應）</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0} 位元</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

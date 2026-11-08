@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using RedrainCast.Receive.Core;
 using RedrainCast.Receive.Media;
+using RedrainCast.Protocol;
 
 namespace RedrainCast.App;
 
@@ -15,6 +16,16 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
     private GpuPresenter? active;
     private VideoPlayback? playback;
     private XamlRoot? root;
+    private nint displayWindow;
+    private readonly WindowSubclass windowSubclass;
+    private int displayRefreshQueued;
+    private const nuint DisplaySubclassId = 0x52434844;
+    private bool disposed;
+    private bool hdrVerified;
+    private HdrDisplayPolicy displayPolicy = HdrDisplayPolicy.MetadataUnavailable("The UI-owned display window is not available.");
+    private HdrReceiverCapabilities hdrCapabilities = HdrReceiverCapabilities.None;
+    public HdrReceiverCapabilities HdrCapabilities => Volatile.Read(ref hdrCapabilities);
+    public event Action? HdrCapabilitiesChanged;
     public long PresentedFrames => active?.PresentedFrames ?? 0;
     public int RequestedFramesPerSecond => active?.FramesPerSecond ?? 0;
     public int ProcessorInputFramesPerSecond => active?.ProcessorInputFramesPerSecond ?? 0;
@@ -57,16 +68,97 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
     public CastRequest? StatisticsRequest { get; private set; }
     public PlaybackStatistics? Statistics => playback?.Statistics(PlaybackEpoch);
     public event Action? StatisticsAvailabilityChanged;
-    public string Description => "Hardware-only 8-bit H.264, HEVC Main and AV1 Profile 0 over custom TCP with PCM/AAC-LC/Opus audio. Immediate video and adaptive 50-150 ms audio buffering. Auto orientation, requests from 1 to 240 FPS; actual decode/display performance depends on codec, resolution and hardware. Brief audio gaps remain possible.";
+    public string Description => "Hardware-only H.264, HEVC Main/Main10 HDR10 and AV1 Profile 0 over custom TCP with PCM/AAC-LC/Opus audio. HDR10 availability is hardware-verified; local output uses native scRGB on HDR displays or GPU BT.2390 SDR mapping. Immediate video and adaptive 50-150 ms audio buffering. Auto orientation, requests from 1 to 240 FPS; actual performance depends on codec, resolution and hardware. Brief audio gaps remain possible.";
 
     public VideoHost(SwapChainPanel panel, Action<string> status)
     {
         this.panel = panel;
         this.status = status;
         dispatcher = panel.DispatcherQueue;
+        windowSubclass = DisplayWindowMessage;
         panel.SizeChanged += SizeChanged;
         panel.Loaded += Loaded;
         panel.CompositionScaleChanged += CompositionScaleChanged;
+        _ = ProbeHdrAsync();
+    }
+
+    private async Task ProbeHdrAsync()
+    {
+        string diagnostic;
+        var verified = false;
+        try
+        {
+            diagnostic = await Task.Run(HdrDiagnostics.Run);
+            verified = true;
+        }
+        catch (Exception error) { diagnostic = $"HDR receive disabled: {error.Message}"; }
+        await OnUiAsync(() =>
+        {
+            if (disposed) return;
+            hdrVerified = verified;
+            status(diagnostic);
+            UpdateHdrCapabilities();
+        });
+    }
+
+    public void SetDisplayWindow(nint hwnd)
+    {
+        if (!dispatcher.HasThreadAccess) throw new InvalidOperationException("Display window must be set on its UI thread.");
+        if (displayWindow != 0) RemoveWindowSubclass(displayWindow, windowSubclass, DisplaySubclassId);
+        displayWindow = hwnd;
+        if (hwnd != 0 && !SetWindowSubclass(hwnd, windowSubclass, DisplaySubclassId, 0))
+            throw new InvalidOperationException("Native display-notification window hook could not be installed.");
+        RefreshDisplay();
+    }
+
+    private nint DisplayWindowMessage(nint hwnd, uint message, nuint wparam, nint lparam, nuint id, nuint data)
+    {
+        if (message is 0x0047 or 0x007e or 0x001a && Interlocked.Exchange(ref displayRefreshQueued, 1) == 0)
+        {
+            if (!dispatcher.TryEnqueue(() =>
+            {
+                Interlocked.Exchange(ref displayRefreshQueued, 0);
+                RefreshDisplay();
+            })) Interlocked.Exchange(ref displayRefreshQueued, 0);
+        }
+        if (message == 0x0082)
+        {
+            RemoveWindowSubclass(hwnd, windowSubclass, DisplaySubclassId);
+            if (displayWindow == hwnd) displayWindow = 0;
+        }
+        return DefSubclassProc(hwnd, message, wparam, lparam);
+    }
+
+    public void RefreshDisplay()
+    {
+        if (!dispatcher.HasThreadAccess) throw new InvalidOperationException("Display policy must be refreshed on its UI thread.");
+        if (disposed) return;
+        var next = HdrDisplayPolicy.Query(displayWindow);
+        if (next != displayPolicy)
+        {
+            displayPolicy = next;
+            try
+            {
+                if (playback is not null) playback.RefreshDisplay(next);
+                else active?.SetDisplayPolicy(next);
+            }
+            catch (Exception error)
+            {
+                status($"GPU display policy update failed: {error.Message}");
+                playback?.FailDisplay(error);
+                return;
+            }
+            status(next.Diagnostic);
+        }
+        UpdateHdrCapabilities();
+    }
+
+    private void UpdateHdrCapabilities()
+    {
+        var next = displayPolicy.Capabilities(hdrVerified);
+        if (next == HdrCapabilities) return;
+        Volatile.Write(ref hdrCapabilities, next);
+        HdrCapabilitiesChanged?.Invoke();
     }
 
     private void Loaded(object sender, RoutedEventArgs args)
@@ -98,17 +190,23 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            presenter = new GpuPresenter(request.VideoProcessingFramesPerSecond);
+            request.ColorFormat.Validate(request.VideoCodec);
+            if (request.ColorFormat.Hdr10 && !HdrCapabilities.CanReceiveHdr10)
+                throw new NotSupportedException("Native Main10/P010 decode and local HDR renderer have not passed hardware preflight.");
+            presenter = new GpuPresenter(request.VideoProcessingFramesPerSecond, request.ColorFormat);
             if (CollectPresentationSamples) presenter.EnablePresentationDiagnostics();
-            decoder = new HardwareDecoder(presenter.Device, request.VideoCodec);
+            decoder = new HardwareDecoder(presenter.Device, request.VideoCodec, request.ColorFormat);
             if (request.AudioCodec is not null) audio = new AudioPlayback(request.AudioCodec);
             var ownedPresenter = presenter;
             await OnUiAsync(() =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (active is not null) throw new InvalidOperationException("A video surface is already attached.");
+                if (request.ColorFormat.Hdr10 && !HdrCapabilities.CanReceiveHdr10)
+                    throw new NotSupportedException("HDR display policy changed during playback preflight.");
                 Attach(panel, ownedPresenter.SwapChain.NativePointer);
                 active = ownedPresenter;
+                ownedPresenter.SetDisplayPolicy(displayPolicy);
                 Resize();
             });
             cancellationToken.ThrowIfCancellationRequested();
@@ -127,11 +225,12 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
             })), detail => new ValueTask(OnUiAsync(() =>
             {
                 if (active == ownedPresenter) status(detail);
-            })), audio, request.VideoCodec);
+            })), audio, request.VideoCodec, request.ColorFormat);
             preparedPlayback = ownedPlayback;
             await OnUiAsync(() =>
             {
                 playback = ownedPlayback;
+                ownedPlayback.RefreshDisplay(displayPolicy);
                 PlaybackEpoch++;
                 StatisticsRequest = request.EffectiveOptions.PlaybackStats ? request : null;
                 StatisticsAvailabilityChanged?.Invoke();
@@ -203,9 +302,23 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
 
     public void Dispose()
     {
+        disposed = true;
+        if (displayWindow != 0) RemoveWindowSubclass(displayWindow, windowSubclass, DisplaySubclassId);
+        displayWindow = 0;
         panel.SizeChanged -= SizeChanged;
         panel.Loaded -= Loaded;
         panel.CompositionScaleChanged -= CompositionScaleChanged;
         if (root is not null) root.Changed -= RootChanged;
     }
+
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    private delegate nint WindowSubclass(nint hwnd, uint message, nuint wparam, nint lparam, nuint id, nuint data);
+    [DllImport("comctl32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowSubclass(nint hwnd, WindowSubclass callback, nuint id, nuint data);
+    [DllImport("comctl32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool RemoveWindowSubclass(nint hwnd, WindowSubclass callback, nuint id);
+    [DllImport("comctl32.dll")]
+    private static extern nint DefSubclassProc(nint hwnd, uint message, nuint wparam, nint lparam);
 }

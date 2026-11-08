@@ -198,4 +198,11 @@ Pratinjau langsung bersifat lokal dan hanya berjalan selama pemilih ini terbuka.
   <data name="StatisticsUnavailable" xml:space="preserve"><value>Statistik pemutaran tidak tersedia; siaran layar dapat berlanjut tanpa lapisan statistik.</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>Sumber tangkapan berubah saat membaca pilihan kodek. Buka pengaturan lagi atau coba tekan Simpan lagi.</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>Pilih jendela lain atau layar, bukan jendela utama aplikasi ini.</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>Rentang aliran</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>Profil / bit</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>Keluaran</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>Keluaran HDR</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>Keluaran SDR</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (pemetaan nada)</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0}-bit</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

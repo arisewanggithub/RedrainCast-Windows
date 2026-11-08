@@ -35,12 +35,16 @@ public static class Discovery
                     entry.Adapter.Name);
             }).DistinctBy(item => item.Address).OrderBy(item => item.Address.ToString(), StringComparer.Ordinal).ToArray();
 
-    public static byte[] Advertisement(string name, int port, bool busy, string? instanceId = null)
+    public static byte[] Advertisement(string name, int port, bool busy, string? instanceId = null,
+        HdrReceiverCapabilities? capabilities = null)
     {
         var fields = JsonData.Object(
             ("protocol", "screencopy"), ("version", Wire.Version), ("name", name),
             ("port", port), ("state", busy ? "busy" : "available"));
         if (instanceId is not null) fields["instanceId"] = instanceId;
-        return JsonData.Bytes(fields);
+        if (capabilities is { Hdr10: true }) fields["receiveCapabilities"] = capabilities.WireValue;
+        var bytes = JsonData.Bytes(fields);
+        if (bytes.Length > 1024) throw new ArgumentException("Discovery payload exceeds 1024 bytes.");
+        return bytes;
     }
 }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RedrainCast.Protocol;
 
 namespace RedrainCast.Receive.Core;
 
@@ -9,12 +10,14 @@ public static class CodecConfiguration
         var data = buffers.SelectMany(buffer => buffer).ToArray();
         return codec == "av1" ? Av1Stream.Configuration(data) : data;
     }
-    public static void ValidateVideo(string codec, byte[] data, int width, int height)
+    public static void ValidateVideo(string codec, byte[] data, int width, int height, HdrVideoFormat? color = null)
     {
+        try { (color ?? HdrVideoFormat.Sdr).Validate(codec); }
+        catch (FormatException error) { throw new ProtocolException(error.Message, "UNSUPPORTED_CONFIG"); }
         switch (codec)
         {
             case "h264": H264Stream.ValidateConfiguration(data, width, height); break;
-            case "h265": HevcStream.ValidateConfiguration(data, width, height); break;
+            case "h265": HevcStream.ValidateConfiguration(data, width, height, color); break;
             case "av1": Av1Stream.ValidateConfiguration(data, width, height); break;
             default: throw new ProtocolException("Unsupported video codec.", "UNSUPPORTED_CONFIG");
         }

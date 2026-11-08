@@ -22,7 +22,7 @@ public partial class App : Application
             return;
         }
         string[] supportedFlags = ["--self-test", "--layout-self-test", "--playback-stats-self-test",
-            "--media-self-test", "--occlusion-self-test", "--color-self-test", "--encoder-self-test",
+            "--media-self-test", "--occlusion-self-test", "--color-self-test", "--encoder-self-test", "--hdr-self-test",
             "--peer-self-test", "--peer-timeline", "--peer-static-source", "--peer-duration-seconds",
             "--peer-sample-seconds", "--peer-silent-pcm", "--rotation-self-test",
             "--recovery-self-test", "--high-fps-self-test"];
@@ -43,6 +43,7 @@ public partial class App : Application
         var occlusionIndex = Array.IndexOf(arguments, "--occlusion-self-test");
         var colorIndex = Array.IndexOf(arguments, "--color-self-test");
         var encoderIndex = Array.IndexOf(arguments, "--encoder-self-test");
+        var hdrIndex = Array.IndexOf(arguments, "--hdr-self-test");
         var peerIndex = Array.IndexOf(arguments, "--peer-self-test");
         if (arguments.Contains("--peer-timeline", StringComparer.Ordinal) && peerIndex < 0)
             throw new ArgumentException("--peer-timeline is restricted to the isolated peer self-test.");
@@ -53,6 +54,14 @@ public partial class App : Application
         var highFpsIndex = Array.IndexOf(arguments, "--high-fps-self-test");
         if (highFpsIndex >= 0 && highFpsIndex + 1 >= arguments.Length)
             throw new ArgumentException("--high-fps-self-test requires a report path.");
+        if (hdrIndex >= 0)
+        {
+            if (hdrIndex + 1 >= arguments.Length || arguments[hdrIndex + 1].StartsWith("--", StringComparison.Ordinal))
+                throw new ArgumentException("--hdr-self-test requires a report path.");
+            Environment.ExitCode = await MainWindow.RunHdrSelfTestAsync(arguments[hdrIndex + 1]) ? 0 : 1;
+            Exit();
+            return;
+        }
         if (colorIndex >= 0 || encoderIndex >= 0)
         {
             var index = colorIndex >= 0 ? colorIndex : encoderIndex;

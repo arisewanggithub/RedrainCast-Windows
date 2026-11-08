@@ -198,4 +198,11 @@ Les aperçus en direct restent locaux et ne fonctionnent que lorsque ce sélecte
   <data name="StatisticsUnavailable" xml:space="preserve"><value>Statistiques de lecture indisponibles ; le partage peut continuer sans les statistiques en surimpression.</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>La source de capture a changé pendant la lecture des codecs disponibles. Rouvrez les paramètres ou appuyez à nouveau sur Enregistrer.</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>Choisissez une autre fenêtre ou un écran, et non la fenêtre principale de cette application.</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>Plage du flux</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>Profil / bits</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>Sortie</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>Sortie HDR</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>Sortie SDR</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (tons adaptés)</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0} bits</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

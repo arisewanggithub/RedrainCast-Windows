@@ -198,4 +198,11 @@
   <data name="StatisticsUnavailable" xml:space="preserve"><value>Статистика воспроизведения недоступна; трансляцию можно продолжить без панели статистики.</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>Источник захвата изменился во время чтения списка кодеков. Снова откройте настройки или ещё раз нажмите «Сохранить».</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>Выберите другое окно или экран, а не главное окно этого приложения.</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>Диапазон потока</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>Профиль / биты</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>Вывод</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>Вывод HDR</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>Вывод SDR</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (тон-маппинг)</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0} бит</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

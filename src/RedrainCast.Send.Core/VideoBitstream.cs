@@ -26,12 +26,14 @@ public static class VideoBitstream
         _ => throw new ProtocolException("Unsupported video codec.")
     };
 
-    public static void ValidateConfiguration(string codec, byte[] configuration, int width, int height)
+    public static void ValidateConfiguration(string codec, byte[] configuration, int width, int height,
+        RedrainCast.Protocol.HdrVideoFormat? color = null)
     {
+        color?.Validate(codec);
         switch (codec)
         {
             case "h264": H264.ValidateConfiguration(configuration, width, height); break;
-            case "h265": Hevc.ValidateConfiguration(configuration, width, height); break;
+            case "h265": Hevc.ValidateConfiguration(configuration, width, height, color); break;
             case "av1": Av1.ValidateConfiguration(configuration, width, height); break;
             default: throw new ProtocolException("Unsupported video codec.");
         }

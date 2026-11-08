@@ -198,4 +198,11 @@ Canlı önizlemeler yereldir ve yalnızca bu seçici açıkken çalışır.</val
   <data name="StatisticsUnavailable" xml:space="preserve"><value>Oynatma istatistikleri kullanılamıyor; yayın, istatistik katmanı olmadan devam edebilir.</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>Codec seçenekleri okunurken yakalama kaynağı değişti. Ayarları yeniden açın veya Kaydet düğmesine yeniden basın.</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>Bu uygulamanın ana penceresini değil, başka bir pencere veya ekran seçin.</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>Akış aralığı</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>Profil / bit</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>Çıkış</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>HDR çıkışı</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>SDR çıkışı</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (ton eşleme)</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0} bit</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

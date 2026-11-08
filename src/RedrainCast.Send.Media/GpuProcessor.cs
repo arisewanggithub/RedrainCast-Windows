@@ -10,31 +10,41 @@ internal sealed class GpuProcessor : IDisposable
 {
     private readonly ID3D11Device device;
     private readonly ID3D11DeviceContext context;
-    private readonly ID3D11VideoDevice videoDevice;
-    private readonly ID3D11VideoContext videoContext;
-    private readonly ID3D11VideoProcessorEnumerator enumerator;
-    private readonly ID3D11VideoProcessor processor;
+    private readonly ID3D11VideoDevice? videoDevice;
+    private readonly ID3D11VideoContext? videoContext;
+    private readonly ID3D11VideoProcessorEnumerator? enumerator;
+    private readonly ID3D11VideoProcessor? processor;
     private readonly int width;
     private readonly int height;
     private readonly HdrToneMapper? toneMapper;
+    private readonly NativeHdrConverter? nativeHdr;
+    private readonly Format outputFormat;
     private long convertedFrames;
     private long allocatedTextures;
     private ID3D11VideoProcessorInputView? cachedInput;
     private nint cachedSource;
     private readonly Dictionary<nint, ID3D11VideoProcessorOutputView> cachedOutputs = [];
     public string Diagnostics => $"conversionFrames={Interlocked.Read(ref convertedFrames)}, " +
-        $"nv12TexturesAllocated={Interlocked.Read(ref allocatedTextures)}, " +
-        $"nv12NominalBytesPerTexture={checked((long)width * height * 3 / 2)} (allocation count is cumulative, not live)";
+        $"surfaceFormat={outputFormat}, texturesAllocated={Interlocked.Read(ref allocatedTextures)}, " +
+        $"nominalBytesPerTexture={checked((long)width * height * 3 / (outputFormat == Format.P010 ? 1 : 2))} (allocation count is cumulative, not live)";
 
-    public GpuProcessor(ID3D11Device device, int inputWidth, int inputHeight, int outputWidth, int outputHeight, int fps, bool hdr = false)
+    public GpuProcessor(ID3D11Device device, int inputWidth, int inputHeight, int outputWidth, int outputHeight, int fps,
+        bool hdr = false, bool nativeHdr10 = false)
     {
         this.device = device;
         width = outputWidth;
         height = outputHeight;
+        outputFormat = nativeHdr10 ? Format.P010 : Format.NV12;
         // ImmediateContext is device-owned and cached; dispose only a separate COM reference.
         context = device.ImmediateContext.QueryInterface<ID3D11DeviceContext>();
         try
         {
+            if (nativeHdr10)
+            {
+                if (!hdr) throw new NotSupportedException("Native HDR10 cannot reinterpret SDR capture.");
+                nativeHdr = new(device, outputWidth, outputHeight);
+                return;
+            }
             videoDevice = device.QueryInterface<ID3D11VideoDevice>();
             videoContext = context.QueryInterface<ID3D11VideoContext>();
             enumerator = videoDevice.CreateVideoProcessorEnumerator(new()
@@ -64,6 +74,7 @@ internal sealed class GpuProcessor : IDisposable
         }
         catch
         {
+            nativeHdr?.Dispose();
             toneMapper?.Dispose();
             processor?.Dispose();
             enumerator?.Dispose();
@@ -76,7 +87,7 @@ internal sealed class GpuProcessor : IDisposable
 
     public ID3D11Texture2D Convert(ID3D11Texture2D source, int sourceWidth, int sourceHeight, CaptureColor? color = null)
     {
-        var output = device.CreateTexture2D(new Texture2DDescription(Format.NV12, (uint)width, (uint)height,
+        var output = device.CreateTexture2D(new Texture2DDescription(outputFormat, (uint)width, (uint)height,
             1, 1, BindFlags.RenderTarget));
         Interlocked.Increment(ref allocatedTextures);
         try { ConvertInto(source, sourceWidth, sourceHeight, output, color, cacheViews: false); return output; }
@@ -91,6 +102,17 @@ internal sealed class GpuProcessor : IDisposable
         ID3D11VideoProcessorOutputView? outputView = null;
         try
         {
+            if (output.Description.Format != outputFormat)
+                throw new NotSupportedException($"GPU conversion expected {outputFormat}, not {output.Description.Format}.");
+            if (nativeHdr is not null)
+            {
+                nativeHdr.ConvertInto(source, sourceWidth, sourceHeight, output,
+                    color ?? throw new ArgumentException("Native HDR10 conversion requires current source color."), cacheViews);
+                Interlocked.Increment(ref convertedFrames);
+                return;
+            }
+            var videoContext = this.videoContext ?? throw new InvalidOperationException("SDR video processor is unavailable.");
+            var processor = this.processor ?? throw new InvalidOperationException("SDR video processor is unavailable.");
             if (toneMapper is not null)
                 source = toneMapper.Convert(source, color ?? throw new ArgumentException("HDR conversion requires display color metadata."));
             else if (source.Description.Format != Format.B8G8R8A8_UNorm)
@@ -136,14 +158,14 @@ internal sealed class GpuProcessor : IDisposable
     }
 
     private ID3D11VideoProcessorInputView CreateInput(ID3D11Texture2D source) =>
-        videoDevice.CreateVideoProcessorInputView(source, enumerator, new()
+        videoDevice!.CreateVideoProcessorInputView(source, enumerator!, new()
         {
             ViewDimension = VideoProcessorInputViewDimension.Texture2D,
             Texture2D = new() { MipSlice = 0, ArraySlice = 0 }
         });
 
     private ID3D11VideoProcessorOutputView CreateOutput(ID3D11Texture2D output) =>
-        videoDevice.CreateVideoProcessorOutputView(output, enumerator, new()
+        videoDevice!.CreateVideoProcessorOutputView(output, enumerator!, new()
         {
             ViewDimension = VideoProcessorOutputViewDimension.Texture2D,
             Texture2D = new() { MipSlice = 0 }
@@ -153,11 +175,12 @@ internal sealed class GpuProcessor : IDisposable
     {
         cachedInput?.Dispose();
         foreach (var view in cachedOutputs.Values) view.Dispose();
+        nativeHdr?.Dispose();
         toneMapper?.Dispose();
-        processor.Dispose();
-        enumerator.Dispose();
-        videoContext.Dispose();
-        videoDevice.Dispose();
+        processor?.Dispose();
+        enumerator?.Dispose();
+        videoContext?.Dispose();
+        videoDevice?.Dispose();
         context.Dispose();
     }
 }

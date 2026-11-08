@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RedrainCast.Protocol;
 
 namespace RedrainCast.Receive.Core;
 
@@ -25,6 +26,8 @@ public sealed class TrackState(CastRequest request)
             (packet.Track == 1 ? request.VideoCodec : request.AudioCodec), "Codec substitution is forbidden.", "UNSUPPORTED_CONFIG");
         if (packet.Track == 1)
         {
+            try { HdrVideoProtocol.RequireAcknowledgement(json, request.ColorFormat); }
+            catch (FormatException error) { throw new ProtocolException(error.Message, "UNSUPPORTED_CONFIG"); }
             var buffers = CodecConfiguration.Buffers(json);
             JsonObject.Require(JsonObject.Number(json, "width") is >= 1 and <= 16384 &&
                 JsonObject.Number(json, "height") is >= 1 and <= 16384, "Invalid video dimensions.");

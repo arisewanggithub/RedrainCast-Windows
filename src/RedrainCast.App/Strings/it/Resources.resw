@@ -198,4 +198,11 @@ Le anteprime in tempo reale sono locali e vengono eseguite solo mentre questa fi
   <data name="StatisticsUnavailable" xml:space="preserve"><value>Statistiche di riproduzione non disponibili; la trasmissione può continuare senza il riquadro delle statistiche.</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>La sorgente di acquisizione è cambiata durante la lettura dei codec disponibili. Riapri le impostazioni o premi di nuovo Salva.</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>Scegli un'altra finestra o uno schermo, non la finestra principale di questa app.</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>Gamma flusso</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>Profilo / bit</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>Uscita</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>Uscita HDR</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>Uscita SDR</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (toni adattati)</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0} bit</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

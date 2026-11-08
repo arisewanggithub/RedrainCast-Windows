@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Diagnostics;
 using FFmpeg.AutoGen;
 using RedrainCast.Receive.Core;
+using RedrainCast.Protocol;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using ID3D11Device = Vortice.Direct3D11.ID3D11Device;
@@ -15,6 +16,8 @@ public sealed unsafe class HardwareDecoder : IDisposable
     private static readonly Guid H264Profile = new("1b81be68-a0c7-11d3-b984-00c04f2e73c5");
     private readonly string codecName;
     private readonly Guid profile;
+    private readonly HdrVideoFormat color;
+    private Format SurfaceFormat => color.Hdr10 ? Format.P010 : Format.NV12;
     private readonly AVCodecContext_get_format formatCallback = SelectHardwareFormat;
     private readonly ID3D11VideoDevice videoDevice;
     private AVBufferRef* hardware;
@@ -46,12 +49,15 @@ public sealed unsafe class HardwareDecoder : IDisposable
     private static void Measure(ref long maximum, long started) =>
         Interlocked.Exchange(ref maximum, Math.Max(Interlocked.Read(ref maximum), (long)Stopwatch.GetElapsedTime(started).TotalMicroseconds));
 
-    public HardwareDecoder(ID3D11Device device, string codecName = "h264")
+    public HardwareDecoder(ID3D11Device device, string codecName = "h264", HdrVideoFormat? color = null)
     {
+        this.color = color ?? HdrVideoFormat.Sdr;
+        this.color.Validate(codecName);
         this.codecName = codecName;
         profile = codecName switch
         {
             "h264" => H264Profile,
+            "h265" when this.color.Hdr10 => new Guid("107af0e0-ef1a-4d19-aba8-67a163073d13"),
             "h265" => new Guid("5b11d51b-2f4c-4452-bcc3-09f2a1160cc0"),
             "av1" => new Guid("b8be4ccb-cf53-46ba-8d59-d6b8a6da5d2a"),
             _ => throw new NotSupportedException("Unsupported hardware video codec.")
@@ -60,8 +66,8 @@ public sealed unsafe class HardwareDecoder : IDisposable
         videoDevice = device.QueryInterface<ID3D11VideoDevice>();
         try
         {
-            videoDevice.CheckVideoDecoderFormat(profile, Format.NV12, out var supported).CheckError();
-            if (!supported) throw new NotSupportedException($"Hardware {codecName}/NV12 decoding is unavailable. No software fallback.");
+            videoDevice.CheckVideoDecoderFormat(profile, SurfaceFormat, out var supported).CheckError();
+            if (!supported) throw new NotSupportedException($"Hardware {codecName}/{SurfaceFormat} decoding is unavailable. No software fallback.");
             codec = ffmpeg.avcodec_find_decoder_by_name(codecName == "h265" ? "hevc" : codecName);
             if (codec == null) throw new NotSupportedException($"Native {codecName} hardware decoder is missing.");
             var eligible = false;
@@ -92,14 +98,14 @@ public sealed unsafe class HardwareDecoder : IDisposable
     public void Configure(byte[] configuration, int newWidth, int newHeight)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
-        CodecConfiguration.ValidateVideo(codecName, configuration, newWidth, newHeight);
+        CodecConfiguration.ValidateVideo(codecName, configuration, newWidth, newHeight, color);
         configurationData = configuration;
         var description = new VideoDecoderDescription
         {
             Guid = profile,
             SampleWidth = (uint)newWidth,
             SampleHeight = (uint)newHeight,
-            OutputFormat = Format.NV12
+            OutputFormat = SurfaceFormat
         };
         videoDevice.GetVideoDecoderConfigCount(ref description, out var configurations).CheckError();
         if (configurations == 0) throw new NotSupportedException($"Hardware {codecName} decoder cannot handle {newWidth}x{newHeight}.");
@@ -110,6 +116,7 @@ public sealed unsafe class HardwareDecoder : IDisposable
             if (remaining is not null) throw new ProtocolException("Decoder retained a delayed frame during reconfiguration.");
             FreeContext();
         }
+
         context = ffmpeg.avcodec_alloc_context3(codec);
         if (context == null) throw new OutOfMemoryException();
         context->hw_device_ctx = ffmpeg.av_buffer_ref(hardware);
@@ -129,6 +136,21 @@ public sealed unsafe class HardwareDecoder : IDisposable
         width = newWidth;
         height = newHeight;
         needsKeyframe = true;
+    }
+
+    public void ProbeSize(int width, int height)
+    {
+        var description = new VideoDecoderDescription
+        {
+            Guid = profile,
+            SampleWidth = (uint)width,
+            SampleHeight = (uint)height,
+            OutputFormat = SurfaceFormat
+        };
+        videoDevice.GetVideoDecoderConfigCount(ref description, out var count).CheckError();
+        if (count == 0) throw new NotSupportedException($"Hardware {codecName}/{SurfaceFormat} cannot decode {width}x{height}.");
+        videoDevice.GetVideoDecoderConfig(ref description, 0, out var configuration).CheckError();
+        using var decoder = videoDevice.CreateVideoDecoder(description, configuration);
     }
 
     public IReadOnlyList<HardwareFrame> Decode(Packet packet)
@@ -208,16 +230,90 @@ public sealed unsafe class HardwareDecoder : IDisposable
             Volatile.Write(ref surfaceCount, pool->initial_pool_size);
             JsonObject.Require(pool->initial_pool_size >= MinimumHardwareSurfaces && pool->initial_pool_size <= 64,
                 "Hardware decoder did not allocate the bounded reserved surface pool.", "DECODER_FAILED");
-            if (pool->sw_format != AVPixelFormat.AV_PIX_FMT_NV12)
-                throw new NotSupportedException("Only hardware NV12 output is currently supported.");
+            if (pool->sw_format != (color.Hdr10 ? AVPixelFormat.AV_PIX_FMT_P010LE : AVPixelFormat.AV_PIX_FMT_NV12))
+                throw new NotSupportedException("Hardware decoder surface bit depth differs from negotiation.");
+            if (color.Hdr10)
+            {
+                JsonObject.Require(frame->color_primaries == AVColorPrimaries.AVCOL_PRI_BT2020 &&
+                    frame->color_trc == AVColorTransferCharacteristic.AVCOL_TRC_SMPTE2084 &&
+                    frame->colorspace == AVColorSpace.AVCOL_SPC_BT2020_NCL &&
+                    frame->color_range == AVColorRange.AVCOL_RANGE_MPEG,
+                    "Decoded HDR picture color differs from negotiated limited BT.2020/PQ.", "DECODER_FAILED");
+                ValidateMetadata(frame);
+            }
             JsonObject.Require((nuint)frame->opaque is >= 1 and <= 4, "Hardware decoder lost the picture's rotation metadata.", "DECODER_FAILED");
-            var output = new HardwareFrame(frame);
+            var output = new HardwareFrame(frame, color, ffmpeg.avcodec_profile_name(context->codec_id, context->profile));
             frame = null;
             return output;
         }
+
         finally { if (frame != null) ffmpeg.av_frame_free(&frame); }
     }
 
+    private void ValidateMetadata(AVFrame* frame)
+    {
+        var mastering = ffmpeg.av_frame_get_side_data(frame, AVFrameSideDataType.AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
+        var content = ffmpeg.av_frame_get_side_data(frame, AVFrameSideDataType.AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+        if (color.Metadata is not { } metadata)
+        {
+            JsonObject.Require(mastering == null && content == null,
+                "Decoded HDR static metadata was not negotiated.", "DECODER_FAILED");
+            return;
+        }
+        if (mastering != null)
+        {
+            var value = (AVMasteringDisplayMetadata*)mastering->data;
+            static double Rational(AVRational v) => (double)v.num / v.den;
+            JsonObject.Require(value->has_luminance != 0 && value->has_primaries != 0 &&
+                Math.Abs(Rational(value->max_luminance) - metadata.MaxMasteringNits) < .001 &&
+                Math.Abs(Rational(value->min_luminance) * 10000 - metadata.MinMasteringTenThousandths) < .01,
+                "HDR mastering luminance differs from negotiation.", "DECODER_FAILED");
+            var coordinates = new[] { metadata.RedX, metadata.RedY, metadata.GreenX, metadata.GreenY,
+                    metadata.BlueX, metadata.BlueY, metadata.WhiteX, metadata.WhiteY };
+            for (var index = 0; index < 8; index++)
+            {
+                var coordinate = index < 6 ? value->display_primaries[(uint)(index / 2)][(uint)(index % 2)] : value->white_point[(uint)(index - 6)];
+                JsonObject.Require(HdrStaticMetadata.MatchesEncodedChromaticity(coordinates[index],
+                    coordinate.num, coordinate.den),
+                    $"HDR mastering primaries differ from negotiation: coordinate={index}, " +
+                    $"expected={coordinates[index]}/50000, decoded={coordinate.num}/{coordinate.den}.", "DECODER_FAILED");
+            }
+        }
+        if (content != null)
+        {
+            var value = (AVContentLightMetadata*)content->data;
+            JsonObject.Require(value->MaxCLL == metadata.MaxContentLightNits && value->MaxFALL == metadata.MaxFrameAverageLightNits,
+                "HDR content light metadata differs from negotiation.", "DECODER_FAILED");
+        }
+        if (mastering == null)
+        {
+            var value = ffmpeg.av_mastering_display_metadata_create_side_data(frame);
+            if (value == null) throw new OutOfMemoryException();
+            var coordinates = new[] { metadata.RedX, metadata.RedY, metadata.GreenX, metadata.GreenY,
+                    metadata.BlueX, metadata.BlueY, metadata.WhiteX, metadata.WhiteY };
+            for (uint i = 0; i < 8; i++)
+            {
+                var rational = new AVRational { num = coordinates[i], den = 50000 };
+                if (i < 6)
+                {
+                    var pair = value->display_primaries[i / 2];
+                    pair[i % 2] = rational;
+                    value->display_primaries[i / 2] = pair;
+                }
+                else value->white_point[i - 6] = rational;
+            }
+            value->min_luminance = new() { num = metadata.MinMasteringTenThousandths, den = 10000 };
+            value->max_luminance = new() { num = metadata.MaxMasteringNits, den = 1 };
+            value->has_luminance = value->has_primaries = 1;
+        }
+        if (content == null)
+        {
+            var value = ffmpeg.av_content_light_metadata_create_side_data(frame);
+            if (value == null) throw new OutOfMemoryException();
+            value->MaxCLL = (uint)metadata.MaxContentLightNits;
+            value->MaxFALL = (uint)metadata.MaxFrameAverageLightNits;
+        }
+    }
     private static AVPixelFormat SelectHardwareFormat(AVCodecContext* context, AVPixelFormat* choices)
     {
         for (var index = 0; choices[index] != AVPixelFormat.AV_PIX_FMT_NONE; index++)
@@ -248,7 +344,29 @@ public sealed unsafe class HardwareDecoder : IDisposable
 public sealed unsafe class HardwareFrame : IDisposable
 {
     private AVFrame* frame;
-    internal HardwareFrame(AVFrame* frame) => this.frame = frame;
+    internal HardwareFrame(AVFrame* frame, HdrVideoFormat? color = null, string? codecProfile = null)
+    {
+        this.frame = frame;
+        ColorFormat = color ?? HdrVideoFormat.Sdr;
+        var pool = frame->hw_frames_ctx == null ? null : (AVHWFramesContext*)frame->hw_frames_ctx->data;
+        var descriptor = pool == null ? null : ffmpeg.av_pix_fmt_desc_get(pool->sw_format);
+        int? depth = descriptor != null && descriptor->nb_components > 0 && descriptor->comp[0].depth > 0
+            ? descriptor->comp[0].depth : null;
+        VideoTransfer? transfer = frame->color_trc switch
+        {
+            AVColorTransferCharacteristic.AVCOL_TRC_BT709 => VideoTransfer.Bt709,
+            AVColorTransferCharacteristic.AVCOL_TRC_SMPTE170M => VideoTransfer.Smpte170M,
+            AVColorTransferCharacteristic.AVCOL_TRC_GAMMA22 => VideoTransfer.Gamma22,
+            AVColorTransferCharacteristic.AVCOL_TRC_GAMMA28 => VideoTransfer.Gamma28,
+            AVColorTransferCharacteristic.AVCOL_TRC_IEC61966_2_1 => VideoTransfer.Srgb,
+            AVColorTransferCharacteristic.AVCOL_TRC_SMPTE2084 => VideoTransfer.Pq,
+            AVColorTransferCharacteristic.AVCOL_TRC_ARIB_STD_B67 => VideoTransfer.Hlg,
+            _ => null
+        };
+        Statistics = new(ColorFormat, transfer, codecProfile, depth);
+    }
+    public HdrVideoFormat ColorFormat { get; }
+    public DecodedVideoStatistics Statistics { get; }
     public nint Texture => (nint)frame->data[0];
     public uint ArraySlice => checked((uint)(nuint)frame->data[1]);
     public int Width => frame->width;
@@ -271,7 +389,7 @@ public sealed unsafe class HardwareFrame : IDisposable
     {
         var copy = ffmpeg.av_frame_clone(frame);
         if (copy == null) throw new OutOfMemoryException();
-        return new HardwareFrame(copy);
+        return new HardwareFrame(copy, ColorFormat, Statistics.CodecProfile);
     }
     public void Dispose()
     {

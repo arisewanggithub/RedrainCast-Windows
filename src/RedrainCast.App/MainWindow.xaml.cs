@@ -101,6 +101,9 @@ public sealed partial class MainWindow : Window
             }
         }
         video = new(VideoSurface, detail => OnReceiverNotice(new("Video", detail), receiverGeneration));
+        try { video.SetDisplayWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)); }
+        catch (Exception error) { Report(error); }
+        AppWindow.Changed += DisplayChanged;
         statisticsTimer.Tick += StatisticsTick;
         video.StatisticsAvailabilityChanged += UpdateStatisticsVisibility;
         WindowRoot.Loaded += ObserveRoot;
@@ -117,6 +120,7 @@ public sealed partial class MainWindow : Window
             statisticsTimer.Stop();
             statisticsTimer.Tick -= StatisticsTick;
             video.StatisticsAvailabilityChanged -= UpdateStatisticsVisibility;
+            AppWindow.Changed -= DisplayChanged;
             ClearStatistics();
             video.Dispose();
             layout.Dispose();
@@ -140,6 +144,13 @@ public sealed partial class MainWindow : Window
     }
 
     internal Task InitializeAsync() => startup ??= InitializeCoreAsync();
+
+    private void DisplayChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (closing) return;
+        try { video.RefreshDisplay(); }
+        catch (Exception error) { Report(error); }
+    }
 
     private void ObserveRoot(object sender, RoutedEventArgs args)
     {
@@ -601,7 +612,14 @@ public sealed partial class MainWindow : Window
                         {
                             if (!closing && ReferenceEquals(sendStop, stop) && outgoing is not null)
                             {
-                                outgoing = outgoing.ApplyStatus(text) with { Encoder = outgoingVideo.EncoderName };
+                                var parameters = outgoing.Parameters;
+                                if (outgoingVideo.ColorFormat.Hdr10 && !parameters.EndsWith(" - HDR10", StringComparison.Ordinal))
+                                    parameters += " - HDR10";
+                                outgoing = outgoing.ApplyStatus(text) with
+                                {
+                                    Encoder = outgoingVideo.EncoderName,
+                                    Parameters = parameters
+                                };
                                 RenderDevices();
                             }
                         });

@@ -198,4 +198,11 @@
   <data name="StatisticsUnavailable" xml:space="preserve"><value>สถิติการเล่นไม่พร้อมใช้งาน การส่งภาพยังดำเนินต่อได้โดยไม่มีแผงสถิติซ้อนทับ</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>แหล่งจับภาพเปลี่ยนขณะอ่านตัวเลือกตัวแปลงสัญญาณ เปิดการตั้งค่าอีกครั้ง หรือลองกดบันทึกอีกครั้ง</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>เลือกหน้าต่างอื่นหรือจอแสดงผล ไม่ใช่หน้าต่างหลักของแอปนี้</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>ช่วงสตรีม</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>โปรไฟล์ / บิต</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>เอาต์พุต</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>เอาต์พุต HDR</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>เอาต์พุต SDR</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (ปรับโทน)</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0} บิต</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

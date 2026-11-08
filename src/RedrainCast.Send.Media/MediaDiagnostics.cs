@@ -3,6 +3,7 @@ using RedrainCast.Protocol;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Numerics;
 using RedrainCast.Send.Core;
 using Vortice.D3DCompiler;
 using Vortice.Direct3D;
@@ -14,6 +15,108 @@ namespace RedrainCast.Send.Media;
 
 public static class MediaDiagnostics
 {
+    public sealed record HdrColorProbeReport(EncodedVideo Frame, HdrVideoFormat Color,
+        int Width, int Height, int MaximumCodeError, string Encoder);
+
+    public static async Task<HdrColorProbeReport> EncodeHdrColorProbeAsync(CancellationToken token,
+        bool checkGpuBudget = false)
+    {
+        token.ThrowIfCancellationRequested();
+        const int inputWidth = 1280, inputHeight = 720;
+        var color = new HdrVideoFormat(true, new HdrStaticMetadata(1000));
+        var settings = new CaptureSettings(MaxSize: 640, MaxFps: 30, VideoBitrate: 4_000_000,
+            VideoCodec: "h265", VideoColor: color);
+        settings.Validate();
+        var (width, height) = settings.OutputSize(inputWidth, inputHeight);
+        var sourceColor = new CaptureColor(true, 80, 1000);
+        using var device = WindowsVideoSource.CreateHardwareDevice();
+        if (checkGpuBudget) CheckGpuBudget(device);
+        using var input = CreateHdrProbeTexture(device, inputWidth, inputHeight);
+        using var surface = device.CreateTexture2D(new Texture2DDescription(Format.P010, (uint)width, (uint)height,
+            1, 1, BindFlags.RenderTarget));
+        using var converter = new GpuProcessor(device, inputWidth, inputHeight, width, height, settings.MaxFps,
+            hdr: sourceColor.Hdr, nativeHdr10: settings.VideoColor?.Hdr10 == true);
+        converter.ConvertInto(input, inputWidth, inputHeight, surface, sourceColor);
+        var codeError = ValidateHdrProbeSurface(device, surface, width, height);
+        if (codeError > 1) throw new IOException($"Native HDR GPU color probe exceeded one 10-bit code value: error={codeError}.");
+        using var encoder = new HardwareEncoder(device, width, height, settings);
+        encoder.Start();
+        var elapsed = Stopwatch.StartNew();
+        var submitted = 0;
+        while (elapsed.Elapsed < TimeSpan.FromSeconds(15))
+        {
+            token.ThrowIfCancellationRequested();
+            if (submitted < 24 && encoder.CanAcceptInput)
+                encoder.Submit(surface, submitted++ * 10_000_000L / settings.MaxFps);
+            foreach (var frame in encoder.TakeOutput())
+            {
+                VideoBitstream.ValidateConfiguration("h265", frame.Configuration, width, height, color);
+                if (!VideoBitstream.IsKeyFrame("h265", frame.Data, frame.Configuration))
+                    throw new IOException("Native HDR color probe did not start with a random-access picture.");
+                return new(frame, color, width, height, codeError, encoder.Name);
+            }
+            await Task.Delay(1, token);
+        }
+        throw new IOException($"Native HDR color probe produced no packet in 15 seconds: {encoder.Diagnostics}");
+    }
+
+    private static readonly Vector3[] HdrProbeColors =
+        [new(12.5f), new(12.5f, 0, 0), new(0, 12.5f, 0), new(0, 0, 12.5f)];
+
+    private static unsafe ID3D11Texture2D CreateHdrProbeTexture(ID3D11Device device, int width, int height)
+    {
+        var data = new Half[width * height * 4];
+        for (var y = 0; y < height; y++)
+            for (var x = 0; x < width; x++)
+            {
+                var rgb = HdrProbeColors[(x >= width / 2 ? 1 : 0) + (y >= height / 2 ? 2 : 0)];
+                var offset = (y * width + x) * 4;
+                data[offset] = (Half)rgb.X; data[offset + 1] = (Half)rgb.Y;
+                data[offset + 2] = (Half)rgb.Z; data[offset + 3] = (Half)1;
+            }
+        fixed (Half* pointer = data)
+            return device.CreateTexture2D(new Texture2DDescription(Format.R16G16B16A16_Float, (uint)width, (uint)height,
+                1, 1, BindFlags.ShaderResource), new SubresourceData((nint)pointer, (uint)width * 8));
+    }
+
+    private static unsafe int ValidateHdrProbeSurface(ID3D11Device device, ID3D11Texture2D surface, int width, int height)
+    {
+        using var context = device.ImmediateContext.QueryInterface<ID3D11DeviceContext>();
+        using var staging = device.CreateTexture2D(new Texture2DDescription(Format.P010, (uint)width, (uint)height,
+            1, 1, BindFlags.None, ResourceUsage.Staging, CpuAccessFlags.Read));
+        context.CopyResource(staging, surface);
+        var mapped = context.Map(staging, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+        try
+        {
+            var maximumError = 0;
+            for (var index = 0; index < HdrProbeColors.Length; index++)
+            {
+                var rgb = HdrProbeColors[index];
+                var wide = new Vector3(Vector3.Dot(rgb, new(.627404f, .329283f, .0433136f)),
+                    Vector3.Dot(rgb, new(.069097f, .919540f, .0113612f)),
+                    Vector3.Dot(rgb, new(.0163916f, .0880132f, .895595f)));
+                var pq = new Vector3(HdrLuminance.ToPq(wide.X * 80), HdrLuminance.ToPq(wide.Y * 80),
+                    HdrLuminance.ToPq(wide.Z * 80));
+                var luma = Vector3.Dot(pq, new(.2627f, .6780f, .0593f));
+                int[] expected = [(int)MathF.Round(64 + 876 * luma),
+                    (int)MathF.Round(512 + 896 * (pq.Z - luma) / 1.8814f),
+                    (int)MathF.Round(512 + 896 * (pq.X - luma) / 1.4746f)];
+                var x = width / 4 + (index % 2) * width / 2;
+                var y = height / 4 + (index / 2) * height / 2;
+                var actualY = *(ushort*)((byte*)mapped.DataPointer + y * mapped.RowPitch + x * 2);
+                var uv = (ushort*)((byte*)mapped.DataPointer + height * mapped.RowPitch + y / 2 * mapped.RowPitch + (x & ~1) * 2);
+                int[] actual = [actualY, uv[0], uv[1]];
+                for (var component = 0; component < 3; component++)
+                {
+                    if ((actual[component] & 63) != 0) throw new IOException("Native HDR P010 contains nonzero padding bits.");
+                    maximumError = Math.Max(maximumError, Math.Abs((actual[component] >> 6) - expected[component]));
+                }
+            }
+            return maximumError;
+        }
+        finally { context.Unmap(staging, 0); }
+    }
+
     public static void CheckGpuBudget(ID3D11Device device)
     {
         using var memory = new GpuMemoryDiagnostics(device);

@@ -38,6 +38,8 @@ public static class CaptureWorker
                     { ProcessId = process, ThreadId = thread }.Open();
                 Console.Error.WriteLine("Capture worker bootstrap: source opened; constructing hardware video source.");
                 await using var video = new WindowsVideoSource(source, settings, Console.Error.WriteLine);
+                await video.ConfigureHdrAsync(settings.VideoColor?.Hdr10 == true, stop.Token);
+                await video.PrepareAsync(stop.Token);
                 active = video;
                 if (video.Width != width || video.Height != height)
                     throw new IOException("Capture source dimensions changed before the worker started. Select the source again.");

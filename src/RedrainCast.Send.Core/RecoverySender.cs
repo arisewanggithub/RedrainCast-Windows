@@ -98,13 +98,16 @@ internal sealed class RecoverySender
         {
             using var setup = CancellationTokenSource.CreateLinkedTokenSource(stop, transport.Token, media.Token);
             setup.CancelAfter(TimeSpan.FromSeconds(10));
-            await WriteAsync(control, Message.Control(MessageType.SessionRequest, session, settings.Request(source.EncoderName, effectiveOptions)), setup.Token);
+            await WriteAsync(control, Message.Control(MessageType.SessionRequest, session,
+                settings.Request(source.EncoderName, effectiveOptions, source.ColorFormat)), setup.Token);
             var acceptance = await Wire.ReadAsync(control, setup.Token);
             if (acceptance.Type == MessageType.Reject) throw new IOException($"Receiver rejected recovery session: {acceptance.Json()}");
             if (acceptance.Type != MessageType.SessionAccept || acceptance.Session != session ||
                 !acceptance.Json().GetProperty("tracks").EnumerateArray().Select(v => v.GetInt32()).Order()
                     .SequenceEqual(audioSource is null ? [1] : [1, 2]))
                 throw new ProtocolException("Invalid recovery session acceptance.");
+            try { HdrVideoProtocol.RequireAcknowledgement(acceptance.Json(), source.ColorFormat); }
+            catch (FormatException error) { throw new ProtocolException(error.Message); }
             var token = StrictJson.String(acceptance.Json(), "mediaToken", 64);
             if (token.Length != 64 || !token.All(Uri.IsHexDigit)) throw new ProtocolException("Invalid media token.");
             // Once accepted, only this reader owns terminal replies, including during media association.
@@ -335,9 +338,13 @@ internal sealed class RecoverySender
         status($"Recovering video generation {generation}: {reason}");
     }
 
-    private Message Configuration() => new(MessageType.StreamConfig, session, 1, generation, -1, 0,
-        JsonData.Bytes(JsonData.Object(("codec", settings.VideoCodec), ("width", source.Width), ("height", source.Height),
-            ("csd", JsonData.Value(new[] { Convert.ToBase64String(configuration!) })))));
+    private Message Configuration()
+    {
+        var value = JsonData.Object(("codec", settings.VideoCodec), ("width", source.Width), ("height", source.Height),
+            ("csd", JsonData.Value(new[] { Convert.ToBase64String(configuration!) })));
+        HdrVideoProtocol.AddFormat(value, source.ColorFormat);
+        return new(MessageType.StreamConfig, session, 1, generation, -1, 0, JsonData.Bytes(value));
+    }
 
     private async Task CaptureVideoAsync()
     {
@@ -348,7 +355,7 @@ internal sealed class RecoverySender
             if (frame.PtsUs < 0 || frame.PtsUs < previous) throw new ProtocolException("Recovery capture timestamps are invalid or moved backwards.");
             previous = frame.PtsUs;
             var csd = VideoBitstream.Configuration(settings.VideoCodec, frame.Configuration.Length > 0 ? frame.Configuration : frame.Data);
-            VideoBitstream.ValidateConfiguration(settings.VideoCodec, csd, source.Width, source.Height);
+            VideoBitstream.ValidateConfiguration(settings.VideoCodec, csd, source.Width, source.Height, source.ColorFormat);
             var key = VideoBitstream.IsKeyFrame(settings.VideoCodec, frame.Data, csd);
             VideoBitstream.ValidateFrame(settings.VideoCodec, frame.Data, csd);
             lock (gate)

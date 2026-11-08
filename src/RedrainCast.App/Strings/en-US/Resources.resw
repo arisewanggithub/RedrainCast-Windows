@@ -198,4 +198,11 @@ Live previews are local and run only while this picker is open.</value></data>
   <data name="StatisticsUnavailable" xml:space="preserve"><value>Playback statistics unavailable; casting can continue without the overlay.</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>The capture source changed while reading codec choices. Open settings again or retry Save.</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>Choose a different window or a display, not this app's main window.</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>Stream range</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>Profile / depth</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>Output</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>HDR output</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>SDR output</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (tone-mapped)</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0}-bit</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

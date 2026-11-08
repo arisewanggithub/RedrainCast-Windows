@@ -13,6 +13,7 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
     private readonly Func<string, ValueTask> status;
     private readonly AudioPlayback? audio;
     private readonly string codecName;
+    private readonly HdrVideoFormat expectedFormat;
     private int rendered;
     private int decodedCurrentGeneration;
     private readonly object nativeGate = new();
@@ -22,7 +23,6 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
     private readonly CancellationTokenSource renderCancellation = new();
     private readonly Task renderTask;
     private readonly PlaybackAwake awake = new(() => new PlaybackPowerRequest());
-    private int resizeRequested;
     private Exception? renderFailure;
     private Exception? resizeFailure;
     private bool disposed;
@@ -35,6 +35,7 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
     private uint configuredGeneration;
     private sealed record StatisticsConfiguration(uint Generation, int Width, int Height);
     private StatisticsConfiguration? statisticsConfiguration;
+    private DecodedVideoStatistics? statisticsVideo;
     private long statisticsPeakSkewUs;
     public PlaybackStatistics? Statistics(long epoch)
     {
@@ -43,7 +44,8 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
         var result = new PlaybackStatistics(epoch, configuration.Generation,
             Interlocked.Read(ref receivedVideoPackets), DecodedFrames, presenter.PresentedFrames, SkippedFrames,
             configuration.Width, configuration.Height, LastPresentedRotationDegrees,
-            IsPresentationSuspended, audio?.Statistics, LastAvTiming, Interlocked.Read(ref statisticsPeakSkewUs));
+            IsPresentationSuspended, audio?.Statistics, LastAvTiming, Interlocked.Read(ref statisticsPeakSkewUs),
+            Volatile.Read(ref statisticsVideo), presenter.Statistics);
         return Volatile.Read(ref disposed) || renderCancellation.IsCancellationRequested ||
             !ReferenceEquals(configuration, Volatile.Read(ref statisticsConfiguration))
             ? null : result;
@@ -99,7 +101,7 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
     public long PlayedAudioFrames => audio?.PlayedFrames ?? 0;
     public IDisposable? EnterTrack(uint track) => track == 2 && audio is not null ? WasapiOutput.AudioThread() : null;
     public VideoPlayback(GpuPresenter presenter, HardwareDecoder decoder, Func<ValueTask> detach, Func<string, ValueTask> status,
-        AudioPlayback? audio, string codecName = "h264")
+        AudioPlayback? audio, string codecName = "h264", HdrVideoFormat? color = null)
     {
         this.presenter = presenter;
         this.decoder = decoder;
@@ -107,6 +109,8 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
         this.status = status;
         this.audio = audio;
         this.codecName = codecName;
+        expectedFormat = color ?? HdrVideoFormat.Sdr;
+        expectedFormat.Validate(codecName);
         renderTask = Task.Factory.StartNew(RenderLoop, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
     }
 
@@ -135,12 +139,20 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
         {
             if (presenter.SetViewport(width, height, scaleX, scaleY))
             {
-                Interlocked.Exchange(ref resizeRequested, 1);
                 renderWake.Set();
             }
         }
         catch (Exception error) { Interlocked.CompareExchange(ref resizeFailure, error, null); }
     }
+
+    public void RefreshDisplay(HdrDisplayPolicy policy)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed), this);
+        if (!presenter.SetDisplayPolicy(policy)) return;
+        renderWake.Set();
+    }
+
+    public void FailDisplay(Exception error) => Interlocked.CompareExchange(ref resizeFailure, error, null);
 
     public async ValueTask ConfigureAsync(Packet configuration, CancellationToken cancellationToken)
     {
@@ -153,12 +165,16 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
             return;
         }
         var json = configuration.Object();
+        JsonObject.Require(HdrVideoProtocol.Format(json) == expectedFormat,
+            "STREAM_CONFIG videoColor differs from the negotiated video format.", "UNSUPPORTED_CONFIG");
         var buffers = JsonObject.Member(json, "csd", JsonValueKind.Array).EnumerateArray()
             .Select(item => Convert.FromBase64String(item.GetString()!)).ToArray();
         CheckVideoHealth();
         lock (nativeGate)
         {
             Volatile.Write(ref statisticsConfiguration, null);
+            Volatile.Write(ref statisticsVideo, null);
+            presenter.ResetStatistics();
             Interlocked.Exchange(ref statisticsPeakSkewUs, 0);
             Volatile.Write(ref rendered, 0);
             configuredGeneration = configuration.Generation;
@@ -167,7 +183,6 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
             Volatile.Write(ref decodedCurrentGeneration, 0);
             if (pendingFrame is not null) { pendingFrame.Dispose(); pendingFrame = null; Interlocked.Increment(ref skippedFrames); }
             lastFrame?.Dispose(); lastFrame = null;
-            Interlocked.Exchange(ref resizeRequested, 0);
             decoder.Configure(CodecConfiguration.VideoData(codecName, buffers),
                 JsonObject.Number(json, "width"), JsonObject.Number(json, "height"));
             presenter.Prepare(JsonObject.Number(json, "width"), JsonObject.Number(json, "height"));
@@ -215,6 +230,7 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
                 lock (nativeGate)
                 {
                     CheckVideoHealth();
+                    Volatile.Write(ref statisticsVideo, frame.Statistics);
                     if (pendingFrame is not null) { pendingFrame.Dispose(); Interlocked.Increment(ref skippedFrames); }
                     pendingFrame = frame.Clone();
                     renderWake.Set();
@@ -232,7 +248,8 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
             while (true)
             {
                 var delay = presenter.IsOccluded ? 100 :
-                    Volatile.Read(ref pendingFrame) is not null || Volatile.Read(ref resizeRequested) != 0 ? 5 : 250;
+                    Volatile.Read(ref pendingFrame) is not null ||
+                    Volatile.Read(ref lastFrame) is not null && presenter.HasPendingRedraw ? 5 : 250;
                 if (WaitHandle.WaitAny([renderWake, token.WaitHandle], delay) == 1) token.ThrowIfCancellationRequested();
                 token.ThrowIfCancellationRequested();
                 if (!Monitor.TryEnter(nativeGate)) continue;
@@ -246,7 +263,6 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
                         pendingFrame = null;
                         lastFrame?.Dispose();
                         lastFrame = frame;
-                        Interlocked.Exchange(ref resizeRequested, 0);
                         Volatile.Write(ref lastPresentedRotation, frame.RotationDegrees);
                         Interlocked.Exchange(ref lastVideoPts, frame.PtsUs);
                         if (audio?.Position is { ContentFrames: > 0, PtsUs: { } audioPts } position)
@@ -268,8 +284,8 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
                         }
                         first = Interlocked.Exchange(ref rendered, 1) == 0;
                     }
-                    else if (Volatile.Read(ref resizeRequested) != 0 && lastFrame is not null && presenter.Redraw(lastFrame))
-                        Interlocked.Exchange(ref resizeRequested, 0);
+                    else if (presenter.HasPendingRedraw && lastFrame is not null)
+                        presenter.Redraw(lastFrame);
                 }
                 finally { Monitor.Exit(nativeGate); }
                 if (first) status("Playing: first hardware-decoded D3D11 surface presented" +

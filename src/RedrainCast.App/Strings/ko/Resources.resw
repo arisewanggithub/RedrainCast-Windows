@@ -198,4 +198,11 @@
   <data name="StatisticsUnavailable" xml:space="preserve"><value>재생 통계를 사용할 수 없습니다. 통계 오버레이 없이 화면 전송을 계속할 수 있습니다.</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>코덱 목록을 읽는 동안 캡처 대상이 변경되었습니다. 설정을 다시 열거나 저장을 다시 시도하세요.</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>이 앱의 기본 창이 아닌 다른 창 또는 디스플레이를 선택하세요.</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>스트림 범위</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>프로필 / 깊이</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>출력</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>HDR 출력</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>SDR 출력</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (톤 매핑)</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0}비트</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

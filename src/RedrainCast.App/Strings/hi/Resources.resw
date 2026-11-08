@@ -198,4 +198,11 @@
   <data name="StatisticsUnavailable" xml:space="preserve"><value>प्लेबैक के आँकड़े उपलब्ध नहीं हैं; कास्टिंग ओवरले के बिना जारी रह सकती है।</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>कोडेक विकल्प पढ़ते समय कैप्चर स्रोत बदल गया। सेटिंग्स दोबारा खोलें या सहेजें दबाकर फिर से कोशिश करें।</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>कोई दूसरी विंडो या डिस्प्ले चुनें, इस ऐप की मुख्य विंडो नहीं।</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>स्ट्रीम रेंज</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>प्रोफ़ाइल / बिट</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>आउटपुट</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>HDR आउटपुट</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>SDR आउटपुट</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (टोन मैपिंग)</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0}-बिट</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

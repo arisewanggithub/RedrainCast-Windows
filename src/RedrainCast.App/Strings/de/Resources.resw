@@ -198,4 +198,11 @@ Live-Vorschauen bleiben lokal und laufen nur, solange diese Auswahl geöffnet is
   <data name="StatisticsUnavailable" xml:space="preserve"><value>Wiedergabestatistik nicht verfügbar; die Übertragung kann ohne Statistikeinblendung fortgesetzt werden.</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>Die Aufnahmequelle hat sich beim Ermitteln der verfügbaren Codecs geändert. Öffnen Sie die Einstellungen erneut oder versuchen Sie erneut zu speichern.</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>Wählen Sie ein anderes Fenster oder einen Bildschirm, nicht das Hauptfenster dieser App.</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>Stream-Bereich</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>Profil / Bittiefe</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>Ausgabe</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>HDR-Ausgabe</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>SDR-Ausgabe</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (Tonemapping)</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0}-Bit</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

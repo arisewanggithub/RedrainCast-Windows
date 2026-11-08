@@ -74,7 +74,7 @@ public sealed class ReceiverServer : IAsyncDisposable
             return connection?.ProgressDiagnostics ?? "session=none";
         }
     }
-    public byte[] Advertisement => Discovery.Advertisement(name, Port, IsBusy, instanceId);
+    public byte[] Advertisement => Discovery.Advertisement(name, Port, IsBusy, instanceId, factory.HdrCapabilities);
     public ReceiveStatistics? Statistics
     {
         get
@@ -253,6 +253,7 @@ public sealed class ReceiverServer : IAsyncDisposable
         private bool videoRotation;
         private bool streamRecovery;
         private ReceiverOptionCapabilities receiverOptions = ReceiverOptionCapabilities.None;
+        private HdrReceiverCapabilities hdrCapabilities = HdrReceiverCapabilities.None;
         private readonly ReceiverServer owner;
         private readonly TcpClient client;
         private readonly NetworkStream stream;
@@ -429,6 +430,17 @@ public sealed class ReceiverServer : IAsyncDisposable
                 videoRotation = offersRotation && owner.factory.SupportsVideoRotation;
                 var response = JsonData.Object(("role", "receiver"), ("versions", JsonData.Value(new[] { 3 })),
                     ("name", owner.name));
+                if (json.TryGetProperty("hdrVideoVersion", out _))
+                {
+                    var hdrVersion = JsonObject.Number(json, "hdrVideoVersion");
+                    JsonObject.Require(hdrVersion > 0, "Invalid HDR negotiation version.");
+                    if (hdrVersion == HdrVideoProtocol.Version)
+                    {
+                        hdrCapabilities = owner.factory.HdrCapabilities;
+                        response["receiveCapabilities"] = hdrCapabilities.WireValue;
+                        setup.CancelAfter(TimeSpan.FromSeconds(45));
+                    }
+                }
                 if (videoRotation) response["videoRotation"] = true;
                 try { receiverOptions = ReceiverOptionProtocol.Capabilities(json).Intersect(owner.factory.ReceiverOptions); }
                 catch (FormatException error) { throw new ProtocolException(error.Message); }
@@ -473,7 +485,10 @@ public sealed class ReceiverServer : IAsyncDisposable
                 catch (FormatException error) { throw new ProtocolException(error.Message); }
                 try
                 {
-                    request = CastRequest.Parse(requestJson, receiverOptions);
+                    var currentHdr = owner.factory.HdrCapabilities;
+                    var usableHdr = hdrCapabilities.CanReceiveHdr10 && currentHdr.CanReceiveHdr10
+                        ? currentHdr : HdrReceiverCapabilities.None;
+                    request = CastRequest.Parse(requestJson, receiverOptions, usableHdr);
                 }
                 catch (ProtocolException error)
                 {
@@ -493,8 +508,9 @@ public sealed class ReceiverServer : IAsyncDisposable
                 playbackForMedia = playback;
                 expectedTracks = request.Tracks.Length;
                 accepted = true;
-                await SendAsync(Packet.Control(PacketType.SessionAccept, session,
-                    JsonData.Object(("tracks", JsonData.Value(request.Tracks)), ("mediaToken", mediaToken))), setup.Token);
+                var acceptance = JsonData.Object(("tracks", JsonData.Value(request.Tracks)), ("mediaToken", mediaToken));
+                HdrVideoProtocol.AddFormat(acceptance, request.ColorFormat);
+                await SendAsync(Packet.Control(PacketType.SessionAccept, session, acceptance), setup.Token);
                 Interlocked.Exchange(ref startup, Environment.TickCount64);
                 owner.notify(new("Initializing", $"{request.VideoCodec}, {request.AudioCodec ?? "audio off"}"));
                 var trackState = new TrackState(request);

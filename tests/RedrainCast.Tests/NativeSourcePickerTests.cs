@@ -98,10 +98,12 @@ public sealed class NativeSourcePickerTests
     {
         var worker = Fixture("WorkerVideoSource");
         Assert.Contains("SourceClosed => source.Closed", worker);
-        Assert.Contains("ValidateSource() => source.EnsureAvailable()", worker);
+        Assert.Contains("protected override void ValidateSource()", worker);
+        Assert.Contains("source.EnsureAvailable();", worker);
         Assert.Contains("source.WindowProcessId", worker);
         Assert.Contains("source.WindowThreadId", worker);
-        Assert.Contains("source.ReadColor(diagnostic).Hdr", worker);
+        Assert.Contains("var color = source.ReadColor(diagnostic);", worker);
+        Assert.Contains("EncoderCompatibility.ValidateCapture(0, color.Hdr, settings.VideoCodec)", worker);
         var process = Fixture("ProcessVideoSource");
         Assert.Contains("CreateLinkedTokenSource(token, lifetime.Token, SourceClosed)", process);
         var ready = process.IndexOf("await readinessRead.WaitAsync", StringComparison.Ordinal);

@@ -4,8 +4,10 @@ using RedrainCast.Protocol;
 namespace RedrainCast.Receive.Core;
 
 public sealed record CastRequest(string VideoCodec, string? AudioCodec, int FramesPerSecond,
-    string ReceiverOrientation, ReceiverOptions? Options = null, int? ConfiguredVideoBitrate = null)
+    string ReceiverOrientation, ReceiverOptions? Options = null, int? ConfiguredVideoBitrate = null,
+    HdrVideoFormat? VideoColor = null)
 {
+    public HdrVideoFormat ColorFormat => VideoColor ?? HdrVideoFormat.Sdr;
     public ReceiverOptions EffectiveOptions => Options ?? ReceiverOptions.None;
     public uint[] Tracks => AudioCodec is null ? [1u] : [1u, 2u];
 
@@ -14,15 +16,18 @@ public sealed record CastRequest(string VideoCodec, string? AudioCodec, int Fram
     {
         get
         {
+            try { ColorFormat.Validate(VideoCodec); }
+            catch (FormatException error) { throw new ProtocolException(error.Message, "UNSUPPORTED_CONFIG"); }
             JsonObject.Require(VideoCodec is "h264" or "h265" or "av1" &&
                 ReceiverOrientation == "auto" && FramesPerSecond is >= 1 and <= 240,
-                "Supports hardware-only 8-bit H.264, HEVC Main and AV1 Profile 0, auto presentation, and requests from 1 to 240 FPS. Actual codec/raster support and throughput depend on hardware. No substitution.",
+                "Supports hardware-only H.264, HEVC Main/Main10 and AV1 Profile 0, auto presentation, and requests from 1 to 240 FPS. HDR10 requires explicit negotiation. Actual codec/raster support and throughput depend on hardware. No substitution.",
                 "UNSUPPORTED_CONFIG");
             return FramesPerSecond;
         }
     }
 
-    public static CastRequest Parse(JsonElement root, ReceiverOptionCapabilities? negotiated = null)
+    public static CastRequest Parse(JsonElement root, ReceiverOptionCapabilities? negotiated = null,
+        HdrReceiverCapabilities? hdrCapabilities = null)
     {
         ReceiverOptions options;
         try { options = ReceiverOptionProtocol.Parse(root, negotiated ?? ReceiverOptionCapabilities.None); }
@@ -32,6 +37,15 @@ public sealed record CastRequest(string VideoCodec, string? AudioCodec, int Fram
         var video = JsonObject.Member(root, "video", JsonValueKind.Object);
         var codec = JsonObject.Text(video, "codec");
         JsonObject.Require(codec is "h264" or "h265" or "av1", "Unsupported video codec.", "UNSUPPORTED_CONFIG");
+        HdrVideoFormat color;
+        try
+        {
+            color = HdrVideoProtocol.Format(root);
+            color.Validate(codec);
+        }
+        catch (FormatException error) { throw new ProtocolException(error.Message, "UNSUPPORTED_CONFIG"); }
+        JsonObject.Require(!color.Hdr10 || hdrCapabilities?.CanReceiveHdr10 == true,
+            "HDR10 was not negotiated or HDR playback is unavailable.", "UNSUPPORTED_CONFIG");
         _ = JsonObject.Text(video, "encoder", 256);
         _ = JsonObject.Text(video, "codecOptions", 8192);
         JsonObject.Require(JsonObject.Number(video, "bitrate") > 0 &&
@@ -61,6 +75,7 @@ public sealed record CastRequest(string VideoCodec, string? AudioCodec, int Fram
         _ = JsonObject.Text(audio, "source");
         _ = JsonObject.Text(audio, "codecOptions", 8192);
         JsonObject.Require(JsonObject.Number(audio, "bitrate") > 0, "Invalid audio bitrate.", "UNSUPPORTED_CONFIG");
-        return new(codec, enabled ? audioCodec : null, fps, orientation, options, JsonObject.Number(video, "bitrate"));
+        return new(codec, enabled ? audioCodec : null, fps, orientation, options, JsonObject.Number(video, "bitrate"),
+            color.Hdr10 ? color : null);
     }
 }

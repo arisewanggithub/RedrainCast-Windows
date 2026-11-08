@@ -198,4 +198,11 @@ Pratonton langsung adalah setempat dan hanya berjalan semasa pemilih ini dibuka.
   <data name="StatisticsUnavailable" xml:space="preserve"><value>Statistik main balik tidak tersedia; siaran boleh diteruskan tanpa tindanan.</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>Sumber tangkapan berubah semasa pilihan kodek dibaca. Buka tetapan sekali lagi atau cuba Simpan semula.</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>Pilih tetingkap lain atau paparan, bukan tetingkap utama aplikasi ini.</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>Julat strim</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>Profil / bit</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>Output</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>Output HDR</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>Output SDR</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (pemetaan tona)</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0}-bit</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

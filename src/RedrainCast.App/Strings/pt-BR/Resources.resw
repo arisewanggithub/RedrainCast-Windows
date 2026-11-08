@@ -198,4 +198,11 @@ As prévias ao vivo são locais e funcionam apenas enquanto este seletor está a
   <data name="StatisticsUnavailable" xml:space="preserve"><value>Estatísticas de reprodução indisponíveis; a transmissão pode continuar sem a sobreposição.</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>A fonte de captura mudou durante a leitura das opções de codec. Abra as configurações novamente ou tente Salvar outra vez.</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>Escolha outra janela ou uma tela, não a janela principal deste aplicativo.</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>Faixa do fluxo</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>Perfil / bits</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>Saída</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>Saída HDR</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>Saída SDR</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (tons mapeados)</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0} bits</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

@@ -4,12 +4,19 @@ public sealed record EncodedVideo(byte[] Data, long PtsUs, byte[] Configuration)
 
 public interface IVideoSource : IAsyncDisposable
 {
+    RedrainCast.Protocol.HdrVideoFormat ColorFormat => RedrainCast.Protocol.HdrVideoFormat.Sdr;
     string EncoderName { get; }
     int Width { get; }
     int Height { get; }
     // Preparation may allocate resources, but must not capture before receiver acceptance.
     ValueTask PrepareAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
     IAsyncEnumerable<EncodedVideo> ReadFramesAsync(CancellationToken cancellationToken);
+}
+
+public interface IHdrVideoSource : IVideoSource
+{
+    bool NativeHdrEligible { get; }
+    ValueTask ConfigureHdrAsync(bool enabled, CancellationToken token);
 }
 
 public interface IRecoverableVideoSource : IVideoSource

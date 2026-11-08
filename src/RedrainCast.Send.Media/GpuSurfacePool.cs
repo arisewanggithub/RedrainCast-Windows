@@ -50,6 +50,8 @@ internal sealed class GpuSurfacePool : IAsyncDisposable
     private readonly object gate = new();
     private readonly ID3D11Device device;
     private readonly int width, height, capacity;
+    private readonly Format format;
+    private readonly long bytesPerSurface;
     private readonly List<Slot> slots = [];
     private readonly Queue<int> available = new();
     private readonly Action<string> diagnostic;
@@ -62,16 +64,18 @@ internal sealed class GpuSurfacePool : IAsyncDisposable
     private Task? shutdown;
     public string Diagnostics
     {
-        get { lock (gate) return $"GPU surface pool allocated={slots.Count}/{capacity}, inUse={inUse}, peakInUse={maximumInUse}, recycled={recycled}, nominalBytesPerSurface={checked((long)width * height * 3 / 2)}"; }
+        get { lock (gate) return $"GPU surface pool format={format}, allocated={slots.Count}/{capacity}, inUse={inUse}, peakInUse={maximumInUse}, recycled={recycled}, nominalBytesPerSurface={bytesPerSurface}"; }
     }
 
-    public GpuSurfacePool(ID3D11Device device, int width, int height, Action<string> diagnostic)
+    public GpuSurfacePool(ID3D11Device device, int width, int height, Action<string> diagnostic, bool hdr10 = false)
     {
         this.device = device;
         this.width = width;
         this.height = height;
         this.diagnostic = diagnostic;
-        capacity = (int)Math.Clamp(128L * 1024 * 1024 / checked((long)width * height * 3 / 2), 1, 32);
+        format = hdr10 ? Format.P010 : Format.NV12;
+        bytesPerSurface = checked((long)width * height * 3 / (hdr10 ? 1 : 2));
+        capacity = (int)Math.Clamp(128L * 1024 * 1024 / bytesPerSurface, 1, 32);
         allReturned.SetResult();
     }
 
@@ -87,7 +91,7 @@ internal sealed class GpuSurfacePool : IAsyncDisposable
             {
                 if (slots.Count >= capacity) return null;
                 index = slots.Count;
-                var texture = device.CreateTexture2D(new Texture2DDescription(Format.NV12, (uint)width, (uint)height,
+                var texture = device.CreateTexture2D(new Texture2DDescription(format, (uint)width, (uint)height,
                     1, 1, BindFlags.RenderTarget));
                 try
                 {
