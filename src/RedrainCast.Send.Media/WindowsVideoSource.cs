@@ -12,7 +12,7 @@ using static Vortice.Direct3D11.D3D11;
 
 namespace RedrainCast.Send.Media;
 
-public sealed class WindowsVideoSource : IRecoverableVideoSource
+public sealed class WindowsVideoSource : IRecoverableVideoSource, IHdrVideoSource
 {
     public static CaptureSource SelectDefaultDisplay() => CaptureInterop.DefaultDisplay();
 
@@ -27,10 +27,38 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource
     private readonly CaptureSource source;
     private readonly Action<string>? diagnostic;
     private readonly GraphicsCaptureItem item;
-    private readonly CaptureSettings settings;
+    private CaptureSettings settings;
     private readonly ID3D11Device device;
     private readonly IDirect3DDevice captureDevice;
-    private readonly HardwareEncoder encoder;
+    private HardwareEncoder? preparedEncoder;
+    private HardwareEncoder encoder => preparedEncoder ?? throw new InvalidOperationException("Capture has not been prepared.");
+    private bool hdrConfigured;
+    private bool preparationStarted;
+    private readonly int outputWidth, outputHeight;
+    public RedrainCast.Protocol.HdrVideoFormat ColorFormat => settings.VideoColor ?? RedrainCast.Protocol.HdrVideoFormat.Sdr;
+    public bool NativeHdrEligible { get; }
+    public ValueTask ConfigureHdrAsync(bool enabled, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (preparationStarted || started || hdrConfigured)
+            throw new InvalidOperationException("HDR must be configured once before capture preparation. Restart sharing.");
+        var format = HdrCaptureFormat.Configure(source, settings, enabled, diagnostic);
+        settings = settings with { VideoColor = format.Hdr10 ? format : null };
+        settings.Validate();
+        hdrConfigured = true;
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask PrepareAsync(CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        ObjectDisposedException.ThrowIf(disposed, this);
+        preparationStarted = true;
+        source.EnsureAvailable();
+        HdrCaptureFormat.ValidateActive(source, ColorFormat, source.ReadColor(diagnostic));
+        preparedEncoder ??= new HardwareEncoder(device, outputWidth, outputHeight, settings, diagnostic);
+        return ValueTask.CompletedTask;
+    }
     private readonly GpuMemoryDiagnostics memory;
     private GpuSurfacePool? surfaces;
     private readonly CancellationTokenSource lifetime = new();
@@ -53,13 +81,13 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource
         return ValueTask.CompletedTask;
     }
     private long stageAt = Environment.TickCount64;
-    public string EncoderName => encoder.Name;
-    public int Width => encoder.Width;
-    public int Height => encoder.Height;
+    public string EncoderName => preparedEncoder?.Name ?? $"Native hardware {settings.VideoCodec}";
+    public int Width => outputWidth;
+    public int Height => outputHeight;
     public string Statistics => $"stage={Volatile.Read(ref stage)}, stageAgeMs={Math.Max(0, Environment.TickCount64 - Interlocked.Read(ref stageAt))}; " +
         $"notifications={Volatile.Read(ref frameNotifications)}, captured={Volatile.Read(ref capturedFrames)}, converted={Volatile.Read(ref convertedFrames)}, " +
-        $"submitted={Volatile.Read(ref submittedFrames)}, encoded={Volatile.Read(ref encodedFrames)}; dropped={encoder.DroppedFrames}; " +
-        $"output={Width}x{Height}, codec={settings.VideoCodec}, fps={settings.MaxFps}; {encoder.Diagnostics}; {surfaces?.Diagnostics}";
+        $"submitted={Volatile.Read(ref submittedFrames)}, encoded={Volatile.Read(ref encodedFrames)}; dropped={preparedEncoder?.DroppedFrames ?? 0}; " +
+        $"output={Width}x{Height}, codec={settings.VideoCodec}, fps={settings.MaxFps}; {preparedEncoder?.Diagnostics ?? "encoder=not prepared"}; {surfaces?.Diagnostics}";
 
     private void Stage(string value)
     {
@@ -79,6 +107,8 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource
         var color = source.ReadColor(diagnostic);
         this.settings = settings;
         var (width, height) = settings.OutputSize(item.Size.Width, item.Size.Height);
+        outputWidth = width;
+        outputHeight = height;
         diagnostic?.Invoke("Capture worker bootstrap: creating hardware D3D11 device.");
         device = CreateHardwareDevice();
         try
@@ -89,8 +119,7 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource
             memory = new GpuMemoryDiagnostics(device);
             EncoderCompatibility.ValidateCapture(memory.VendorId, color.Hdr, settings.VideoCodec);
             memory.CheckBudget();
-            diagnostic?.Invoke("Capture worker bootstrap: constructing hardware encoder.");
-            encoder = new HardwareEncoder(device, width, height, settings, diagnostic);
+            NativeHdrEligible = HdrCaptureFormat.Eligible(source, settings, color, diagnostic);
         }
         catch
         {
@@ -121,6 +150,7 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource
         ObjectDisposedException.ThrowIf(disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
         if (started) throw new InvalidOperationException("Capture cannot be reused.");
+        await PrepareAsync(cancellationToken);
         started = true;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, cancellationToken);
         var queue = new VideoQueue((settings.EnableAudio ? 7 : 8) * 1024 * 1024);
@@ -182,9 +212,10 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource
             Stage("reading display color");
             var size = item.Size;
             var color = source.ReadColor(diagnostic);
+            HdrCaptureFormat.ValidateActive(source, ColorFormat, color);
             EncoderCompatibility.ValidateCapture(memory.VendorId, color.Hdr, settings.VideoCodec);
-            surfaces = new GpuSurfacePool(device, Width, Height, detail => diagnostic?.Invoke(detail));
-            diagnostic?.Invoke($"Capture color: {(color.Hdr ? "HDR scRGB -> content-adaptive BT.2390 SDR" : "SDR direct")}; {color.LuminanceDescription}. HDR content peak is measured separately on the GPU.");
+            surfaces = new GpuSurfacePool(device, Width, Height, detail => diagnostic?.Invoke(detail), ColorFormat.Hdr10);
+            diagnostic?.Invoke($"Capture color: {(ColorFormat.Hdr10 ? "native HDR scRGB -> BT.2020/PQ limited P010 Main10" : color.Hdr ? "HDR scRGB -> content-adaptive BT.2390 SDR" : "SDR direct")}; {color.LuminanceDescription}.");
             var pixelFormat = color.Hdr ? DirectXPixelFormat.R16G16B16A16Float : DirectXPixelFormat.B8G8R8A8UIntNormalized;
             Stage("creating capture frame pool");
             // Notifications coalesce; raw capture frames are paced before encoding.
@@ -202,7 +233,7 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource
             try
             {
                 Stage("creating GPU converter");
-                processor = new GpuProcessor(device, size.Width, size.Height, Width, Height, settings.MaxFps, color.Hdr);
+                processor = new GpuProcessor(device, size.Width, size.Height, Width, Height, settings.MaxFps, color.Hdr, ColorFormat.Hdr10);
                 token.ThrowIfCancellationRequested();
                 Stage("starting hardware encoder");
                 encoder.Start();
@@ -230,6 +261,7 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource
                     {
                         nextColorCheck = clock.Elapsed + TimeSpan.FromMilliseconds(500);
                         var nextColor = source.ReadColor(diagnostic);
+                        HdrCaptureFormat.ValidateActive(source, ColorFormat, nextColor);
                         EncoderCompatibility.ValidateCapture(memory.VendorId, nextColor.Hdr, settings.VideoCodec);
                         if (nextColor != color)
                         {
@@ -251,7 +283,7 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource
                         processor.Dispose();
                         processor = null;
                         frames.Recreate(pixelFormat, resized, rearmSession);
-                        processor = new GpuProcessor(device, resized.Width, resized.Height, Width, Height, settings.MaxFps, color.Hdr);
+                        processor = new GpuProcessor(device, resized.Width, resized.Height, Width, Height, settings.MaxFps, color.Hdr, ColorFormat.Hdr10);
                         size = resized;
                         pendingSize = null;
                         if (rearmSession)
@@ -314,6 +346,7 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource
                             {
                                 // An encoder key request cannot create input for an unchanged WGC source.
                                 var observedColor = source.ReadColor(diagnostic);
+                                HdrCaptureFormat.ValidateActive(source, ColorFormat, observedColor);
                                 EncoderCompatibility.ValidateCapture(memory.VendorId, observedColor.Hdr, settings.VideoCodec);
                                 var observedSize = item.Size;
                                 if (observedSize.Width <= 0 || observedSize.Height <= 0)
@@ -347,6 +380,9 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource
                         diagnostic?.Invoke($"Capture worker fresh random-access input: systemRelativeTime100ns={timestamp}; " +
                             $"readQpcUs={(long)((Int128)System.Diagnostics.Stopwatch.GetTimestamp() * 1_000_000 / System.Diagnostics.Stopwatch.Frequency)}.");
                     using var captured = CaptureInterop.Texture(frame.Surface);
+                    var expectedFormat = color.Hdr ? Format.R16G16B16A16_Float : Format.B8G8R8A8_UNorm;
+                    if (captured.Description.Format != expectedFormat)
+                        throw new IOException($"Capture surface format changed from {expectedFormat} to {captured.Description.Format}. Restart sharing; color reinterpretation is forbidden.");
                     if (latest is null)
                     {
                         var description = captured.Description;
@@ -397,7 +433,7 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource
         try { if (worker != null) await worker; }
         finally
         {
-            try { encoder.Dispose(); }
+            try { preparedEncoder?.Dispose(); }
             finally
             {
                 try { if (surfaces is not null) await surfaces.DisposeAsync(); }

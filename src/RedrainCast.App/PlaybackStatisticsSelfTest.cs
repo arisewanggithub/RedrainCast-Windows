@@ -35,7 +35,9 @@ public sealed partial class MainWindow
             var playback = new PlaybackStatistics(long.MaxValue, uint.MaxValue, long.MaxValue, long.MaxValue - 1, long.MaxValue - 2,
                 long.MaxValue - 3, 3840, 2160, 270, false,
                 new(int.MaxValue, int.MaxValue, uint.MaxValue, long.MaxValue, long.MaxValue, long.MaxValue),
-                new(uint.MaxValue, 1_000_000, 900_000, 48000, 100_000, 1), 123456789);
+                new(uint.MaxValue, 1_000_000, 900_000, 48000, 100_000, 1), 123456789,
+                new(new(true), VideoTransfer.Pq, "Main 10", 10),
+                VideoPresentationStatistics.ForStream(new(true), false));
             var receive = new ReceiveStatistics(7, new(123456789, 1234567890123, 12345), new(123456789, 123456789012, 12345),
                 new(512, 8388608, 500000), new(512, 8388608, 500000), 1234.5, 12345, new(7, uint.MaxValue, uint.MaxValue, false),
                 VideoWaitingQueue: new(511, 8388508, 500000), AudioWaitingQueue: new(511, 8388508, 500000));
@@ -55,18 +57,19 @@ public sealed partial class MainWindow
                         continue;
                     }
                     var end = text.ContentEnd.GetCharacterRect(LogicalDirection.Backward);
+                    var slot = Microsoft.UI.Xaml.Controls.Primitives.LayoutInformation.GetLayoutSlot(text);
                     var natural = new TextBlock
                     {
                         Text = text.Text, FontFamily = text.FontFamily, FontSize = text.FontSize,
                         FontWeight = text.FontWeight, LineHeight = text.LineHeight,
-                        LineStackingStrategy = text.LineStackingStrategy, TextWrapping = TextWrapping.NoWrap
+                        LineStackingStrategy = text.LineStackingStrategy, TextWrapping = text.TextWrapping
                     };
                     Typography.SetNumeralAlignment(natural, FontNumeralAlignment.Tabular);
-                    natural.Measure(new(double.PositiveInfinity, double.PositiveInfinity));
+                    natural.Measure(new(text.TextWrapping == TextWrapping.Wrap ? slot.Width : double.PositiveInfinity,
+                        double.PositiveInfinity));
                     var origin = text.TransformToVisual(PlaybackStatsOverlay).TransformPoint(new Point());
                     var parent = (FrameworkElement)text.Parent;
                     var parentOrigin = parent.TransformToVisual(PlaybackStatsOverlay).TransformPoint(new Point());
-                    var slot = Microsoft.UI.Xaml.Controls.Primitives.LayoutInformation.GetLayoutSlot(text);
                     var id = statisticsValues.FirstOrDefault(p => ReferenceEquals(p.Value, text)).Key;
                     var clipped = text.IsTextTrimmed || natural.DesiredSize.Width > slot.Width + 1 ||
                         natural.DesiredSize.Height > slot.Height + 1 || end.Bottom > slot.Height + 1 ||
@@ -133,7 +136,9 @@ public sealed partial class MainWindow
                 if (PlaybackStatsOverlay.ActualWidth > WindowRoot.ActualWidth - 24 + 1 ||
                     PlaybackStatsOverlay.ActualHeight > WindowRoot.ActualHeight - 24 + 1 ||
                     !statisticsValues.ContainsKey("occluded") || Value("occluded") == "" ||
-                    statisticsDisplay?.Groups.Count != 2 || statisticsDisplay.Groups.Any(g => g.Cells.Count != 8))
+                    statisticsDisplay?.Groups.Count != 2 ||
+                    statisticsDisplay.Groups[0].Cells.Count != PlaybackStatisticsDisplay.VideoFields.Length ||
+                    statisticsDisplay.Groups[1].Cells.Count != PlaybackStatisticsDisplay.AudioFields.Length)
                     throw new InvalidOperationException("Statistics lost readable viewport bounds, a shared category or the footer.");
             }
             foreach (var size in new[] { (Width: 520, Height: 420), (Width: 560, Height: 420), (Width: 800, Height: 600), (Width: 1100, Height: 760) })
@@ -163,6 +168,32 @@ public sealed partial class MainWindow
             var compactScale = WindowRoot.XamlRoot.RasterizationScale;
             AppWindow.ResizeClient(new((int)(560 * compactScale), (int)(420 * compactScale)));
             await Task.Delay(200, limit.Token);
+            foreach (var output in new[] { VideoPresentationOutput.SdrToneMapped, VideoPresentationOutput.Hdr })
+            {
+                playback = playback with { Presentation = new(output) };
+                StatisticsTick(null, null!);
+                var expected = output == VideoPresentationOutput.Hdr ? "HDR output" : "SDR (tone-mapped)";
+                if (Value("videoDynamicRange") != "HDR10 · PQ" || Value("videoDecodeFormat") != "Main 10 · 10-bit" ||
+                    Value("presentationOutput") != expected)
+                    throw new InvalidOperationException("HDR stream details were confused with presentation output.");
+                checks.Add(JsonData.Object(("phase", "cached-monitor-output-change"), ("snapshot", ReportJson.Value(playback))));
+                CheckLayout("hdr-stream-" + output);
+            }
+            playback = playback with
+            {
+                Video = new(HdrVideoFormat.Sdr, VideoTransfer.Bt709, "Main", 8),
+                Presentation = VideoPresentationStatistics.ForStream(HdrVideoFormat.Sdr, true)
+            };
+            StatisticsTick(null, null!);
+            if (Value("videoDynamicRange") != "SDR · BT.709" || Value("videoDecodeFormat") != "Main · 8-bit" ||
+                Value("presentationOutput") != "SDR output")
+                throw new InvalidOperationException("SDR content was relabeled HDR on an HDR-capable display.");
+            CheckLayout("sdr-stream-on-hdr-display");
+            playback = playback with { Video = null, Presentation = null };
+            StatisticsTick(null, null!);
+            if (PlaybackStatisticsDisplay.VideoPresentationFields.Any(f => Value(f.Id) != "N/A"))
+                throw new InvalidOperationException("Missing decoded or presented metadata claimed success.");
+            CheckLayout("unknown-video-presentation");
             request = request with { AudioCodec = null };
             playback = playback with { Audio = null, Sync = null, EncodedWidth = 888, EncodedHeight = 1920 };
             ClearStatistics();

@@ -129,6 +129,7 @@ are `—`. No receiver-option or media wire format changes are involved.
 |---|---|
 | Received / Decoded / Presented FPS | Actual one-second deltas; first or reset sample is N/A. Windows Presented counts successful swap-chain submissions excluding redraws; Android counts frame-rendered callbacks, not scheduled releases. Neither proves physical scanout. |
 | Codec / Encoded size / Capture limit / Receiver canvas / Rotation | Actual encoded raster; requested FPS maximum, not observed rate; canvas in physical pixels, not DIP; applied rotation and requested orientation. |
+| Stream range / Profile / depth / Output | Incoming validated HDR10 or SDR, plus actual decoded transfer (e.g. `HDR10 · PQ`); decoder profile and surface bit depth (e.g. `Main 10 · 10-bit`). Output is separately `HDR output`, `SDR (tone-mapped)`, `SDR output`, or N/A before successful presentation. Windows caches the last successful submission/redraw policy and refreshes it after monitor changes, without extra 1-Hz device queries. FP16 scRGB HDR output does not claim the display's physical HDR wire protocol. SDR streams remain SDR on HDR displays; absent metadata remains unknown. |
 | Video bitrate / Audio bitrate / Configured bitrate / Network loss | Received payload Mbps versus configured video target; network loss remains N/A rather than treating renderer skips as lost packets. |
 | Audio format / PCM buffer / target / Device padding | PCM/Opus/AAC/Off; buffer/target and cached padding in ms, without new UI-thread device queries. |
 | Inserted silence / Discarded PCM | Total ms plus `(+recent)` one-second delta; these are PCM counters, not acoustic silence or encoded packet loss. |
@@ -164,8 +165,8 @@ dependent. Enabled outgoing audio suppresses local playback and restores owned
 mute changes on normal Stop/close/handled failures. A crash or force kill cannot
 guarantee mute restoration.
 
-Receiver admission is not a throughput certification: actual codec, 8-bit SDR
-profile, raster and hardware decoding/processing must configure successfully,
+Receiver admission is not a throughput certification: actual codec, negotiated SDR
+or HDR10 profile, raster and hardware decoding/processing must configure successfully,
 and failures stay visible without software fallback or FPS coercion.
 The D3D11 video processor uses the session's requested content rate for both
 input/output descriptors, including rebuilds and resize/rotation resets; these
@@ -499,8 +500,99 @@ interpolation between peak banks.
 
 The old fixed shoulder and blanket division by Windows' SDR-white setting
 are removed. SDR sources retain their existing BGRA8 conversion path.
-All codecs signal BT.709 primaries, transfer, matrix and limited range.
-This sends SDR video, not HDR passthrough.
+The SDR path signals BT.709 primaries, transfer, matrix and limited range.
+
+For a desktop (not a window), selecting HEVC enables native HDR10 when the
+source display currently has HDR enabled and the receiver explicitly acknowledges
+a usable HDR10 playback mode. Capture remains FP16 scRGB; a GPU conversion produces
+limited-range P010 with BT.2020/PQ signaling for hardware HEVC Main10 encoding.
+No codec is silently substituted. H.264, AV1, window capture and older/incompatible
+receivers retain the existing SDR behavior. Known AV1 exclusions still apply.
+
+Native HDR10 sharing remains enabled when display-reported desktop color-volume
+metadata is missing, invalid, or cannot be represented after quantization. The
+sender logs the omission and sends HDR10 without optional static metadata; it
+does not clamp luminance, substitute BT.2020 mastering primaries, or invent
+mastering/content peaks. Source closure, unavailable displays, and HDR-active
+state changes remain errors requiring restart rather than silently switching
+native sharing to SDR.
+
+HDR is an optional version-1 extension of wire version 3. Discovery carries
+`receiveCapabilities`: complete codec/profile/color tuples, current
+`nativeHdrAvailable` (Boolean or unknown), and verified `hdrToSdr` capability.
+The connection HELLO rechecks support, the request and acceptance agree on an exact
+`videoColor`, and every video configuration/recovery generation repeats it.
+Missing support or acknowledgement never permits sending HDR optimistically.
+Discovery remains limited to 1024 bytes; decoder and display probes are cached,
+not repeated on every broadcast. HDR-eligible capture sources negotiate color mode
+from the live receiver HELLO before preparation. A validated HDR capability v1
+reply allows the current receiver's 45-second setup deadline. Legacy receivers
+(or unknown capability revisions) use an SDR-only preflight: the sender closes
+that connection without SESSION_REQUEST or capture, prepares once within the
+separate 30-second capture-preparation budget, then reconnects and renegotiates
+recovery and receiver options under a fresh 10-second setup deadline. Late HDR
+capabilities do not upgrade already-prepared SDR resources. Non-HDR-eligible
+sources retain preparation before connecting; capture starts only after SESSION_ACCEPT.
+The shared [HDR wire fixture](protocol/fixtures/hdr-video.json) gives the exact
+tuple and integer metadata units, including chromaticities normalized to 50,000
+and minimum mastering luminance in 0.0001-nit units.
+Wire metadata must agree exactly. Decoded mastering chromaticities allow at most
+one 1/50,000 unit of hardware requantization from Media Foundation's float
+primaries; larger differences remain fatal, as do mismatched luminance bounds,
+content light levels or coded BT.2020/PQ color information.
+Minimum mastering luminance is also limited to 65,535 of those units (and cannot
+exceed the maximum), preserving Android's CTA-861.3 unsigned 16-bit descriptor
+without truncation; the usual 0.005-nit value remains 50.
+
+Windows receiving uses hardware HEVC Main10/P010 decoding and high-precision
+Direct3D presentation. HDR-enabled displays use native HDR presentation; SDR outputs
+use explicit GPU tone/gamut mapping rather than relying on Windows' clipping.
+Moving the receiver or toggling HDR changes the local output policy without
+changing the encoded stream. A window spanning displays uses its primary output;
+identical native HDR on mixed HDR/SDR displays is not promised.
+Turning HDR off on the sending display during a native-HDR cast requires restarting
+the cast rather than reinterpreting SDR frames as HDR.
+
+Native HDR output requires Windows HDR to be active on the current monitor and a
+finite DXGI monitor peak luminance between 80 and 10,000 nits. If that peak is
+missing or invalid, RedrainCast does not guess a display limit: it explicitly uses
+the hardware-verified local HDR-to-SDR BT.2390/BT.709 renderer, reports the reason,
+and advertises `nativeHdrAvailable=false` while HDR10 reception remains available
+only after the local decoder/converter preflight succeeds. This changes only the
+application's output; Windows HDR settings, encoded network video, and decoded HDR
+source data remain unchanged. Existing monitor/display notifications refresh the
+cached policy and restore native output when a valid peak becomes available.
+Physical HDR panel appearance is not verified by these automated checks.
+
+Transient DXGI display-detection or monitor-metadata failures (for example while
+moving the window between monitors) leave the Windows HDR setting unknown and
+disable native HDR output without guessing monitor luminance. Once the GPU HDR
+renderer has passed preflight, HDR10 reception remains available and an active
+HDR stream uses explicit BT.2390/BT.709 SDR tone-mapping; an unverified renderer
+is not advertised as supported. A later valid display query restores native HDR
+with the validated 80-10000-nit DXGI peak without restarting the decoder or
+session. Actual GPU rendering, device-removal, or swapchain failures remain fatal.
+Playback statistics reflect the output only after successful rendering; these
+checks do not verify physical HDR-panel appearance.
+
+Display-policy and viewport updates share an immutable pending presentation request.
+The renderer captures that request before presenting or redrawing and acknowledges
+only the exact request successfully submitted; busy, occluded, failed, or superseded
+attempts cannot consume newer updates. On a static desktop, the retained last decoded
+frame is redrawn with the latest HDR/SDR mode, validated monitor peak, and viewport
+without requiring another network frame or repeated metadata query. Display queries
+retain cached renderer verification, output statistics describe the last successful
+presentation, and UI updates never wait for the native decode/render gate. The
+encoded HDR source and Windows HDR settings are unchanged.
+
+Static metadata, when available, describes the desktop's source display color
+volume, not the original video's mastering display. Unknown content-light levels
+remain unspecified. Composed desktop capture cannot recover original Dolby Vision
+or HDR10+ dynamic metadata. Native HDR still depends on the actual device/driver,
+decoder, output display and rendering path; capability lists are not a guarantee
+of real-time throughput or visually identical output. Android receivers need the
+compatible negotiated HDR implementation and an HDR-preserving SurfaceView path;
+universal uninterrupted Android HDR-to-SDR fallback is not assumed.
 
 Video pixels stay on the GPU. Every fourth frame, the GPU copies only a
 256-bin luminance histogram (1 KiB of aggregate metadata) for asynchronous
@@ -941,11 +1033,112 @@ first random-access picture are also checked before transport.
 ```powershell
 dotnet test .\tests\RedrainCast.Tests.slnx -c Release
 .\tools\PrepareNative.ps1 -Architecture arm64
-dotnet build .\src\RedrainCast.App\RedrainCast.App.csproj -c Release -p:Platform=ARM64 -r win-arm64
+dotnet build .\src\RedrainCast.App\RedrainCast.App.csproj -c Release -p:Platform=ARM64 -r win-arm64 -p:SelfContained=true
 .\src\RedrainCast.App\bin\ARM64\Release\net10.0-windows10.0.26100.0\win-arm64\RedrainCast.App.exe
 ```
 
 For x64, prepare `-Architecture x64` and build with `-p:Platform=x64 -r win-x64`.
+
+### Remote development deployment (existing build only)
+
+Deploy and launch an already-built, self-contained Windows output with one command:
+
+```powershell
+.\tools\Deploy-Remote.ps1 `
+  -BuiltDirectory .\src\RedrainCast.App\bin\ARM64\Release\net10.0-windows10.0.26100.0\win-arm64 `
+  -RemoteHost <remote-host> -SSHUser <ssh-user> -KeyPath "$HOME\.ssh\id_ed25519"
+```
+
+Packaging, the single ZIP transfer, integrity verification and extraction to a
+fresh directory happen **while the existing remote app remains running**. Only
+then does one interactive launch command close **all verified RedrainCast instances in the selected desktop**,
+including active casts, and start the new app. Closure uses an eight-second
+graceful wait followed by verified-process force closure if necessary. Each target
+handle is pinned before checking its executable path and creation time, and that
+same handle is retained through graceful waiting, forced termination and exit
+confirmation. Already-exited targets are retired benignly; PID reuse never
+redirects closure to another process.
+Owned capture workers are included; unrelated applications and the local app
+are untouched. No active-cast check or rebuild is performed. One ZIP preserves
+the complete runtime and is transferred once, SHA256-verified, and extracted to
+a fresh directory beneath the interactive owner's `RedrainCast-DevDeploy` folder.
+Old deployments and user preferences are retained.
+
+The SSH account needs permission to register an interactive scheduled task and
+must have a **different SID from the interactive desktop owner**. Same-account
+elevated SSH plus a Limited interactive token is unsupported: that token still
+owns the controller's profile and can rewrite requests or replace protected child
+paths through writable ancestors. Deployment resolves the desktop owner from the
+OS and rejects this configuration before creating a request or scheduled task.
+Use a distinct SSH controller account; changing only the task's RunLevel or a
+read-only ACE does not make a shared SID safe.
+The detached task bootstrap uses Task Scheduler `IRegisteredTask.RunEx` with
+`TASK_RUN_USE_SESSION_ID` (4), the resolved desktop ID and its owner's SID, not
+account-only task startup or the SSH session. The helper checks its actual session
+and account against that selection before any close or launch, and the new app
+must be in the selected session with one visible RedrainCast window within 30 seconds.
+Use `-InteractiveSessionId` when multiple desktops exist, `-RemoteDirectory` to
+choose a deployment parent, or `-WhatIf` to validate inputs without changing the
+remote host. Offline `-WhatIf` also displays the distinct-SID prerequisite but
+cannot resolve remote accounts without connecting. Commands have bounded timeouts
+and failures are explicit.
+The executable stays in the chosen payload directory, including a read-only
+`Program Files` destination. Helper identity/results and their temporary files
+instead use a unique request's `reports` directory under the SSH account's profile.
+Protected ACLs grant only the resolved interactive SID inherited Modify access
+there, alongside the controller, SYSTEM and Administrators; the request descriptor
+and parent cancellation marker remain read-only to the interactive user. No payload
+or global parent write permissions are broadened.
+Failure cancels the unique deployment request before any later close or launch.
+The detached helper publishes its PID, creation time and request/script identity
+before querying app processes; cancellation and expiry are checked before each
+close or launch. Writable identity reports supply only a PID/creation hint.
+Cleanup verifies the actual executable, creation time and session on the same
+pinned handle against the controller-owned read-only request descriptor. An
+independent CIM query runs in an owned child with a three-second deadline, using
+the controller's `PSHOME\powershell.exe`, never a descriptor-supplied executable;
+`CommandLineToArgvW` tokenization must match the descriptor's complete launcher
+arguments, script path and request parameters exactly. Forged report command lines,
+substring matches, extra arguments and unavailable queries never authorize a kill.
+Unconfirmed authentication or retirement is an explicit failure. Cleanup
+terminates only that verified helper and waits up to five seconds for its exit
+before removing the scheduled task. The newly launched app is not killed by helper
+cleanup. An SSH failure also attempts bounded cancellation through a separate
+connection; if termination cannot be confirmed, the command reports that explicitly
+rather than claiming successful cleanup. Cancelled request markers are retained
+in request-specific directories to reject late-starting helpers.
+Recovery independently resolves the desktop from the original caller's session
+selection and the OS, not stored SID/session/controller/version claims. It rejects
+shared SIDs before reading descriptor authority and checks executable, helper,
+report, cancellation path, request ID, SID and session against trusted caller
+configuration and that resolved desktop before any task/query/retirement action.
+Malformed, mismatched or unverifiable old requests fail explicitly with cleanup
+unconfirmed; they never authorize a descriptor-controlled executable.
+`tests\tools\Test-DeployRemote.ps1` exercises isolated fake-helper stalls and races,
+identity mismatches, independent dummy-app survival, script parsing and offline
+`-WhatIf`/unsafe-input guards; it never connects to a peer or closes a user app.
+It also checks pinned-target exit/reuse races and report-directory SID permissions,
+and runs synthetic helpers against a temporary payload with a real write-deny ACL.
+Forged writable-report tests include an unrelated executable, a same-executable
+wrong request, embedded/extra arguments and unavailable/error queries; only exact
+actual argv permits same-handle retirement. Session tests cover requested desktop
+2 versus actual desktop 7 with the same SID, zero wrong-session close/launch
+markers, and the RunEx flag/session/SID contract.
+Same-SID controller tests use the real current SID and exercise pre-request remote
+rejection plus old on-disk recovery with forged SID/session/version claims. A real
+owned marker executable proves forged descriptor executables never start.
+Distinct-SID recovery, a mocked remote success path retaining Limited/RunEx and
+extraction-before-task ordering, and malformed/canonical-field validation are
+also covered.
+These checks do not impersonate a real Limited interactive user, exercise real
+multi-session Terminal Services or deploy remotely.
+The result reports old/forced PIDs, new PID/session/window, assembly and archive
+hashes, archive bytes/runtime file count, and measured ProcessClose, Package,
+Transfer, Extract, LaunchReady and Total seconds. Total is deployment-command
+wall time, excludes rebuilding, and is separate from first-time script implementation.
+
+### Project naming and runtime
+
 The send libraries and tests use `RedrainCast.Send.Core`,
 `RedrainCast.Send.Media` and `RedrainCast.Send.Tests`; the receive equivalents
 use `RedrainCast.Receive.*`. Project folders, namespaces and assembly outputs
@@ -1019,6 +1212,7 @@ a successful test.
 RedrainCast.App.exe --self-test C:\temp\redrain-ui.json
 RedrainCast.App.exe --color-self-test C:\temp\redrain-color.json
 RedrainCast.App.exe --encoder-self-test C:\temp\redrain-encoder.json
+RedrainCast.App.exe --hdr-self-test C:\temp\redrain-hdr.json
 RedrainCast.App.exe --media-self-test `
   E:\gitpersonal\RedrainCast-Windows\tests\RedrainCast.Receive.Tests\fixtures\synthetic-h264.json `
   C:\temp\redrain-media.json
@@ -1054,6 +1248,62 @@ Independent non-vertex libplacebo swatches, not the old custom formula, provide
 unit-test references. It also checks each available hardware encoder and verifies
 encoded color metadata through hardware decoding. Real HDR frame comparisons
 are a separate visual acceptance check, not inferred from these numeric tests.
+
+The separate `--hdr-self-test` requires a real HEVC Main10 hardware encoder and
+decoder; unavailable hardware is an explicit failed report, not an SDR substitution.
+It generates synthetic FP16 scRGB white and saturated color quadrants, checks the
+GPU limited-range P010 conversion, validates actual Main10/10-bit BT.2020/PQ VUI
+on both sender and receiver, and roundtrips the exact wire color/static metadata.
+The hardware-decoded pictures are checked numerically through the production
+SDR tone/gamut mapper and native FP16 scRGB presentation, including all four
+rotations, decoder/display configuration and local SDR/HDR output transitions.
+Additional synthetic renderer checks cover black, SDR white, highlights,
+saturated colors and content-peak histogram/temporal policy.
+The capture GPU processor's existing synthetic HDR-to-SDR and SDR conversion
+checks run too, without adding a sustained HDR or multi-codec benchmark.
+The native encode probe runs FP16 scRGB through the actual capture GPU processor
+and settings-derived downscale into P010 before Main10 encoding.
+The diagnostic also uses the production sender, loopback TCP receiver and native
+video playback for both ordinary and recovery transports. It checks acceptance
+before synthetic capture, exact source PTS/color/static metadata, generation-2
+recovery after a bounded test-only decoder delay, and acknowledged Stop/resource
+retirement. This listener binds only loopback and never advertises discovery.
+Its typed JSON report includes measured errors and explicit failures; its process
+exit code is 0 on success and 1 on diagnostic failure. Pixel readback is confined
+to this synthetic diagnostic. It does not capture a desktop, change Windows HDR,
+contact a LAN peer or verify physical HDR-panel appearance or Android interoperability.
+The existing color and 600-frame encoder-only tests do not automatically add this
+Main10 workload.
+The HDR and color/encoder self-tests also flush bounded phase journals beside
+their reports in `<report-name>-diagnostics`; a native crash or timeout without
+a completed report is not a successful test.
+
+Windows ARM64 integration validation on 2026-11-07 used an NVIDIA RTX Spark N1X:
+the Release app built with zero warnings/errors. The full core suite passed 1,212
+tests; late metadata-bound and loopback changes then passed 94 targeted tests.
+The app HDR diagnostic measured zero P010 code error; eight decoded color pictures
+covered four rotations in SDR/native policies, with maximum SDR error 1.112 codes
+and native error 5.625 nits. Synthetic renderer errors were below 0.929 SDR codes
+and 0.00766 scRGB units; the 400-nit mapping error was 0.313 nits, with four
+swapchain-policy transitions. Additional checks verified point-sampled P010
+up/downscaling, 2x2 chroma and SDR dither (two distinct codes, one-code span,
+mean error 0.053 codes). The coded probe covered three decoder reconfigurations
+and four generations. Two final app runs passed both TCP paths: ordinary playback
+decoded eight pictures; recovery decoded 16 in generation 2, with exact metadata,
+source PTS, presentation and acknowledged native/source cleanup.
+Production decoder/presenter replay of the original 1080p and 4K fixtures passed
+360 metadata-free and 76 full-metadata pictures per raster, with exact assigned
+PTS/rotation/color, 23 bounded hardware surfaces and decoder reconfiguration.
+Legacy synthetic SDR H.264, HEVC and AV1 each passed 30 access units with no dropped
+inputs and all rotation/reconfiguration checks. An initial uninstrumented color
+test had a native `ntdll.dll` access violation (`0xC0000005`, offset `0x36e48`);
+seven isolated reruns passed, including five further runs bounded to 90 seconds
+each. This CLI branch returns before constructing the main window/video host, so
+their new asynchronous HDR capability startup probe does not run in this check.
+The original crash phase and native/driver/lifetime cause remain unisolated;
+the reruns do not prove it fixed or long-term SDR stability.
+These numeric results do not verify physical HDR-panel
+appearance, Android interoperability or live desktop capture/performance.
 
 ### Regenerating color tables
 

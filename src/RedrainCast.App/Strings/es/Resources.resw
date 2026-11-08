@@ -198,4 +198,11 @@ Las vistas previas en directo son locales y solo funcionan mientras este selecto
   <data name="StatisticsUnavailable" xml:space="preserve"><value>Estadísticas de reproducción no disponibles; la transmisión puede continuar sin el panel superpuesto.</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>La fuente de captura cambió mientras se leían las opciones de códec. Vuelva a abrir la configuración o pulse Guardar de nuevo.</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>Elija otra ventana o una pantalla, no la ventana principal de esta aplicación.</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>Rango del flujo</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>Perfil / bits</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>Salida</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>Salida HDR</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>Salida SDR</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (tono adaptado)</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0} bits</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

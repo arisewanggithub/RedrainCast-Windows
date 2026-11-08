@@ -198,4 +198,11 @@
   <data name="StatisticsUnavailable" xml:space="preserve"><value>播放统计不可用；投屏仍可继续，但不显示统计浮层。</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>读取可选编解码器时，捕获源发生了变化。请重新打开设置，或再次点击“保存”。</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>请选择其他窗口或显示器，而非本应用的主窗口。</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>流动态范围</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>配置 / 位深</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>输出</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>HDR 输出</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>SDR 输出</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR（色调映射）</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0} 位</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

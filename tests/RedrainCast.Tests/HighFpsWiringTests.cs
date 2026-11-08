@@ -10,7 +10,7 @@ public sealed class HighFpsWiringTests
     [Fact]
     public void NormalAndRecoveryFactoryUseValidatedSessionRateAndNeverClampToSixty()
     {
-        Assert.Contains("new GpuPresenter(request.VideoProcessingFramesPerSecond)", Source("VideoHost"));
+        Assert.Contains("new GpuPresenter(request.VideoProcessingFramesPerSecond", Source("VideoHost"));
         Assert.Contains("_ = request.VideoProcessingFramesPerSecond;", Source("VideoPlayback"));
         Assert.DoesNotContain("request.FramesPerSecond > 60", Source("VideoPlayback"));
         var gpu = Source("GpuPresenter");

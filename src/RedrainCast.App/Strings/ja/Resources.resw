@@ -198,4 +198,11 @@
   <data name="StatisticsUnavailable" xml:space="preserve"><value>再生統計を利用できません。統計を重ねて表示せずに、画面の送信を続行できます。</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>コーデックの選択肢を読み取り中に共有元が変更されました。設定を開き直すか、もう一度「保存」を押してください。</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>このアプリのメインウィンドウではなく、別のウィンドウまたはディスプレイを選択してください。</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>ストリーム範囲</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>プロファイル / 深度</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>出力</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>HDR 出力</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>SDR 出力</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (トーンマップ)</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0} ビット</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

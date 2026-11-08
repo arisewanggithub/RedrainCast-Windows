@@ -3,11 +3,14 @@ using System.Net.Sockets;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Globalization;
+using RedrainCast.Protocol;
 
 namespace RedrainCast.Send.Core;
 
-public sealed record ReceiverEndpoint(IPAddress Address, int Port, string Name, bool Busy, string? InstanceId = null)
+public sealed record ReceiverEndpoint(IPAddress Address, int Port, string Name, bool Busy, string? InstanceId = null,
+    HdrReceiverCapabilities? Capabilities = null)
 {
+    public HdrReceiverCapabilities HdrCapabilities => Capabilities ?? HdrReceiverCapabilities.None;
     public string Key => $"{Address}:{Port}";
     public override string ToString() => $"{Name} - {Address} : {Port}{(Busy ? " (busy)" : "")}";
 
@@ -124,7 +127,13 @@ public sealed class DiscoveryTable
                          .Select(item => item.Key).ToArray())
                 entries.Remove(key);
         }
-        var endpoint = new ReceiverEndpoint(source, port, name, state == "busy", instanceId);
+        HdrReceiverCapabilities? capabilities = null;
+        if (json.TryGetProperty("receiveCapabilities", out _))
+        {
+            try { capabilities = HdrVideoProtocol.Capabilities(json); }
+            catch (FormatException error) { throw new ProtocolException(error.Message); }
+        }
+        var endpoint = new ReceiverEndpoint(source, port, name, state == "busy", instanceId, capabilities);
         if (!entries.ContainsKey(endpoint.Key) && entries.Count >= 64) return false;
         entries[endpoint.Key] = (endpoint, now);
         return true;

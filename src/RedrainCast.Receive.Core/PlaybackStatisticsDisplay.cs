@@ -40,9 +40,14 @@ public static class PlaybackStatisticsDisplay
         new("receivedFps", "Received FPS", "FPS"), new("decodedFps", "Decoded FPS", "FPS"),
         new("presentedFps", "Presented FPS", "FPS"), new("recentSkippedPercent", "Skipped · recent", "%")
     ];
+    public static readonly StatisticsField[] VideoPresentationFields =
+    [
+        new("videoDynamicRange", "Stream range"), new("videoDecodeFormat", "Profile / depth"),
+        new("presentationOutput", "Output")
+    ];
     public static readonly StatisticsField[] VideoFields =
     [
-        new("videoCodec", "Codec"), new("encodedSize", "Encoded size", "px"),
+        new("videoCodec", "Codec"), .. VideoPresentationFields, new("encodedSize", "Encoded size", "px"),
         new("captureLimit", "Capture limit", "FPS"), new("canvasSize", "Receiver canvas", "px"),
         new("rotation", "Rotation"), new("videoBitrate", "Video bitrate", "Mbps"),
         new("configuredVideoBitrate", "Configured bitrate", "Mbps"), new("networkLoss", "Network loss")
@@ -95,6 +100,26 @@ public static class PlaybackStatisticsDisplay
             N(kpiNumbers[i]) + (i == 3 && kpiNumbers[i] is not null ? formatCulture.NumberFormat.PercentSymbol : ""), kpiNumbers[i],
             i == 3 && kpiNumbers[i] > 0)).ToArray();
         var codec = request.VideoCodec switch { "h264" => "H.264", "h265" => "H.265 (HEVC)", "av1" => "AV1", _ => unavailable };
+        var transfer = p.Video?.Transfer switch
+        {
+            VideoTransfer.Bt709 => "BT.709", VideoTransfer.Smpte170M => "SMPTE 170M",
+            VideoTransfer.Gamma22 => "Gamma 2.2",
+            VideoTransfer.Gamma28 => "Gamma 2.8", VideoTransfer.Srgb => "sRGB",
+            VideoTransfer.Pq => "PQ", VideoTransfer.Hlg => "HLG", _ => null
+        };
+        var dynamicRange = p.Video is { } decoded
+            ? (decoded.StreamFormat.Hdr10 ? "HDR10" : "SDR") + (transfer is null ? "" : $" · {transfer}")
+            : unavailable;
+        var decodeFormat = p.Video is { } video
+            ? $"{(string.IsNullOrWhiteSpace(video.CodecProfile) ? unavailable : video.CodecProfile)} · " +
+              (video.BitDepth is > 0 ? string.Format(formatCulture, T("StatisticsBitDepth", "{0}-bit"), video.BitDepth) : unavailable)
+            : unavailable;
+        var presentation = p.Presentation?.Output switch
+        {
+            VideoPresentationOutput.Hdr => T("StatisticsHdrOutput", "HDR output"),
+            VideoPresentationOutput.SdrToneMapped => T("StatisticsSdrToneMapped", "SDR (tone-mapped)"),
+            VideoPresentationOutput.Sdr => T("StatisticsSdrOutput", "SDR output"), _ => unavailable
+        };
         var audioCodec = request.AudioCodec?.ToLowerInvariant() switch
         { null => T("Off", "Off"), "raw" or "pcm" => "PCM", "opus" => "Opus", "aac" => "AAC", _ => unavailable };
         var orientation = request.ReceiverOrientation switch
@@ -108,7 +133,8 @@ public static class PlaybackStatisticsDisplay
         return new(kpis, TotalFields.Select((field, i) => new StatisticsCell(field, Count(totals[i]), Counter: totals[i])).ToArray(),
             [
                 new("video", "VIDEO STREAM", Cells(VideoFields,
-                    [codec, Size(p.EncodedWidth, p.EncodedHeight), $"≤{request.FramesPerSecond.ToString(formatCulture)} {Unit("FPS")}",
+                    [codec, dynamicRange, decodeFormat, presentation,
+                     Size(p.EncodedWidth, p.EncodedHeight), $"≤{request.FramesPerSecond.ToString(formatCulture)} {Unit("FPS")}",
                      Size(canvasWidth, canvasHeight),
                      $"{p.RotationDegrees.ToString(formatCulture)}° · {orientation}",
                      WithUnit(rates.VideoMbps, "Mbps"), WithUnit(request.ConfiguredVideoBitrate / 1_000_000.0, "Mbps"), unavailable])),

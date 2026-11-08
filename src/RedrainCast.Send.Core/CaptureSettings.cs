@@ -1,13 +1,15 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using RedrainCast.Protocol;
 
 namespace RedrainCast.Send.Core;
 
 public sealed record CaptureSettings(int MaxSize = 1920, int MaxFps = 60, int VideoBitrate = 8_000_000,
     bool EnableAudio = false, string ReceiverOrientation = "auto", string VideoCodec = "h264",
-    bool ShowPlaybackStatistics = false)
+    bool ShowPlaybackStatistics = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] HdrVideoFormat? VideoColor = null)
 {
     public static IReadOnlyList<int> FpsPresets { get; } = Array.AsReadOnly<int>([15, 24, 25, 30, 48, 50, 60, 90, 120]);
 
@@ -18,6 +20,7 @@ public sealed record CaptureSettings(int MaxSize = 1920, int MaxFps = 60, int Vi
         if (ReceiverOrientation is not ("auto" or "landscape" or "portrait"))
             throw new ArgumentException("Invalid receiver orientation.");
         if (VideoCodec is not ("h264" or "h265" or "av1")) throw new ArgumentException("Choose H.264, H.265 or AV1.");
+        VideoColor?.Validate(VideoCodec);
     }
 
     public static CaptureSettings ReadSaved(string json)
@@ -30,6 +33,8 @@ public sealed record CaptureSettings(int MaxSize = 1920, int MaxFps = 60, int Vi
             throw new NotSupportedException("Saved settings select an unsupported transport. Only TCP is supported. Open Settings and save to replace them.");
         var settings = document.RootElement.Deserialize(CaptureSettingsJsonContext.Default.CaptureSettings)
             ?? throw new InvalidDataException("Saved sharing settings are empty.");
+        if (settings.VideoColor?.Hdr10 == true)
+            throw new NotSupportedException("Saved native HDR settings require fresh receiver negotiation. Open Settings and save to replace them.");
         settings.Validate();
         return settings;
     }
@@ -57,9 +62,11 @@ public sealed record CaptureSettings(int MaxSize = 1920, int MaxFps = 60, int Vi
         return new(settings, dimensionError, bitrateError, fpsError);
     }
 
-    public JsonObject Request(string hardwareEncoder, ReceiverOptions? effectiveOptions = null)
+    public JsonObject Request(string hardwareEncoder, ReceiverOptions? effectiveOptions = null, HdrVideoFormat? color = null)
     {
         Validate();
+        var format = color ?? VideoColor ?? HdrVideoFormat.Sdr;
+        format.Validate(VideoCodec);
         var request = JsonData.Object(
             ("video", JsonData.Object(
                 ("codec", VideoCodec), ("encoder", hardwareEncoder), ("bitrate", VideoBitrate),
@@ -71,6 +78,7 @@ public sealed record CaptureSettings(int MaxSize = 1920, int MaxFps = 60, int Vi
                 ("source", "output"), ("codecOptions", ""))));
         if (effectiveOptions?.PlaybackStats == true)
             request["receiverOptions"] = ReceiverOptionProtocol.WireValue(effectiveOptions);
+        HdrVideoProtocol.AddFormat(request, format);
         return request;
     }
 

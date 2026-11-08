@@ -11,6 +11,7 @@ public interface IPlaybackFactory
     bool SupportsVideoRotation => false;
     bool SupportsStreamRecovery => false;
     RedrainCast.Protocol.ReceiverOptionCapabilities ReceiverOptions => RedrainCast.Protocol.ReceiverOptionCapabilities.None;
+    RedrainCast.Protocol.HdrReceiverCapabilities HdrCapabilities => RedrainCast.Protocol.HdrReceiverCapabilities.None;
     ValueTask<IPlayback> OpenAsync(CastRequest request, CancellationToken cancellationToken);
 }
 

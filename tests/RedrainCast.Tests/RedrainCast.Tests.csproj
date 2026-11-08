@@ -17,6 +17,10 @@
     <None Include="..\..\tools\Assert-ShippingBoundary.ps1" Link="fixtures\Assert-ShippingBoundary.ps1" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.App\RedrainCast.App.csproj" Link="fixtures\App.csproj" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.App\App.xaml.cs" Link="fixtures\App.xaml.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\ColorSelfTest.cs" Link="fixtures\ColorSelfTest.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\HdrSelfTest.cs" Link="fixtures\HdrSelfTest.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\HdrLoopbackSelfTest.cs" Link="fixtures\HdrLoopbackSelfTest.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\ReportJson.cs" Link="fixtures\ReportJson.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.Receive.Core\ReceiverServer.cs" Link="fixtures\ReceiverServer.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\Directory.Build.props" Link="fixtures\Directory.Build.props" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\tools\Publish.ps1" Link="fixtures\Publish.ps1" CopyToOutputDirectory="PreserveNewest"/>
@@ -46,6 +50,8 @@
     <None Include="..\..\src\RedrainCast.App\PlaybackStatisticsOverlay.cs" Link="fixtures\PlaybackStatisticsOverlay.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.Send.Media\WindowsVideoSource.cs" Link="fixtures\WindowsVideoSource.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.Receive.Media\GpuPresenter.cs" Link="fixtures\GpuPresenter.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.Receive.Media\PresentationRequestState.cs" Link="fixtures\PresentationRequestState.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.Receive.Media\HardwareDecoder.cs" Link="fixtures\HardwareDecoder.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.Receive.Media\VideoPlayback.cs" Link="fixtures\VideoPlayback.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.App\VideoHost.cs" Link="fixtures\VideoHost.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
   </ItemGroup>

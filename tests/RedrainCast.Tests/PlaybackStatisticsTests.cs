@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using RedrainCast.Protocol;
 using RedrainCast.Receive.Core;
 using Xunit;
 
@@ -11,6 +12,43 @@ public sealed class PlaybackStatisticsTests
     private static ReceiveStatistics Receive(long bytes = 1000, long packets = 100) => new(1, new(packets, bytes, 10), new(100, bytes, 20),
         new(1, 100, 25_000), new(2, 200, 30_000), null, null, null);
 
+    [Fact]
+    public void SuccessfulPresentationCacheTracksMonitorChangesAndResetsWithoutGuessing()
+    {
+        var cache = new VideoPresentationStatisticsCache();
+        Assert.Null(cache.Snapshot);
+        cache.Presented(new(true), false);
+        Assert.Equal(VideoPresentationOutput.SdrToneMapped, cache.Snapshot!.Output);
+        var previous = cache.Snapshot;
+        Assert.Same(previous, cache.Snapshot);
+        cache.Presented(new(true), true);
+        Assert.Equal(VideoPresentationOutput.Hdr, cache.Snapshot!.Output);
+        cache.Presented(new(true), false);
+        Assert.Equal(VideoPresentationOutput.SdrToneMapped, cache.Snapshot!.Output);
+        cache.Presented(HdrVideoFormat.Sdr, true);
+        Assert.Equal(VideoPresentationOutput.Sdr, cache.Snapshot!.Output);
+        cache.Reset();
+        Assert.Null(cache.Snapshot);
+    }
+
+    [Fact]
+    public void MonitorOutputChangesReprojectOnNextSampleWithoutResettingRates()
+    {
+        var sampler = new PlaybackRateSampler();
+        var format = new HdrVideoFormat(true);
+        var cache = new VideoPresentationStatisticsCache();
+        cache.Presented(format, false);
+        var p = Playback() with { Video = new(format, VideoTransfer.Pq, "Main 10", 10), Presentation = cache.Snapshot };
+        sampler.Sample(1000, p, Receive());
+        cache.Presented(format, true);
+        p = p with { Presentation = cache.Snapshot };
+        var rates = sampler.Sample(2000, p, Receive());
+        Assert.False(sampler.BaselineReset);
+        Assert.Equal(0, rates.PresentedFps);
+        var display = PlaybackStatisticsDisplay.Create(new("h265", null, 60, "auto"), p, Receive(), rates, 560, 420, null);
+        Assert.Equal("HDR output", display.Groups[0].Cells.Single(c => c.Field.Id == "presentationOutput").Value);
+        Assert.Equal("HDR10 · PQ", display.Groups[0].Cells.Single(c => c.Field.Id == "videoDynamicRange").Value);
+    }
     [Fact]
     public void CompactTextPreservesCategoriesUnitsAndClockCaveat()
     {

@@ -3,6 +3,7 @@ using System.Numerics;
 using System.Diagnostics;
 using Microsoft.Win32.SafeHandles;
 using RedrainCast.Receive.Core;
+using RedrainCast.Protocol;
 using Vortice;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
@@ -17,6 +18,8 @@ public sealed record PresentationDiagnosticSnapshot(PresentedVideoSample[] Sampl
 public sealed class GpuPresenter : IDisposable
 {
     public ID3D11Device Device { get; }
+    public bool IsHdr => color.Hdr10;
+    internal float SdrPeakNits => hdrRenderer?.SdrPeakNits ?? 0;
     public int FramesPerSecond { get; }
     public int ProcessorInputFramesPerSecond { get; private set; }
     public int ProcessorOutputFramesPerSecond { get; private set; }
@@ -25,6 +28,13 @@ public sealed class GpuPresenter : IDisposable
     private readonly ID3D11DeviceContext context;
     private readonly ID3D11VideoDevice videoDevice;
     private readonly ID3D11VideoContext videoContext;
+    private readonly HdrVideoFormat color;
+    private readonly HdrRenderer? hdrRenderer;
+    private HdrDisplayPolicy appliedDisplay = HdrDisplayPolicy.Sdr;
+    private readonly PresentationRequestState requests = new();
+    internal bool HasPendingRedraw => requests.HasPending;
+    public VideoPresentationStatistics? Statistics => requests.Statistics;
+    public void ResetStatistics() => requests.ResetStatistics();
     private readonly IDXGISwapChain2 scaledSwapChain;
     private readonly WaitHandle frameReady;
     private readonly PresentationSlot presentationSlot = new();
@@ -36,8 +46,6 @@ public sealed class GpuPresenter : IDisposable
     private ID3D11VideoProcessor? processor;
     private (int Width, int Height) input;
     private (int Width, int Height) output = (640, 360);
-    private readonly object viewportGate = new();
-    private (int Width, int Height, float ScaleX, float ScaleY) viewport = (640, 360, 1, 1);
     private long presentedFrames;
     private long redrawnFrames;
     private string stage = "idle";
@@ -47,16 +55,29 @@ public sealed class GpuPresenter : IDisposable
     private List<PresentedVideoSample>? presentationSamples;
     private int droppedSamples;
     private int lastPresentResult;
-    public string Diagnostics => $"gpu stage={Volatile.Read(ref stage)}, stageMs={(Volatile.Read(ref stage) == "idle" ? 0 : Environment.TickCount64 - Interlocked.Read(ref stageAt))}, " +
+    public string Diagnostics
+    {
+        get
+        {
+            var successfulDisplay = requests.Successful?.Display;
+            var nativeHdr = color.Hdr10 && successfulDisplay?.NativeHdr == true;
+            var successfulFormat = nativeHdr ? Format.R16G16B16A16_Float : Format.B8G8R8A8_UNorm;
+            return $"gpu stage={Volatile.Read(ref stage)}, stageMs={(Volatile.Read(ref stage) == "idle" ? 0 : Environment.TickCount64 - Interlocked.Read(ref stageAt))}, " +
         $"busy={Interlocked.Read(ref busyAttempts)}, readinessWaits={Interlocked.Read(ref readinessWaits)}, " +
         $"stillDrawing={Interlocked.Read(ref stillDrawing)}, occluded={Interlocked.Read(ref occluded)}, " +
         $"presentAttempts={Interlocked.Read(ref presentAttempts)}, lastPresentResult=0x{unchecked((uint)Volatile.Read(ref lastPresentResult)):X8}, " +
         $"slotHeld={presentationSlot.IsHeld}, renderMaxUs={Interlocked.Read(ref maximumRenderUs)}, " +
-        $"requestedFps={FramesPerSecond}, processorInputFps={ProcessorInputFramesPerSecond}/1, processorOutputFps={ProcessorOutputFramesPerSecond}/1";
+        $"requestedFps={FramesPerSecond}, processorInputFps={ProcessorInputFramesPerSecond}/1, processorOutputFps={ProcessorOutputFramesPerSecond}/1, " +
+        $"hdr10={color.Hdr10}, outputFormat={(successfulDisplay is null ? "unpresented" : $"{successfulFormat}")}, nativeHdr={nativeHdr}, " +
+        $"displayPeakNits={(successfulDisplay?.NativeHdr == true ? $"{successfulDisplay.PeakNits}" : "unknown")}, outputPeakNits={successfulDisplay?.PeakNits}, " +
+        $"displayPolicy={successfulDisplay?.Diagnostic ?? "unpresented"}, " +
+        $"sdrContentPeakNits={hdrRenderer?.SdrPeakNits ?? 0}, sdrPeakPolicy=shared-HdrLuminance-percentile-temporal, nativePeakPolicy=GPU-maximum";
+        }
+    }
     public long PresentedFrames => Interlocked.Read(ref presentedFrames);
     public long RedrawnFrames => Interlocked.Read(ref redrawnFrames);
     public bool IsOccluded => Volatile.Read(ref lastPresentResult) == 0x087A0001;
-    public bool SupportsVideoRotation => enumerator?.VideoProcessorCaps.FeatureCaps.HasFlag(VideoProcessorFeatureCaps.Rotation) == true;
+    public bool SupportsVideoRotation => color.Hdr10 || enumerator?.VideoProcessorCaps.FeatureCaps.HasFlag(VideoProcessorFeatureCaps.Rotation) == true;
 
     public void EnablePresentationDiagnostics()
     {
@@ -80,8 +101,9 @@ public sealed class GpuPresenter : IDisposable
         return presenter.SupportsVideoRotation;
     }
 
-    public GpuPresenter(int framesPerSecond)
+    public GpuPresenter(int framesPerSecond, HdrVideoFormat? color = null)
     {
+        this.color = color ?? HdrVideoFormat.Sdr;
         if (framesPerSecond is < 1 or > 240) throw new ArgumentOutOfRangeException(nameof(framesPerSecond));
         FramesPerSecond = framesPerSecond;
         Device = D3D11CreateDevice(DriverType.Hardware, DeviceCreationFlags.BgraSupport | DeviceCreationFlags.VideoSupport);
@@ -91,6 +113,7 @@ public sealed class GpuPresenter : IDisposable
             using (var multithread = context.QueryInterface<ID3D11Multithread>()) multithread.SetMultithreadProtected(true);
             videoDevice = Device.QueryInterface<ID3D11VideoDevice>();
             videoContext = context.QueryInterface<ID3D11VideoContext>();
+            if (this.color.Hdr10) hdrRenderer = new HdrRenderer(Device);
             using var dxgi = Device.QueryInterface<IDXGIDevice>();
             using var adapter = dxgi.GetAdapter();
             using var factory = adapter.GetParent<IDXGIFactory2>();
@@ -108,6 +131,8 @@ public sealed class GpuPresenter : IDisposable
                 Flags = SwapChainFlags.FrameLatencyWaitableObject
             });
             scaledSwapChain = SwapChain.QueryInterface<IDXGISwapChain2>();
+            using (var colorChain = SwapChain.QueryInterface<IDXGISwapChain3>())
+                colorChain.SetColorSpace1(ColorSpaceType.RgbFullG22NoneP709);
             scaledSwapChain.MaximumFrameLatency = 1;
             var handle = scaledSwapChain.FrameLatencyWaitableObject;
             if (handle == 0) throw new NotSupportedException("GPU presentation readiness is unavailable.");
@@ -115,6 +140,7 @@ public sealed class GpuPresenter : IDisposable
         }
         catch
         {
+            hdrRenderer?.Dispose();
             frameReady?.Dispose();
             scaledSwapChain?.Dispose();
             SwapChain?.Dispose();
@@ -126,44 +152,48 @@ public sealed class GpuPresenter : IDisposable
         }
     }
 
-    public bool SetViewport(int width, int height, float scaleX, float scaleY)
-    {
-        if (width <= 0 || height <= 0) return false; // Hidden/minimized surfaces retain the last real viewport.
-        if (width > 16384 || height > 16384) throw new ArgumentOutOfRangeException(nameof(width));
-        if (!float.IsFinite(scaleX) || !float.IsFinite(scaleY) || scaleX <= 0 || scaleY <= 0)
-            throw new ArgumentOutOfRangeException(nameof(scaleX));
-        lock (viewportGate)
-        {
-            var next = (width, height, scaleX, scaleY);
-            if (viewport == next) return false;
-            viewport = next;
-            return true;
-        }
-    }
+    public bool SetViewport(int width, int height, float scaleX, float scaleY) =>
+        requests.SetViewport(width, height, scaleX, scaleY);
 
-    public bool Present(HardwareFrame frame) => Render(frame, true);
-    public bool Redraw(HardwareFrame frame) => Render(frame, false);
+    public bool Present(HardwareFrame frame) =>
+        requests.TryRender(frame.ColorFormat, request => Render(frame, true, request));
+    public bool Redraw(HardwareFrame frame) =>
+        requests.TryRender(frame.ColorFormat, request => Render(frame, false, request));
 
-    public void Prepare(int width, int height)
+    public bool SetDisplayPolicy(HdrDisplayPolicy policy) => requests.SetDisplayPolicy(policy);
+
+    public void Prepare(int width, int height) => Prepare(width, height, requests.Desired);
+
+    private void Prepare(int width, int height, PresentationRequest target)
     {
-        (int Width, int Height, float ScaleX, float ScaleY) target;
-        lock (viewportGate) target = viewport;
+        var policy = target.Display;
         var size = (target.Width, target.Height);
-        if (size != output)
+        var changedColor = color.Hdr10 && appliedDisplay.NativeHdr != policy.NativeHdr;
+        if (size != output || changedColor)
         {
             context.Flush();
-            SwapChain.ResizeBuffers(2, (uint)size.Item1, (uint)size.Item2, Format.B8G8R8A8_UNorm, SwapChainFlags.FrameLatencyWaitableObject).CheckError();
+            var format = color.Hdr10 && policy.NativeHdr ? Format.R16G16B16A16_Float : Format.B8G8R8A8_UNorm;
+            SwapChain.ResizeBuffers(2, (uint)size.Item1, (uint)size.Item2, format, SwapChainFlags.FrameLatencyWaitableObject).CheckError();
+            using var colorChain = SwapChain.QueryInterface<IDXGISwapChain3>();
+            var colorSpace = color.Hdr10 && policy.NativeHdr
+                ? ColorSpaceType.RgbFullG10NoneP709 : ColorSpaceType.RgbFullG22NoneP709;
+            if (!colorChain.CheckColorSpaceSupport(colorSpace).HasFlag(SwapChainColorSpaceSupportFlags.Present))
+                throw new NotSupportedException($"Composition swapchain cannot present {colorSpace}.");
+            colorChain.SetColorSpace1(colorSpace);
             presentationSlot.Reset();
             output = size;
             ResetProcessor();
         }
         scaledSwapChain.MatrixTransform = Matrix3x2.CreateScale(1 / target.ScaleX, 1 / target.ScaleY);
+        if (changedColor && !policy.NativeHdr) hdrRenderer?.ResetLuminance();
+        appliedDisplay = policy;
         if (input != (width, height))
         {
+            hdrRenderer?.ResetLuminance();
             input = (width, height);
             ResetProcessor();
         }
-        EnsureProcessor();
+        if (!color.Hdr10) EnsureProcessor();
     }
 
     private void Stage(string value)
@@ -175,10 +205,10 @@ public sealed class GpuPresenter : IDisposable
     internal void InspectForDiagnostics(HardwareFrame frame, Action<ID3D11Texture2D> inspect)
     {
         presentationSlot.TryAcquire(true);
-        Render(frame, false, inspect);
+        requests.TryRender(frame.ColorFormat, request => Render(frame, false, request, inspect));
     }
 
-    private bool Render(HardwareFrame frame, bool newFrame, Action<ID3D11Texture2D>? inspect = null)
+    private bool Render(HardwareFrame frame, bool newFrame, PresentationRequest request, Action<ID3D11Texture2D>? inspect = null)
     {
         Device.DeviceRemovedReason.CheckError();
         if (!presentationSlot.TryAcquire(presentationSlot.IsHeld || frameReady.WaitOne(0)))
@@ -191,33 +221,42 @@ public sealed class GpuPresenter : IDisposable
         Stage("prepare");
         try
         {
-            Prepare(frame.Width, frame.Height);
-            if (frame.RotationDegrees != 0 && !SupportsVideoRotation)
-                throw new NotSupportedException("Hardware video-processor rotation is unavailable. Rotation will not be ignored or performed on the CPU.");
-            if (SupportsVideoRotation)
-                videoContext.VideoProcessorSetStreamRotation(processor!, 0, frame.RotationDegrees != 0,
-                    (VideoProcessorRotation)(frame.RotationDegrees / 90));
-            videoContext.VideoProcessorSetStreamColorSpace(processor!, 0,
-                new() { YCbCr_Matrix = frame.ColorMatrix, Nominal_Range = frame.NominalRange });
-            Marshal.AddRef(frame.Texture);
-            using var source = new ID3D11Texture2D(frame.Texture);
+            Prepare(frame.Width, frame.Height, request);
+            if (frame.ColorFormat != color) throw new ProtocolException("Presenter color differs from the decoded surface.");
             using var buffer = SwapChain.GetBuffer<ID3D11Texture2D>(0);
-            using var sourceView = videoDevice.CreateVideoProcessorInputView(source, enumerator!, new()
+            if (hdrRenderer is not null)
             {
-                ViewDimension = VideoProcessorInputViewDimension.Texture2D,
-                Texture2D = new() { MipSlice = 0, ArraySlice = frame.ArraySlice }
-            });
-            using var outputView = videoDevice.CreateVideoProcessorOutputView(buffer, enumerator!, new()
+                Stage("hdr-shader");
+                hdrRenderer.Draw(frame, buffer, request.Display);
+            }
+            else
             {
-                ViewDimension = VideoProcessorOutputViewDimension.Texture2D,
-                Texture2D = new() { MipSlice = 0 }
-            });
-            var (x, y, width, height) = VideoLayout.Fit(input.Width, input.Height, frame.RotationDegrees, output.Width, output.Height);
-            videoContext.VideoProcessorSetStreamSourceRect(processor!, 0, true, new RawRect(0, 0, input.Width, input.Height));
-            videoContext.VideoProcessorSetStreamDestRect(processor!, 0, true, new RawRect(x, y, x + width, y + height));
-            Stage("video-blt");
-            videoContext.VideoProcessorBlt(processor!, outputView, 0,
-                [new VideoProcessorStream { Enable = true, InputSurface = sourceView }]).CheckError();
+                if (frame.RotationDegrees != 0 && !SupportsVideoRotation)
+                    throw new NotSupportedException("Hardware video-processor rotation is unavailable. Rotation will not be ignored or performed on the CPU.");
+                if (SupportsVideoRotation)
+                    videoContext.VideoProcessorSetStreamRotation(processor!, 0, frame.RotationDegrees != 0,
+                        (VideoProcessorRotation)(frame.RotationDegrees / 90));
+                videoContext.VideoProcessorSetStreamColorSpace(processor!, 0,
+                    new() { YCbCr_Matrix = frame.ColorMatrix, Nominal_Range = frame.NominalRange });
+                Marshal.AddRef(frame.Texture);
+                using var source = new ID3D11Texture2D(frame.Texture);
+                using var sourceView = videoDevice.CreateVideoProcessorInputView(source, enumerator!, new()
+                {
+                    ViewDimension = VideoProcessorInputViewDimension.Texture2D,
+                    Texture2D = new() { MipSlice = 0, ArraySlice = frame.ArraySlice }
+                });
+                using var outputView = videoDevice.CreateVideoProcessorOutputView(buffer, enumerator!, new()
+                {
+                    ViewDimension = VideoProcessorOutputViewDimension.Texture2D,
+                    Texture2D = new() { MipSlice = 0 }
+                });
+                var (x, y, width, height) = VideoLayout.Fit(input.Width, input.Height, frame.RotationDegrees, output.Width, output.Height);
+                videoContext.VideoProcessorSetStreamSourceRect(processor!, 0, true, new RawRect(0, 0, input.Width, input.Height));
+                videoContext.VideoProcessorSetStreamDestRect(processor!, 0, true, new RawRect(x, y, x + width, y + height));
+                Stage("video-blt");
+                videoContext.VideoProcessorBlt(processor!, outputView, 0,
+                    [new VideoProcessorStream { Enable = true, InputSurface = sourceView }]).CheckError();
+            }
             inspect?.Invoke(buffer);
             Stage("present");
             Interlocked.Increment(ref presentAttempts);
@@ -295,6 +334,7 @@ public sealed class GpuPresenter : IDisposable
 
     public void Dispose()
     {
+        hdrRenderer?.Dispose();
         ResetProcessor();
         frameReady.Dispose();
         scaledSwapChain.Dispose();

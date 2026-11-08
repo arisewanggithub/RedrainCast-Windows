@@ -107,7 +107,9 @@ public sealed partial class MainWindow
         var problem = new IOException(@"Owned synthetic failure: C:\RedrainCast\fixture.log; [2001:db8::1]:50432");
         var request = new CastRequest("h265", null, 60, "portrait");
         var playback = new PlaybackStatistics(1, 1, 100, 90, 80, 10, 1920, 1080, 0, false, null,
-            new(1, 1_000_000, 900_000, 48000, 100_000, 1), 0);
+            new(1, 1_000_000, 900_000, 48000, 100_000, 1), 0,
+            new(new(true), VideoTransfer.Pq, "Main 10", 10),
+            VideoPresentationStatistics.ForStream(new(true), false));
         var receive = new ReceiveStatistics(1, new(100, 1000, 1), new(0, 0, 1), new(0, 0, 0), new(0, 0, 0), null, null, null);
         isolatedStatisticsProvider = () => new(request, playback, receive);
         outgoing = syntheticCast;

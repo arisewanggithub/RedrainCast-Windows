@@ -106,6 +106,21 @@ public sealed partial class MainWindow
             StatisticsPlace(totals, value, 1, i);
         }
         PlaybackStatsPanel.Children.Add(totals);
+        var presentation = StatisticsGrid(star, star, star);
+        var presentationCells = display.Groups.SelectMany(g => g.Cells)
+            .Where(c => PlaybackStatisticsDisplay.VideoPresentationFields.Contains(c.Field)).ToArray();
+        for (var i = 0; i < presentationCells.Length; i++)
+        {
+            var cell = presentationCells[i];
+            var label = StatisticsText(cell.Field.Label, key: "Statistics_" + cell.Field.Id);
+            var value = StatisticsText("", cell.Field.Id);
+            label.TextWrapping = value.TextWrapping = TextWrapping.Wrap;
+            label.HorizontalAlignment = value.HorizontalAlignment = HorizontalAlignment.Stretch;
+            value.TextAlignment = TextAlignment.Left;
+            StatisticsPlace(presentation, label, 0, i);
+            StatisticsPlace(presentation, value, 1, i);
+        }
+        PlaybackStatsPanel.Children.Add(presentation);
         StatisticsRule();
         var body = StatisticsGrid(star, star);
         for (var i = 0; i < display.Groups.Count; i++)
@@ -114,9 +129,10 @@ public sealed partial class MainWindow
             var fields = StatisticsGrid(star, GridLength.Auto);
             var title = StatisticsText(group.Title, heading: true, key: group.Id == "video" ? "StatisticsVideo" : "StatisticsAudioSync");
             StatisticsPlace(fields, title, 0, 0); Grid.SetColumnSpan(title, 2);
-            for (var row = 0; row < group.Cells.Count; row++)
+            var bodyCells = group.Cells.Where(c => !PlaybackStatisticsDisplay.VideoPresentationFields.Contains(c.Field)).ToArray();
+            for (var row = 0; row < bodyCells.Length; row++)
             {
-                var cell = group.Cells[row];
+                var cell = bodyCells[row];
                 StatisticsPlace(fields, StatisticsText(cell.Field.Label, key: "Statistics_" + cell.Field.Id), row + 1, 0);
                 StatisticsPlace(fields, StatisticsText("", cell.Field.Id), row + 1, 1);
             }

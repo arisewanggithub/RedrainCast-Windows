@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using RedrainCast.Protocol;
 using RedrainCast.Send.Core;
 using SharpGen.Runtime;
 using Vortice.Direct3D11;
@@ -12,6 +13,18 @@ public sealed class HardwareEncoder : IDisposable
 {
     private static readonly Guid VideoEncoderCategory = new("f79eac7d-e545-4387-bdee-d647d7bde42a");
     private static readonly Guid VideoMajorType = new("73646976-0000-0010-8000-00aa00389b71");
+    private static readonly Guid P010 = new("30313050-0000-0010-8000-00aa00389b71");
+    private static readonly Lazy<bool> NativeHdrCandidates = new(() =>
+    {
+        MFStartup(false).CheckError();
+        try
+        {
+            using var candidates = Enumerate("h265", hdr10: true);
+            return candidates.Any(candidate => candidate.GetString(TransformAttributeKeys.MftEnumHardwareUrlAttribute).Length > 0);
+        }
+        finally { MFShutdown().CheckError(); }
+    });
+    public static bool HasNativeHdrCandidate => NativeHdrCandidates.Value;
     private const int NoEvents = unchecked((int)0xc00d3e80);
     private const int NeedMoreInput = unchecked((int)0xc00d6d72);
     private readonly IMFActivateCollection activations;
@@ -20,6 +33,8 @@ public sealed class HardwareEncoder : IDisposable
     private readonly IMFMediaEventGenerator events;
     private readonly IMFDXGIDeviceManager manager;
     private readonly CaptureSettings settings;
+    private readonly HdrVideoFormat color;
+    private Guid InputSubtype => color.Hdr10 ? P010 : VideoFormatGuids.NV12;
     private readonly Action<string>? diagnostic;
     private readonly EncoderSampleAccounting? samples;
     private readonly EncoderInputFlow inputFlow = new();
@@ -37,7 +52,7 @@ public sealed class HardwareEncoder : IDisposable
     private bool started;
     private bool disposed;
     private byte[] configuration = [];
-    public string Name { get; }
+    public string Name { get; } = "";
     public int Width { get; }
     public int Height { get; }
     public uint VendorId { get; }
@@ -73,15 +88,16 @@ public sealed class HardwareEncoder : IDisposable
         _ => throw new ArgumentException("Unsupported video codec.")
     };
 
-    private static IMFActivateCollection Enumerate(string codec) => MFTEnumEx(VideoEncoderCategory,
+    private static IMFActivateCollection Enumerate(string codec, bool hdr10 = false) => MFTEnumEx(VideoEncoderCategory,
         (uint)(EnumFlag.EnumFlagHardware | EnumFlag.EnumFlagSortandfilter),
-        new RegisterTypeInfo { GuidMajorType = VideoMajorType, GuidSubtype = VideoFormatGuids.NV12 },
+        new RegisterTypeInfo { GuidMajorType = VideoMajorType, GuidSubtype = hdr10 ? P010 : VideoFormatGuids.NV12 },
         new RegisterTypeInfo { GuidMajorType = VideoMajorType, GuidSubtype = Subtype(codec) });
 
     public HardwareEncoder(ID3D11Device device, int width, int height, CaptureSettings settings, Action<string>? diagnostic = null)
     {
         settings.Validate();
         this.settings = settings;
+        color = settings.VideoColor ?? HdrVideoFormat.Sdr;
         this.diagnostic = diagnostic;
         Width = width;
         Height = height;
@@ -101,44 +117,61 @@ public sealed class HardwareEncoder : IDisposable
         try
         {
             diagnostic?.Invoke($"Capture worker bootstrap: enumerating hardware {settings.VideoCodec} encoders.");
-            candidates = Enumerate(settings.VideoCodec);
-            selectedActivation = candidates.FirstOrDefault()
-                ?? throw new NotSupportedException($"No native hardware {settings.VideoCodec} encoder supports NV12 input. Software encoding is not allowed.");
-            Name = selectedActivation.GetString(TransformAttributeKeys.MftFriendlyNameAttribute);
-            if (selectedActivation.GetString(TransformAttributeKeys.MftEnumHardwareUrlAttribute).Length == 0)
-                throw new NotSupportedException("Encoder has no hardware registration.");
-            diagnostic?.Invoke($"Capture worker bootstrap: activating hardware encoder {Name}.");
-            selected = selectedActivation.ActivateObject<IMFTransform>();
-            using var attributes = selected.Attributes;
-            if (attributes.GetUInt32(TransformAttributeKeys.TransformAsync) != 1 ||
-                attributes.GetUInt32(TransformAttributeKeys.D3D11Aware) != 1)
-                throw new NotSupportedException("Hardware encoder must support asynchronous D3D11 surface input.");
-            attributes.Set(TransformAttributeKeys.TransformAsyncUnlock, 1u).CheckError();
-            deviceManager = MFCreateDXGIDeviceManager();
-            deviceManager.ResetDevice(device).CheckError();
-            selected.ProcessMessage(TMessageType.MessageSetD3DManager, (nuint)deviceManager.NativePointer);
-            using var outputType = MediaType(Subtype(settings.VideoCodec), width, height, settings.MaxFps);
-            outputType.Set(MediaTypeAttributeKeys.AvgBitrate, (uint)settings.VideoBitrate).CheckError();
-            if (EncoderCompatibility.OutputProfile(settings.VideoCodec) is { } profile)
-                outputType.Set(MediaTypeAttributeKeys.Mpeg2Profile, profile).CheckError();
-            diagnostic?.Invoke("Capture worker bootstrap: setting hardware encoder output type.");
-            selected.SetOutputType(0, outputType, 0);
-            using var inputType = MediaType(VideoFormatGuids.NV12, width, height, settings.MaxFps);
-            diagnostic?.Invoke("Capture worker bootstrap: setting hardware encoder input type.");
-            selected.SetInputType(0, inputType, 0);
-            using (var actualOutput = selected.GetOutputCurrentType(0)) ValidateFormat(actualOutput, width, height, settings.MaxFps);
-            using (var actualInput = selected.GetInputCurrentType(0)) ValidateFormat(actualInput, width, height, settings.MaxFps);
-            using (var codec = new CodecControl(selected))
+            candidates = Enumerate(settings.VideoCodec, color.Hdr10);
+            var rejected = new List<Exception>();
+            foreach (var candidate in candidates)
             {
-                diagnostic?.Invoke("Capture worker bootstrap: configuring hardware encoder controls.");
-                try { codec.Configure(VendorId); }
-                catch (COMException error)
+                selectedActivation = candidate;
+                Name = candidate.GetString(TransformAttributeKeys.MftFriendlyNameAttribute);
+                try
                 {
-                    throw new NotSupportedException($"Hardware encoder {Name} (GPU vendor 0x{VendorId:X4}) rejected required " +
-                        $"low-latency/compatibility settings. {error.Message}", error);
+                    if (candidate.GetString(TransformAttributeKeys.MftEnumHardwareUrlAttribute).Length == 0)
+                        throw new NotSupportedException("Encoder has no hardware registration.");
+                    diagnostic?.Invoke($"Capture worker bootstrap: activating hardware encoder {Name}; input={(color.Hdr10 ? "P010/Main10 HDR10" : "NV12 SDR")}.");
+                    selected = candidate.ActivateObject<IMFTransform>();
+                    using var attributes = selected.Attributes;
+                    if (attributes.GetUInt32(TransformAttributeKeys.TransformAsync) != 1 ||
+                        attributes.GetUInt32(TransformAttributeKeys.D3D11Aware) != 1)
+                        throw new NotSupportedException("Hardware encoder must support asynchronous D3D11 surface input.");
+                    attributes.Set(TransformAttributeKeys.TransformAsyncUnlock, 1u).CheckError();
+                    deviceManager = MFCreateDXGIDeviceManager();
+                    deviceManager.ResetDevice(device).CheckError();
+                    selected.ProcessMessage(TMessageType.MessageSetD3DManager, (nuint)deviceManager.NativePointer);
+                    using var outputType = MediaType(Subtype(settings.VideoCodec), width, height, settings.MaxFps, color);
+                    outputType.Set(MediaTypeAttributeKeys.AvgBitrate, (uint)settings.VideoBitrate).CheckError();
+                    var profile = color.Hdr10 ? 2u : EncoderCompatibility.OutputProfile(settings.VideoCodec);
+                    if (profile is { } requiredProfile)
+                        outputType.Set(MediaTypeAttributeKeys.Mpeg2Profile, requiredProfile).CheckError();
+                    diagnostic?.Invoke("Capture worker bootstrap: setting hardware encoder output type.");
+                    selected.SetOutputType(0, outputType, 0);
+                    using var inputType = MediaType(InputSubtype, width, height, settings.MaxFps, color);
+                    diagnostic?.Invoke("Capture worker bootstrap: setting hardware encoder input type.");
+                    selected.SetInputType(0, inputType, 0);
+                    using (var actualOutput = selected.GetOutputCurrentType(0))
+                        ValidateFormat(actualOutput, Subtype(settings.VideoCodec), width, height, settings.MaxFps, color, profile);
+                    using (var actualInput = selected.GetInputCurrentType(0))
+                        ValidateFormat(actualInput, InputSubtype, width, height, settings.MaxFps, color);
+                    using var codec = new CodecControl(selected);
+                    diagnostic?.Invoke("Capture worker bootstrap: configuring hardware encoder controls.");
+                    codec.Configure(VendorId);
+                    generator = selected.QueryInterface<IMFMediaEventGenerator>();
+                    break;
+                }
+                catch (Exception error) when (error is NotSupportedException or COMException or SharpGenException)
+                {
+                    diagnostic?.Invoke($"Hardware encoder candidate {Name} rejected required format/low-latency controls: {error}");
+                    rejected.Add(new NotSupportedException($"Hardware candidate {Name} rejected {settings.VideoCodec}/{InputSubtype}.", error));
+                    candidate.ShutdownObject().CheckError();
+                    generator?.Dispose(); generator = null;
+                    selected?.Dispose(); selected = null;
+                    deviceManager?.Dispose(); deviceManager = null;
+                    selectedActivation = null;
                 }
             }
-            generator = selected.QueryInterface<IMFMediaEventGenerator>();
+            if (selected is null || selectedActivation is null || generator is null || deviceManager is null)
+                throw new NotSupportedException($"No native asynchronous D3D11 hardware {settings.VideoCodec} encoder accepts " +
+                    $"{(color.Hdr10 ? "P010 Main10 HDR10" : "NV12 SDR")} with required low-latency controls. " +
+                    "Software encoding and automatic codec/color substitution are not allowed.", new AggregateException(rejected));
             activations = candidates;
             activation = selectedActivation;
             transform = selected;
@@ -164,21 +197,24 @@ public sealed class HardwareEncoder : IDisposable
         }
     }
 
-    private static void ValidateFormat(IMFMediaType type, int width, int height, int fps)
+    private static void ValidateFormat(IMFMediaType type, Guid subtype, int width, int height, int fps,
+        HdrVideoFormat color, uint? profile = null)
     {
         var size = type.GetUInt64(MediaTypeAttributeKeys.FrameSize);
         var rate = type.GetUInt64(MediaTypeAttributeKeys.FrameRate);
-        if ((uint)(size >> 32) != width || (uint)size != height || (uint)rate == 0 ||
+        if (type.GetGUID(MediaTypeAttributeKeys.Subtype) != subtype ||
+            profile is { } requiredProfile && type.GetUInt32(MediaTypeAttributeKeys.Mpeg2Profile) != requiredProfile ||
+            (uint)(size >> 32) != width || (uint)size != height || (uint)rate == 0 ||
             (ulong)(uint)(rate >> 32) != (ulong)fps * (uint)rate)
             throw new NotSupportedException($"Hardware encoder did not accept {width}x{height} at {fps} FPS. No format/FPS substitution is allowed.");
-        if (type.GetUInt32(MediaTypeAttributeKeys.VideoPrimaries) != (uint)VideoPrimaries.Bt709 ||
-            type.GetUInt32(MediaTypeAttributeKeys.TransferFunction) != (uint)VideoTransferFunction.Func709 ||
-            type.GetUInt32(MediaTypeAttributeKeys.YuvMatrix) != (uint)VideoTransferMatrix.Bt709 ||
+        if (type.GetUInt32(MediaTypeAttributeKeys.VideoPrimaries) != (uint)(color.Hdr10 ? VideoPrimaries.Bt2020 : VideoPrimaries.Bt709) ||
+            type.GetUInt32(MediaTypeAttributeKeys.TransferFunction) != (uint)(color.Hdr10 ? VideoTransferFunction.Func2084 : VideoTransferFunction.Func709) ||
+            type.GetUInt32(MediaTypeAttributeKeys.YuvMatrix) != (uint)(color.Hdr10 ? VideoTransferMatrix.Bt202010 : VideoTransferMatrix.Bt709) ||
             type.GetUInt32(MediaTypeAttributeKeys.VideoNominalRange) != (uint)NominalRange.Range16_235)
-            throw new NotSupportedException("Hardware encoder did not retain the required BT.709 limited-range SDR color metadata.");
+            throw new NotSupportedException($"Hardware encoder did not retain required {(color.Hdr10 ? "BT.2020/PQ limited HDR10" : "BT.709 limited SDR")} color metadata.");
     }
 
-    private static IMFMediaType MediaType(Guid subtype, int width, int height, int fps)
+    private static IMFMediaType MediaType(Guid subtype, int width, int height, int fps, HdrVideoFormat color)
     {
         var type = MFCreateMediaType();
         try
@@ -189,13 +225,27 @@ public sealed class HardwareEncoder : IDisposable
             type.Set(MediaTypeAttributeKeys.FrameRate, ((ulong)(uint)fps << 32) | 1).CheckError();
             type.Set(MediaTypeAttributeKeys.PixelAspectRatio, (1UL << 32) | 1).CheckError();
             type.Set(MediaTypeAttributeKeys.InterlaceMode, 2u).CheckError();
-            type.Set(MediaTypeAttributeKeys.VideoPrimaries, (uint)VideoPrimaries.Bt709).CheckError();
-            type.Set(MediaTypeAttributeKeys.TransferFunction, (uint)VideoTransferFunction.Func709).CheckError();
-            type.Set(MediaTypeAttributeKeys.YuvMatrix, (uint)VideoTransferMatrix.Bt709).CheckError();
+            type.Set(MediaTypeAttributeKeys.VideoPrimaries, (uint)(color.Hdr10 ? VideoPrimaries.Bt2020 : VideoPrimaries.Bt709)).CheckError();
+            type.Set(MediaTypeAttributeKeys.TransferFunction, (uint)(color.Hdr10 ? VideoTransferFunction.Func2084 : VideoTransferFunction.Func709)).CheckError();
+            type.Set(MediaTypeAttributeKeys.YuvMatrix, (uint)(color.Hdr10 ? VideoTransferMatrix.Bt202010 : VideoTransferMatrix.Bt709)).CheckError();
             type.Set(MediaTypeAttributeKeys.VideoNominalRange, (uint)NominalRange.Range16_235).CheckError();
+            if (color.Metadata is { } metadata) SetHdrMetadata(type, metadata);
             return type;
         }
         catch { type.Dispose(); throw; }
+    }
+
+    private static void SetHdrMetadata(IMFMediaType type, HdrStaticMetadata metadata)
+    {
+        metadata.Validate();
+        float[] primaries = [metadata.RedX / 50000f, metadata.RedY / 50000f,
+            metadata.GreenX / 50000f, metadata.GreenY / 50000f, metadata.BlueX / 50000f,
+            metadata.BlueY / 50000f, metadata.WhiteX / 50000f, metadata.WhiteY / 50000f];
+        type.SetBlob(MediaTypeAttributeKeys.CustomVideoPrimaries, MemoryMarshal.AsBytes<float>(primaries.AsSpan()).ToArray()).CheckError();
+        type.Set(new Guid("d6c6b997-272f-4ca1-8d00-8042111a0ff6"), (uint)metadata.MaxMasteringNits).CheckError();
+        type.Set(new Guid("839a4460-4e7e-4b4f-ae79-cc08905c7b27"), (uint)metadata.MinMasteringTenThousandths).CheckError();
+        type.Set(new Guid("50253128-c110-4de4-98ae-46a324fae6da"), (uint)metadata.MaxContentLightNits).CheckError();
+        type.Set(new Guid("58d4bf57-6f52-4733-a195-a9e29ecf9e27"), (uint)metadata.MaxFrameAverageLightNits).CheckError();
     }
 
     public void Start()
@@ -260,6 +310,10 @@ public sealed class HardwareEncoder : IDisposable
 
     private void SubmitCore(ID3D11Texture2D texture, long pts100ns, IMFSample sample)
     {
+        var description = texture.Description;
+        if (description.Format != (color.Hdr10 ? Format.P010 : Format.NV12) ||
+            description.Width != Width || description.Height != Height)
+            throw new NotSupportedException("Hardware encoder input surface format/raster differs from the negotiated format.");
         samples?.ValidateSubmission(pts100ns);
         using var buffer = MFCreateDXGISurfaceBuffer(typeof(ID3D11Texture2D).GUID, texture, 0, false);
         inputBufferLengthBefore = buffer.CurrentLength;
@@ -337,13 +391,13 @@ public sealed class HardwareEncoder : IDisposable
                     if (actualType.GetBlobSize(MediaTypeAttributeKeys.MpegSequenceHeader, out var size).Success && size > 0)
                         configuration = VideoBitstream.Configuration(settings.VideoCodec, actualType.GetBlob(MediaTypeAttributeKeys.MpegSequenceHeader));
                     else configuration = VideoBitstream.Configuration(settings.VideoCodec, bytes);
-                    VideoBitstream.ValidateConfiguration(settings.VideoCodec, configuration, Width, Height);
+                    VideoBitstream.ValidateConfiguration(settings.VideoCodec, configuration, Width, Height, color);
                 }
                 VideoBitstream.ValidateFrame(settings.VideoCodec, bytes, configuration);
                 if (VideoBitstream.HasConfiguration(settings.VideoCodec, bytes))
                 {
                     var current = VideoBitstream.Configuration(settings.VideoCodec, bytes);
-                    VideoBitstream.ValidateConfiguration(settings.VideoCodec, current, Width, Height);
+                    VideoBitstream.ValidateConfiguration(settings.VideoCodec, current, Width, Height, color);
                     if (!current.AsSpan().SequenceEqual(configuration))
                         throw new ProtocolException("Hardware encoder changed configuration during the fixed-format session.");
                 }

@@ -198,4 +198,11 @@
   <data name="StatisticsUnavailable" xml:space="preserve"><value>إحصاءات التشغيل غير متاحة؛ يمكن أن يستمر البث دون لوحة الإحصاءات.</value></data>
   <data name="SourceChanged" xml:space="preserve"><value>تغير مصدر الالتقاط أثناء قراءة خيارات برامج الترميز. افتح الإعدادات مجددًا أو أعد محاولة «حفظ».</value></data>
   <data name="ChooseDifferentWindow" xml:space="preserve"><value>اختر نافذة أخرى أو شاشة، وليس النافذة الرئيسية لهذا التطبيق.</value></data>
+  <data name="Statistics_videoDynamicRange" xml:space="preserve"><value>نطاق الدفق</value></data>
+  <data name="Statistics_videoDecodeFormat" xml:space="preserve"><value>الملف / العمق</value></data>
+  <data name="Statistics_presentationOutput" xml:space="preserve"><value>الإخراج</value></data>
+  <data name="StatisticsHdrOutput" xml:space="preserve"><value>إخراج HDR</value></data>
+  <data name="StatisticsSdrOutput" xml:space="preserve"><value>إخراج SDR</value></data>
+  <data name="StatisticsSdrToneMapped" xml:space="preserve"><value>SDR (تحويل النغمات)</value></data>
+  <data name="StatisticsBitDepth" xml:space="preserve"><value>{0} بت</value><comment>{0} actual decoded surface bit depth.</comment></data>
 </root>

@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
 using RedrainCast.Send.Core;
+using RedrainCast.Protocol;
 using Windows.Graphics.Capture;
 using Windows.Graphics.Display;
 using WinRT;
@@ -216,6 +217,28 @@ public sealed partial class CaptureSource : IDisposable
             metadataWarning = warning;
             profile.Validate();
             return profile;
+        }
+    }
+
+    public HdrStaticMetadata? ReadHdrMetadata(Action<string>? diagnostic = null)
+    {
+        if (IsWindow) throw new NotSupportedException("HDR desktop color-volume metadata requires whole-display capture.");
+        lock (colorGate)
+        {
+            if (display is null || displayMonitor != Handle)
+            {
+                display = OpenDisplay(Handle);
+                displayMonitor = Handle;
+            }
+            var color = display.GetAdvancedColorInfo();
+            if (color.CurrentAdvancedColorKind != AdvancedColorKind.HighDynamicRange)
+                throw new NotSupportedException("The selected display is no longer HDR-active. Restart sharing to renegotiate color.");
+            var red = color.RedPrimary;
+            var green = color.GreenPrimary;
+            var blue = color.BluePrimary;
+            var white = color.WhitePoint;
+            return HdrDisplayMetadata.Create(color.MaxLuminanceInNits, color.MinLuminanceInNits,
+                (red.X, red.Y), (green.X, green.Y), (blue.X, blue.Y), (white.X, white.Y), diagnostic);
         }
     }
 

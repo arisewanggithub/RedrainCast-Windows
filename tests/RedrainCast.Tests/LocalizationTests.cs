@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Xml.Linq;
 using RedrainCast.Core;
+using RedrainCast.Protocol;
 using RedrainCast.Receive.Core;
 using RedrainCast.Send.Core;
 using Xunit;
@@ -192,6 +193,43 @@ public sealed class LocalizationTests
         Assert.Equal("1,2 Mbit/s", Cells(french).Single(c => c.Field.Id == "videoBitrate").Value);
         Assert.Equal("H.265 (HEVC)", Cells(french).Single(c => c.Field.Id == "videoCodec").Value);
         Assert.Equal(Cells(canonical).Select(c => c.Field), Cells(french).Select(c => c.Field));
+    }
+
+    [Fact]
+    public void HdrStatisticsUseEveryCatalogWithoutTranslatingProtocolOrInferringOutput()
+    {
+        var request = new CastRequest("h265", null, 60, "auto");
+        var p = new PlaybackStatistics(1, 1, 100, 90, 80, 10, 1920, 1080, 0, false, null, null, 0,
+            new(new(true), VideoTransfer.Pq, "Main 10", 10));
+        var r = new ReceiveStatistics(1, new(100, 1000, 1), new(0, 0, 1), new(0, 0, 0), new(0, 0, 0), null, null, null);
+        var rates = new PlaybackRates(null, null, null, null, null, null, null, null);
+        foreach (var language in AppLanguages.Supported)
+        {
+            var catalog = CatalogText.Validate(XDocument.Load(Path.Combine(AppContext.BaseDirectory,
+                "fixtures", "Strings", language, "Resources.resw")));
+            foreach (var (output, key) in new[]
+            {
+                (VideoPresentationOutput.Hdr, "StatisticsHdrOutput"),
+                (VideoPresentationOutput.SdrToneMapped, "StatisticsSdrToneMapped"),
+                (VideoPresentationOutput.Sdr, "StatisticsSdrOutput")
+            })
+            {
+                var snapshot = p with { Presentation = new(output) };
+                foreach (var compact in new[] { false, true })
+                {
+                    var display = PlaybackStatisticsDisplay.Create(request, snapshot, r, rates, 520, 420, null,
+                        compact, key => catalog[key], CultureInfo.GetCultureInfo(language));
+                    var cells = display.Groups[0].Cells.ToDictionary(c => c.Field.Id);
+                    Assert.Equal("HDR10 · PQ", cells["videoDynamicRange"].Value);
+                    Assert.Equal("Main 10 · " + string.Format(CultureInfo.GetCultureInfo(language), catalog["StatisticsBitDepth"], 10),
+                        cells["videoDecodeFormat"].Value);
+                    Assert.Equal(catalog[key], cells["presentationOutput"].Value);
+                    Assert.Equal(11, cells.Count);
+                    Assert.All(PlaybackStatisticsDisplay.VideoPresentationFields,
+                        field => Assert.False(string.IsNullOrWhiteSpace(catalog["Statistics_" + field.Id])));
+                }
+            }
+        }
     }
 
     [Fact]

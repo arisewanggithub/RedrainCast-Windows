@@ -41,7 +41,7 @@ public sealed class SenderSession
         settings.Validate();
         if (settings.EnableAudio != (audio != null))
             throw new NotSupportedException("Enabled audio requires a receiver-only audio source; audio cannot silently disappear.");
-        using var client = new TcpClient(endpoint.Address.AddressFamily) { NoDelay = true };
+        var client = new TcpClient(endpoint.Address.AddressFamily) { NoDelay = true };
         using var videoClient = new TcpClient(endpoint.Address.AddressFamily) { NoDelay = true };
         using var audioClient = new TcpClient(endpoint.Address.AddressFamily) { NoDelay = true };
         using var lifetime = new CancellationTokenSource();
@@ -287,7 +287,7 @@ public sealed class SenderSession
             if (!capture.IsCancellationRequested) throw new IOException("AUDIO_FAILED: audio capture ended unexpectedly.");
         }
 
-        try
+        async Task PrepareCapture()
         {
             state("Preparing capture");
             using (var preparation = CancellationTokenSource.CreateLinkedTokenSource(capture.Token))
@@ -299,26 +299,83 @@ public sealed class SenderSession
                     throw new TimeoutException("Capture preparation exceeded 30 seconds; capture was not started.", error);
                 }
             }
+        }
+
+        try
+        {
+            var hdrSource = source as IHdrVideoSource;
+            var deferPreparation = hdrSource?.NativeHdrEligible == true;
+            if (!deferPreparation)
+            {
+                if (hdrSource is not null) await hdrSource.ConfigureHdrAsync(false, capture.Token);
+                await PrepareCapture();
+            }
             state("Connecting");
-            using (var setup = CancellationTokenSource.CreateLinkedTokenSource(capture.Token))
+            var setup = CancellationTokenSource.CreateLinkedTokenSource(capture.Token);
+            try
             {
                 setup.CancelAfter(TimeSpan.FromSeconds(10));
-                await client.ConnectAsync(endpoint.Address, endpoint.Port, setup.Token);
-                stream = client.GetStream();
                 var helloFields = JsonData.Object(("role", "sender"), ("versions", JsonData.Value(new[] { 3 })),
                     ("name", "RedrainCast"));
                 helloFields["receiverOptions"] = ReceiverOptionCapabilities.Implemented.WireValue;
+                if (source is IHdrVideoSource) helloFields["hdrVideoVersion"] = HdrVideoProtocol.Version;
                 if (source is IRecoverableVideoSource { SupportsStreamRecovery: true })
                 {
                     helloFields["streamRecovery"] = true;
                     helloFields["streamRecoveryVersion"] = StreamRecovery.Version;
                 }
-                await Send(Message.Control(MessageType.Hello, 0, helloFields), setup.Token);
-                var hello = await Wire.ReadAsync(stream, setup.Token);
-                if (hello.Type == MessageType.Reject) ThrowRejected(hello);
-                if (hello.Type != MessageType.Hello || hello.Session != 0)
-                    throw new ProtocolException("Expected receiver HELLO.");
-                ValidateHello(hello.Json());
+                async Task<Message> ConnectHello()
+                {
+                    await client.ConnectAsync(endpoint.Address, endpoint.Port, setup.Token);
+                    stream = client.GetStream();
+                    await Send(Message.Control(MessageType.Hello, 0, helloFields), setup.Token);
+                    var reply = await Wire.ReadAsync(stream, setup.Token);
+                    if (reply.Type == MessageType.Reject) ThrowRejected(reply);
+                    if (reply.Type != MessageType.Hello || reply.Session != 0)
+                        throw new ProtocolException("Expected receiver HELLO.");
+                    ValidateHello(reply.Json());
+                    return reply;
+                }
+
+                var hello = await ConnectHello();
+                if (deferPreparation && hdrSource is not null)
+                {
+                    HdrReceiverCapabilities hdrCapabilities;
+                    try { hdrCapabilities = HdrVideoProtocol.Capabilities(hello.Json()); }
+                    catch (FormatException error) { throw new ProtocolException(error.Message); }
+                    // Only a validated v1 payload acknowledges the receiver's extended setup deadline.
+                    var extendedSetup = hello.Json().TryGetProperty("receiveCapabilities", out var hdrPayload) &&
+                        hdrPayload.GetProperty("version").GetInt32() == HdrVideoProtocol.Version;
+                    var useHdr = extendedSetup && hdrCapabilities.CanReceiveHdr10;
+                    if (extendedSetup) setup.CancelAfter(TimeSpan.FromSeconds(45));
+                    else
+                    {
+                        // A legacy peer's ten-second setup budget cannot include cold capture preparation.
+                        stream!.Dispose();
+                        stream = null;
+                        client.Dispose();
+                        client = new TcpClient(endpoint.Address.AddressFamily) { NoDelay = true };
+                    }
+                    await hdrSource.ConfigureHdrAsync(useHdr, extendedSetup ? setup.Token : capture.Token);
+                    await PrepareCapture();
+                    if (source.ColorFormat.Hdr10 != useHdr)
+                        throw new ProtocolException("Capture source did not honor the negotiated HDR mode.");
+                    if (useHdr) state("Native HDR10 negotiated: HEVC Main10, BT.2020/PQ.");
+                    else
+                        state("Receiver has no usable HDR10 playback mode; casting continues with HDR-to-SDR conversion.");
+                    if (!extendedSetup)
+                    {
+                        setup.Dispose();
+                        setup = CancellationTokenSource.CreateLinkedTokenSource(capture.Token);
+                        setup.CancelAfter(TimeSpan.FromSeconds(10));
+                        // The preflight connection never claimed a session. Renegotiate on the final connection,
+                        // retaining prepared SDR resources even if its HELLO now offers HDR.
+                        state("Connecting");
+                        hello = await ConnectHello();
+                        try { _ = HdrVideoProtocol.Capabilities(hello.Json()); }
+                        catch (FormatException error) { throw new ProtocolException(error.Message); }
+                    }
+                }
                 bool recovery;
                 ReceiverOptions effectiveOptions;
                 try
@@ -335,18 +392,21 @@ public sealed class SenderSession
                         throw new ProtocolException("Unrequested recovery acknowledgement.");
                     if (settings.ShowPlaybackStatistics && !effectiveOptions.PlaybackStats)
                         state("Receiver option unavailable: Playback statistics require a compatible receiver; casting continues without the overlay.");
-                    await RecoverySender.RunAsync(endpoint, settings, recoverable, audio, state, session, stream, stopToken, effectiveOptions);
+                    await RecoverySender.RunAsync(endpoint, settings, recoverable, audio, state, session, stream!, stopToken, effectiveOptions);
                     return;
                 }
                 state("Negotiating");
                 if (settings.ShowPlaybackStatistics && !effectiveOptions.PlaybackStats)
                     state("Receiver option unavailable: Playback statistics require a compatible receiver; casting continues without the overlay.");
-                await Send(Message.Control(MessageType.SessionRequest, session, settings.Request(source.EncoderName, effectiveOptions)), setup.Token);
-                var accept = await Wire.ReadAsync(stream, setup.Token);
+                await Send(Message.Control(MessageType.SessionRequest, session,
+                    settings.Request(source.EncoderName, effectiveOptions, source.ColorFormat)), setup.Token);
+                var accept = await Wire.ReadAsync(stream!, setup.Token);
                 if (accept.Session != session) throw new ProtocolException("Acceptance has the wrong session.");
                 if (accept.Type == MessageType.Reject) ThrowRejected(accept);
                 if (accept.Type != MessageType.SessionAccept) throw new ProtocolException("Expected SESSION_ACCEPT.");
                 var json = accept.Json();
+                try { HdrVideoProtocol.RequireAcknowledgement(json, source.ColorFormat); }
+                catch (FormatException error) { throw new ProtocolException(error.Message); }
                 if (json.TryGetProperty("mediaTransport", out _))
                     throw new ProtocolException("Only custom TCP media is supported; transport overrides are not accepted.");
                 if (!json.TryGetProperty("tracks", out var tracks) ||
@@ -366,6 +426,7 @@ public sealed class SenderSession
                 audioStream = await ConnectMedia(audioClient, "audio", mediaToken, setup.Token);
                 mediaAssociated = true;
             }
+            finally { setup.Dispose(); }
             videoMonitor = Monitor(WatchMedia(videoStream!, "video"), "PROTOCOL");
             audioMonitor = Monitor(WatchMedia(audioStream!, "audio"), "PROTOCOL");
             capture.Token.ThrowIfCancellationRequested();
@@ -389,9 +450,11 @@ public sealed class SenderSession
                     activeConfiguration = csd;
                     if (!VideoBitstream.IsKeyFrame(settings.VideoCodec, frame.Data, csd))
                         throw new ProtocolException("First hardware encoder output is not a real random-access picture.");
-                    var payload = JsonData.Bytes(JsonData.Object(
+                    var configuration = JsonData.Object(
                         ("codec", settings.VideoCodec), ("width", source.Width), ("height", source.Height),
-                        ("csd", JsonData.Value(new[] { Convert.ToBase64String(csd) }))));
+                        ("csd", JsonData.Value(new[] { Convert.ToBase64String(csd) })));
+                    HdrVideoProtocol.AddFormat(configuration, source.ColorFormat);
+                    var payload = JsonData.Bytes(configuration);
                     Interlocked.Or(ref configurationSent, 2);
                     await Send(new Message(MessageType.StreamConfig, session, 1, 1, -1, 0, payload), startup.Token);
                     await ready.Task.WaitAsync(startup.Token);
@@ -473,7 +536,7 @@ public sealed class SenderSession
             videoClient.Close();
             audioClient.Close();
             lifetime.Cancel();
-            client.Close();
+            client.Dispose();
             if (reader != null) await reader;
             if (heartbeat != null) await heartbeat;
             if (audioPump != null) await audioPump;

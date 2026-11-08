@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using RedrainCast.Protocol;
 using RedrainCast.Receive.Core;
 using Xunit;
 
@@ -17,6 +18,64 @@ public sealed class PlaybackStatisticsDisplayTests
         new("h264", "raw", 60, "auto", ConfiguredVideoBitrate: 8_000_000), Playback(), Receive(), Rates(), 3840, 2160, 234.4, compact);
     private static StatisticsCell Cell(StatisticsDisplay display, string id) =>
         display.Groups.SelectMany(g => g.Cells).Concat(display.Kpis).Concat(display.Totals).Concat(display.Footer).Single(c => c.Field.Id == id);
+
+    [Theory]
+    [InlineData(true, false, "HDR10 · PQ", "Main 10 · 10-bit", "SDR (tone-mapped)")]
+    [InlineData(true, true, "HDR10 · PQ", "Main 10 · 10-bit", "HDR output")]
+    [InlineData(false, true, "SDR · BT.709", "Main · 8-bit", "SDR output")]
+    [InlineData(false, false, "SDR · BT.709", "Main · 8-bit", "SDR output")]
+    public void IncomingRangeDecodedFormatAndActualOutputRemainIndependent(bool hdr, bool nativeHdr,
+        string range, string profile, string output)
+    {
+        var format = new HdrVideoFormat(hdr);
+        var p = Playback() with
+        {
+            Video = new(format, hdr ? VideoTransfer.Pq : VideoTransfer.Bt709, hdr ? "Main 10" : "Main", hdr ? 10 : 8),
+            Presentation = VideoPresentationStatistics.ForStream(format, nativeHdr)
+        };
+        foreach (var compact in new[] { false, true })
+        {
+            var display = PlaybackStatisticsDisplay.Create(new("h265", null, 60, "auto"), p, Receive(), Rates(), 100, 100, null, compact);
+            Assert.Equal(range, Cell(display, "videoDynamicRange").Value);
+            Assert.Equal(profile, Cell(display, "videoDecodeFormat").Value);
+            Assert.Equal(output, Cell(display, "presentationOutput").Value);
+            Assert.Equal(hdr ? 10 : 8, p.Video.BitDepth);
+        }
+    }
+
+    [Fact]
+    public void UnknownsDoNotInventNegotiatedProfileDepthTransferOrSuccessfulOutput()
+    {
+        var request = new CastRequest("h265", null, 60, "auto", VideoColor: new(true));
+        var display = PlaybackStatisticsDisplay.Create(request, Playback(), Receive(), Rates(), 100, 100, null);
+        Assert.All(PlaybackStatisticsDisplay.VideoPresentationFields, f => Assert.Equal("N/A", Cell(display, f.Id).Value));
+        var p = Playback() with { Video = new(new(true), null, null, null) };
+        display = PlaybackStatisticsDisplay.Create(request, p, Receive(), Rates(), 100, 100, null);
+        Assert.Equal("HDR10", Cell(display, "videoDynamicRange").Value);
+        Assert.Equal("N/A · N/A", Cell(display, "videoDecodeFormat").Value);
+        Assert.Equal("N/A", Cell(display, "presentationOutput").Value);
+        p = p with { Video = new(new(true), VideoTransfer.Hlg, "Main 10", null) };
+        display = PlaybackStatisticsDisplay.Create(request, p, Receive(), Rates(), 100, 100, null);
+        Assert.Equal("HDR10 · HLG", Cell(display, "videoDynamicRange").Value);
+        Assert.Equal("Main 10 · N/A", Cell(display, "videoDecodeFormat").Value);
+        p = p with { Video = new(HdrVideoFormat.Sdr, null, null, 8) };
+        display = PlaybackStatisticsDisplay.Create(new("h264", null, 60, "auto"), p, Receive(), Rates(), 100, 100, null);
+        Assert.Equal("SDR", Cell(display, "videoDynamicRange").Value);
+        Assert.Equal("N/A · 8-bit", Cell(display, "videoDecodeFormat").Value);
+    }
+
+    [Theory]
+    [InlineData("h264", "Constrained Baseline")]
+    [InlineData("h265", "Main")]
+    [InlineData("av1", "Main")]
+    public void LegacySdrConfigurationKeepsActualDecoderProfileAndDepth(string codec, string profile)
+    {
+        var p = Playback() with { Video = new(HdrVideoFormat.Sdr, null, profile, 8) };
+        var display = PlaybackStatisticsDisplay.Create(new(codec, null, 60, "auto"), p, Receive(), Rates(), 100, 100, null);
+        Assert.Equal("SDR", Cell(display, "videoDynamicRange").Value);
+        Assert.Equal(profile + " · 8-bit", Cell(display, "videoDecodeFormat").Value);
+        Assert.Equal("N/A", Cell(display, "presentationOutput").Value);
+    }
 
     [Fact]
     public void GoldenContractHasExactStableIdsLabelsUnitsAndOrder()

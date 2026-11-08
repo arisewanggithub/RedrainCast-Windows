@@ -28,6 +28,7 @@ public abstract class ProcessVideoSource : IRecoverableVideoSource
     private int captureIdle;
     private string encoderName;
     public string EncoderName => Volatile.Read(ref encoderName);
+    public virtual RedrainCast.Protocol.HdrVideoFormat ColorFormat => RedrainCast.Protocol.HdrVideoFormat.Sdr;
     public int Width { get; }
     public int Height { get; }
     protected abstract string Kind { get; }
@@ -106,7 +107,7 @@ public abstract class ProcessVideoSource : IRecoverableVideoSource
                 if (configuration.Length == 0)
                 {
                     configuration = VideoBitstream.Configuration(codec, frame.Configuration.Length > 0 ? frame.Configuration : frame.Data);
-                    VideoBitstream.ValidateConfiguration(codec, configuration, Width, Height);
+                    VideoBitstream.ValidateConfiguration(codec, configuration, Width, Height, ColorFormat);
                     if (!VideoBitstream.IsKeyFrame(codec, frame.Data, configuration))
                         throw new ProtocolException($"{Kind} did not start with a real random-access picture.");
                 }
@@ -137,6 +138,16 @@ public abstract class ProcessVideoSource : IRecoverableVideoSource
         {
             ObjectDisposedException.ThrowIf(shutdownTask is not null, this);
             return new(preparation ??= PrepareWorkerAsync(token));
+        }
+    }
+
+    protected void EnsureNotPrepared()
+    {
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(shutdownTask is not null, this);
+            if (preparation is not null || process is not null || Volatile.Read(ref started) != 0)
+                throw new InvalidOperationException("HDR must be configured once before capture preparation.");
         }
     }
 
