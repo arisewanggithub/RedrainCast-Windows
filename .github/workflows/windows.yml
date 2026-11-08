@@ -22,7 +22,7 @@ jobs:
         run: |
           .\tests\tools\Test-CiBuild.ps1
           .\tests\tools\Test-StoreRelease.ps1
-      - run: dotnet test .\tests\RedrainCast.Tests.slnx -c Release --logger trx
+      - run: dotnet test .\tests\RedrainCast.Tests.slnx -c Release --logger trx -m:1 -- RunConfiguration.MaxCpuCount=1 xUnit.ParallelizeTestCollections=false
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: failure()
         with:

@@ -1016,6 +1016,10 @@ tests retain no TRX artifact; failed-test diagnostics expire after one day.
 Small sanitized Store receipts remain private Actions artifacts for 14 days
 because explicit draft submission depends on them. Public downloads and Store
 publication/approval behavior are unchanged.
+The shared Windows CI runner executes test assemblies and xUnit collections
+serially to avoid CPU scheduling noise in wall-clock protocol deadline tests.
+All test cases, concurrent scenarios inside tests, assertions and timeout
+bounds remain unchanged; no test filter or skip is applied.
 
 ### Production and regression boundaries
 
