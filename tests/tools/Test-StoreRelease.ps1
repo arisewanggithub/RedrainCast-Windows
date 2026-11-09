@@ -274,6 +274,13 @@ try {
         $safe = Get-StoreTransportDiagnostic '<Error><Code>AuthenticationFailed</Code><Message>fixture-SAS fixture-token</Message></Error>'
         Assert ($safe -match 'AuthenticationFailed' -and $safe -notmatch 'fixture-') 'Unsafe Azure diagnostic.'
     }
+    Test 'validation diagnostics expose fixed schema labels and categories only' {
+        $safe = Get-StoreTransportDiagnostic '{"code":"InvalidParameterValue","message":"Invalid pricing.priceId fixture-token https://host/?sig=fixture-SAS private title","target":"applicationPackages[0].fileName","parameter":"fixture-secret"}'
+        Assert ($safe -match 'Schema labels:' -and $safe -match 'fileName' -and $safe -match 'pricing' -and $safe -match 'priceId' -and
+            $safe -match 'Reason categories: invalid' -and $safe -notmatch 'fixture-|https:|private title|\[0\]') 'Unsafe validation labels.'
+        $safe = Get-StoreTransportDiagnostic '{"code":"InvalidParameterValue","message":"privatepriceId priceIdPrivate fixture-secret"}'
+        Assert ($safe -notmatch 'Schema labels:|fixture-') 'Partial or arbitrary field text escaped.'
+    }
     Test 'diagnostics bound and suppress malformed, oversized and entity-bearing responses' {
         foreach ($text in @('fixture-secret', '{"code":', ('x' * 16385),
             '<!DOCTYPE Error [<!ENTITY leak SYSTEM "file:///fixture-secret">]><Error><Code>&leak;</Code></Error>')) {
