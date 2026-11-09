@@ -180,6 +180,30 @@ function Get-StoreMetadataDiffSummary {
     }
 }
 
+function Restore-StoreSubmissionMetadata {
+    param($PublishedSubmission, $Draft)
+    $preservedProperties = @(
+        'id', 'status', 'statusdetails', 'fileuploadurl', 'applicationpackages',
+        'targetpublishmode', 'targetpublishdate'
+    )
+    $publishedProperties = @{}
+    foreach ($property in $PublishedSubmission.PSObject.Properties) {
+        $name = $property.Name.ToLowerInvariant()
+        if ($name -notin $preservedProperties) { $publishedProperties[$name] = $property }
+    }
+    foreach ($property in @($Draft.PSObject.Properties)) {
+        $name = $property.Name.ToLowerInvariant()
+        if ($name -in $preservedProperties -or $publishedProperties.ContainsKey($name)) { continue }
+        $Draft.PSObject.Properties.Remove($property.Name)
+    }
+    foreach ($property in $publishedProperties.Values) {
+        $value = ConvertFrom-Json -InputObject (ConvertTo-Json -InputObject $property.Value -Depth 100)
+        $existing = $Draft.PSObject.Properties[$property.Name]
+        if ($null -ne $existing) { $existing.Value = $value }
+        else { $Draft | Add-Member -MemberType NoteProperty -Name $property.Name -Value $value }
+    }
+}
+
 function Invoke-StoreCli {
     param([string[]]$Arguments, [switch]$Json)
     # CLI logs can contain credentials, SAS URLs and metadata. Never forward either stream.
@@ -489,7 +513,7 @@ function New-StoreCliDraft {
     $pendingPointerChanged = $null -eq $pending -or [string]$pending.id -cne [string]$draft.id
     $publishedPointerChanged = [string]$uploaded.application.lastPublishedApplicationSubmission.id -cne [string]$state.application.lastPublishedApplicationSubmission.id
     $metadataChanged = (Get-StoreMetadataFingerprint $draft) -cne $metadataHash
-    if ($pendingPointerChanged -or $draft.status -cne 'PendingCommit' -or $publishedPointerChanged -or $metadataChanged) {
+    if ($pendingPointerChanged -or $draft.status -cne 'PendingCommit' -or $publishedPointerChanged) {
         $diagnostic = [pscustomobject]@{
             pendingPointerChanged = $pendingPointerChanged
             publishedPointerChanged = $publishedPointerChanged
@@ -497,6 +521,30 @@ function New-StoreCliDraft {
             metadata = Get-StoreMetadataDiffSummary $state.submission $draft
         } | ConvertTo-Json -Compress -Depth 6
         throw "CLI draft verification failed; no certification was started. Safe structural diff (no field values): $diagnostic"
+    }
+    if ($metadataChanged) {
+        Restore-StoreSubmissionMetadata $state.submission $draft
+        try {
+            [IO.File]::WriteAllText($PayloadPath, (ConvertTo-Json -InputObject $draft -Depth 100), (New-Object Text.UTF8Encoding($false)))
+            $null = & $Cli @('submission', 'update', $script:Product, '--payload', $PayloadPath) $true
+        } finally {
+            if (Test-Path -LiteralPath $PayloadPath) { Remove-Item -LiteralPath $PayloadPath -Force }
+        }
+        $restored = Get-StoreState $Identity $Cli
+        $draft = $restored.submission
+        $pending = $restored.application.pendingApplicationSubmission
+        $pendingPointerChanged = $null -eq $pending -or [string]$pending.id -cne [string]$draft.id
+        $publishedPointerChanged = [string]$restored.application.lastPublishedApplicationSubmission.id -cne [string]$state.application.lastPublishedApplicationSubmission.id
+        if ($pendingPointerChanged -or $draft.status -cne 'PendingCommit' -or $publishedPointerChanged -or
+            (Get-StoreMetadataFingerprint $draft) -cne $metadataHash) {
+            $diagnostic = [pscustomobject]@{
+                pendingPointerChanged = $pendingPointerChanged
+                publishedPointerChanged = $publishedPointerChanged
+                pendingStatus = Get-StoreSafeStatus $draft
+                metadata = Get-StoreMetadataDiffSummary $state.submission $draft
+            } | ConvertTo-Json -Compress -Depth 6
+            throw "Published metadata could not be restored through the official CLI; no certification was started. Safe structural diff (no field values): $diagnostic"
+        }
     }
     # v0.4.4 matches old packages by extension, not architecture. Explicitly retire every old package.
     foreach ($package in $draft.applicationPackages) {
