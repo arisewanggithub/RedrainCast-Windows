@@ -1,13 +1,17 @@
 name: Microsoft Store release
+run-name: Microsoft Store — ${{ inputs.stage }} (${{ github.ref_name }})
 on:
   workflow_dispatch:
     inputs:
       stage:
-        description: Read-only preflight, draft upload, listing upload, or certification request (automatic publication after certification)
+        description: Read-only preflight/inspection, draft upload, listing upload, or certification request
         required: true
         default: preflight
         type: choice
-        options: [preflight, upload-draft, upload-listings-draft, submit-draft]
+        options: [preflight, inspect-draft, upload-draft, upload-listings-draft, submit-draft]
+      inspect_submission_id:
+        description: Exact existing pending submission ID (inspect-draft only; read-only)
+        type: string
       build_run_id:
         description: Successful main Windows build run ID (required for upload; derived from receipt for submit)
         type: string
@@ -48,6 +52,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           STORE_STAGE: ${{ inputs.stage }}
+          STORE_INSPECT_SUBMISSION_ID: ${{ inputs.inspect_submission_id }}
           STORE_BUILD_RUN_ID: ${{ inputs.build_run_id }}
           STORE_DRAFT_RUN_ID: ${{ inputs.draft_run_id }}
           STORE_CONFIRMATION: ${{ inputs.confirm_store }}
@@ -57,6 +62,7 @@ jobs:
           PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
         run: |
           .\tools\Invoke-StoreRelease.ps1 -Stage $env:STORE_STAGE `
+            -InspectSubmissionId $env:STORE_INSPECT_SUBMISSION_ID `
             -BuildRunId $env:STORE_BUILD_RUN_ID -DraftRunId $env:STORE_DRAFT_RUN_ID `
             -ConfirmStore $env:STORE_CONFIRMATION -ConfirmListingsCommit $env:STORE_LISTINGS_COMMIT
       - name: Keep sanitized receipt in private Actions only

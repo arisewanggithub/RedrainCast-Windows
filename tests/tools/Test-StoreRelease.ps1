@@ -262,6 +262,67 @@ try {
         Reject { New-StorePackageArchive $fixtures $identity } 'versions'
         New-FixturePackage (Join-Path $fixtures 'x64\package.msix') x64
     }
+    Test 'diagnostics expose only allowlisted JSON codes, never messages or metadata' {
+        $text = '{"error":{"code":"InvalidRequestBody","message":"fixture-token https://host/?sig=fixture-SAS","details":{"secret":"fixture-secret"}},"errors":[{"code":"InvalidParameter","message":"private listing"}]}'
+        $safe = Get-StoreTransportDiagnostic $text
+        Assert ($safe -match 'InvalidRequestBody' -and $safe -match 'InvalidParameter') 'Known codes were lost.'
+        Assert ($safe -notmatch 'fixture-|https:|private listing|details') 'Response data leaked.'
+        $safe = Get-StoreTransportDiagnostic '{"code":"fixture-secret","message":"fixture-token"}'
+        Assert ($safe -match 'UnrecognizedServiceError' -and $safe -notmatch 'fixture-') 'Unknown code escaped.'
+    }
+    Test 'diagnostics handle Azure XML without echoing SAS, messages or headers' {
+        $safe = Get-StoreTransportDiagnostic '<Error><Code>AuthenticationFailed</Code><Message>fixture-SAS fixture-token</Message></Error>'
+        Assert ($safe -match 'AuthenticationFailed' -and $safe -notmatch 'fixture-') 'Unsafe Azure diagnostic.'
+    }
+    Test 'diagnostics bound and suppress malformed, oversized and entity-bearing responses' {
+        foreach ($text in @('fixture-secret', '{"code":', ('x' * 16385),
+            '<!DOCTYPE Error [<!ENTITY leak SYSTEM "file:///fixture-secret">]><Error><Code>&leak;</Code></Error>')) {
+            $safe = Get-StoreTransportDiagnostic $text
+            Assert ($safe -ceq 'Service details unavailable or suppressed.') 'Unsafe malformed diagnostic.'
+        }
+        $codes = @(Get-StoreSafeErrors @((1..30 | ForEach-Object { [pscustomobject]@{ code = 'InvalidRequest' } })))
+        Assert ($codes.Count -eq 1) 'Error codes were not deduplicated.'
+    }
+    Test 'exact draft inspection performs only two GETs and never claims ownership' {
+        $mock = New-Mock
+        $mock.state.app.pendingApplicationSubmission = @{ id = '60' }
+        $mock.state.draft.applicationPackages[0].fileName = 'RedrainCast-arm64.msix'
+        $result = Get-StoreDraftInspection $identity '60' $mock.request
+        Assert ($result.submissionId -ceq '60' -and $result.status -ceq 'PendingCommit' -and
+            $result.targetPublishMode -ceq 'Manual' -and $result.ownership -ceq 'Unknown') 'Incorrect draft projection.'
+        Assert ($result.applicationPackages[0].fileName -ceq 'RedrainCast-arm64.msix' -and
+            $result.applicationPackages[0].version -ceq '1.0.0.0') 'Package projection lost safe metadata.'
+        Assert (($mock.state.calls -join ',') -ceq 'GET applications/9P1153MP6R32,GET applications/9P1153MP6R32/submissions/60') 'Inspection made unexpected requests.'
+        Assert ((ConvertTo-Json $result -Depth 5) -notmatch 'fixture-|pricing|listings|fileUploadUrl') 'Inspection leaked metadata.'
+    }
+    Test 'inspection rejects mismatched pointers, identities and response IDs without writes' {
+        $mock = New-Mock
+        Reject { Get-StoreDraftInspection $identity '60' $mock.request } 'current pending'
+        Assert ($mock.state.calls.Count -eq 1) 'Absent pointer fetched a draft.'
+        $mock = New-Mock; $mock.state.app.pendingApplicationSubmission = @{ id = '90' }
+        Reject { Get-StoreDraftInspection $identity '60' $mock.request } 'current pending'
+        $mock.state.app.id = 'wrong'
+        Reject { Get-StoreDraftInspection $identity '90' $mock.request } 'does not match'
+        $mock = New-Mock; $mock.state.app.pendingApplicationSubmission = @{ id = '60' }
+        $mock.state.draft.id = '61'
+        Reject { Get-StoreDraftInspection $identity '60' $mock.request } 'ID mismatch'
+        Reject { Get-StoreDraftInspection $identity 'fixture-secret' $mock.request } 'numeric'
+        Assert (@($mock.state.calls | Where-Object { -not $_.StartsWith('GET ') }).Count -eq 0) 'Inspection mutated Store.'
+    }
+    Test 'inspection suppresses unsafe status, mode, package and validation values' {
+        $mock = New-Mock; $mock.state.app.pendingApplicationSubmission = @{ id = '60' }
+        $mock.state.draft.status = 'fixture-token'
+        $mock.state.draft.targetPublishMode = 'fixture-secret'
+        foreach ($field in @('fileName', 'fileStatus', 'version', 'architecture')) {
+            $mock.state.draft.applicationPackages[0].$field = 'https://host/?sig=fixture-SAS'
+        }
+        $mock.state.draft.statusDetails.errors = @(@{ code = 'InvalidRequest'; message = 'fixture-secret' },
+            @{ code = 'fixture-token' })
+        $result = Get-StoreDraftInspection $identity '60' $mock.request
+        $json = ConvertTo-Json $result -Depth 5
+        Assert ($json -notmatch 'fixture-|https:|message' -and $json -match 'InvalidRequest' -and
+            $json -match 'UnknownOrSuppressed') 'Unsafe inspection output.'
+    }
     Test 'read-only preflight reports readiness for a published product without mutations' {
         $mock = New-Mock
         $ready = Get-StoreReadiness $identity $mock.request
@@ -634,6 +695,41 @@ try {
             Reject { New-StorePackageArchive $changedWork $identity $inputs } 'bytes changed'
         } finally { [IO.File]::WriteAllBytes($path, $original) }
     }
+    Test 'transport identifies metadata PUT versus Azure PUT with sanitized HTTP details' {
+        & (Get-Module StoreRelease) {
+            function Invoke-RestMethod {
+                $exception = New-Object Exception('fixture-secret')
+                $exception | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 400 })
+                $record = New-Object Management.Automation.ErrorRecord($exception, 'fixture-token',
+                    ([Management.Automation.ErrorCategory]::InvalidOperation), $null)
+                $record.ErrorDetails = New-Object Management.Automation.ErrorDetails('{"error":{"code":"InvalidRequestBody","message":"fixture-SAS private metadata"}}')
+                throw $record
+            }
+            function Invoke-WebRequest {
+                $response = [pscustomobject]@{ StatusCode = 403 }
+                $response | Add-Member -MemberType ScriptMethod -Name GetResponseStream -Value {
+                    return New-Object IO.MemoryStream(,[Text.Encoding]::UTF8.GetBytes('<Error><Code>AuthenticationFailed</Code><Message>fixture-SAS fixture-token</Message></Error>'))
+                }
+                $exception = New-Object Exception('fixture-secret')
+                $exception | Add-Member -NotePropertyName Response -NotePropertyValue $response
+                throw $exception
+            }
+            $message = ''
+            try { Invoke-StoreHttp PUT 'https://manage.devcenter.microsoft.com/v1.0/my/applications/9P1153MP6R32/submissions/60' @{} '{}' }
+            catch { $message = $_.Exception.Message }
+            if ($message -notmatch 'Store submission metadata, PUT, HTTP 400' -or
+                $message -notmatch 'InvalidRequestBody' -or $message -match 'fixture-|private metadata|https:') {
+                throw "Unsafe or missing metadata transport diagnostic: $message"
+            }
+            $message = ''
+            try { Invoke-StoreHttp PUT 'https://fixture.blob.core.windows.net/path?sig=fixture-SAS' @{} $null 'ignored.zip' }
+            catch { $message = $_.Exception.Message }
+            if ($message -notmatch 'Azure archive upload, PUT, HTTP 403' -or
+                $message -notmatch 'AuthenticationFailed' -or $message -match 'fixture-|https:') {
+                throw "Unsafe or missing Azure transport diagnostic: $message"
+            }
+        }
+    }
     Test 'transport errors redact response bodies and upload URL' {
         $module = Get-Module StoreRelease
         & $module {
@@ -738,6 +834,17 @@ function Receive-CiBuild {
             $preflight = Join-Path $fixtures 'preflight-whatif'
             & $entrypointPath -Stage preflight -ConfirmStore $identity.StoreId -WorkDirectory $preflight -WhatIf
             Assert ($global:StoreTestGhCount -eq 0 -and -not (Test-Path -LiteralPath $preflight)) 'Read-only WhatIf accessed artifacts or created files.'
+            & $entrypointPath -Stage inspect-draft -InspectSubmissionId '60' -ConfirmStore $identity.StoreId -WorkDirectory $preflight -WhatIf
+            Assert ($global:StoreTestGhCount -eq 0 -and -not (Test-Path -LiteralPath $preflight)) 'Inspection WhatIf accessed artifacts or created files.'
+            Reject {
+                & $entrypointPath -Stage inspect-draft -ConfirmStore $identity.StoreId -WhatIf
+            } 'numeric'
+            Reject {
+                & $entrypointPath -Stage inspect-draft -InspectSubmissionId '60' -BuildRunId '123' -ConfirmStore $identity.StoreId -WhatIf
+            } 'does not accept'
+            Reject {
+                & $entrypointPath -Stage upload-draft -InspectSubmissionId '60' -ConfirmStore $identity.StoreId -WhatIf
+            } 'only valid'
             Reject {
                 & $entrypointPath -Stage preflight -BuildRunId '123' -ConfirmStore $identity.StoreId -WhatIf
             } 'does not accept'

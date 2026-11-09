@@ -1,6 +1,7 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [Parameter(Mandatory = $true)][ValidateSet('preflight', 'upload-draft', 'upload-listings-draft', 'submit-draft')][string]$Stage,
+    [Parameter(Mandatory = $true)][ValidateSet('preflight', 'inspect-draft', 'upload-draft', 'upload-listings-draft', 'submit-draft')][string]$Stage,
+    [string]$InspectSubmissionId,
     [string]$BuildRunId,
     [string]$DraftRunId,
     [Parameter(Mandatory = $true)][string]$ConfirmStore,
@@ -20,15 +21,24 @@ if ($Stage -ceq 'upload-listings-draft') {
 } elseif ($ConfirmListingsCommit) { throw 'Listing commit confirmation is only valid for upload-listings-draft.' }
 $identity = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'StoreIdentity.json') -Raw | ConvertFrom-Json
 if ($identity.StoreId -cne $ConfirmStore) { throw 'Store identity does not match the confirmation.' }
-if ($Stage -ceq 'preflight') {
-    if ($BuildRunId -or $DraftRunId) { throw 'Preflight does not accept build or draft run inputs.' }
+if ($Stage -cne 'inspect-draft' -and $InspectSubmissionId) { throw 'Inspection ID is only valid for inspect-draft.' }
+if ($Stage -cin @('preflight', 'inspect-draft')) {
+    if ($BuildRunId -or $DraftRunId) { throw 'Read-only stage does not accept build or draft run inputs.' }
+    if ($Stage -ceq 'inspect-draft' -and $InspectSubmissionId -cnotmatch '^[1-9][0-9]{0,19}$') {
+        throw 'Inspection requires an exact numeric submission ID.'
+    }
     if (-not $PSCmdlet.ShouldProcess($ConfirmStore, 'Read-only Store authentication and readiness check')) { return }
     $headers = @{ Authorization = 'Bearer ' + (Get-StoreToken) }
     $request = {
         param($method, $path, $body, $inFile)
-        if ($method -cne 'GET' -or $null -ne $body -or $inFile) { throw 'Preflight only permits read-only Store GET requests.' }
+        if ($method -cne 'GET' -or $null -ne $body -or $inFile) { throw 'Read-only stages only permit Store GET requests.' }
         Invoke-StoreHttp GET "https://manage.devcenter.microsoft.com/v1.0/my/$path" $headers
     }.GetNewClosure()
+    if ($Stage -ceq 'inspect-draft') {
+        $inspection = Get-StoreDraftInspection $identity $InspectSubmissionId $request
+        Write-Host (ConvertTo-Json -InputObject $inspection -Depth 5 -Compress)
+        return
+    }
     $readiness = Get-StoreReadiness $identity $request
     Write-Host "Store authentication and product identity verified. First publication complete: $($readiness.firstPublicationComplete). Pending draft exists: $($readiness.pendingDraftExists). Automated update allowed: $($readiness.automatedUpdateAllowed)."
     return

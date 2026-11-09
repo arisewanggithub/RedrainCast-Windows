@@ -120,6 +120,31 @@ Both jobs run only for a manual `main` dispatch in the private
 job, never PR jobs. All action references reuse the pinned official SHAs in
 `windows.yml`.
 
+### `inspect-draft` (read-only; exact existing pending draft)
+
+Dispatch on `main` with the product confirmation and `inspect_submission_id`
+set to the exact draft ID. Leave build, draft-run and listing-commit inputs empty.
+The environment job GETs the application, validates its identity and current
+pending pointer, then GETs only that exact submission. A mismatch fails closed.
+It never creates, updates, uploads, deletes or commits a draft and creates no
+receipt. Ownership remains **Unknown**: a successful GET is not proof of API
+ownership, and inspection does not authorize later upload or certification.
+
+Logs contain only the submission ID, allowlisted status/publication mode,
+up to 20 package rows (known RedrainCast filenames, file status, version and
+architecture), and allowlisted validation error codes. Unknown fields are
+suppressed; no listings, service messages, upload URLs or full responses are
+logged. This cannot recreate an earlier failed PUT response or prove that
+the draft is valid. Existing-draft refusal and all publication gates remain.
+
+Transport failures now identify authentication, Store application lookup,
+draft creation, submission metadata, archive upload, commit or status operations
+and HTTP status. JSON and Azure XML errors are limited to 16 KiB and 20
+allowlisted error entries; free-form messages and unknown codes are suppressed.
+No retry or draft cleanup is automatic. This distinguishes a Store metadata
+PUT from an Azure archive PUT without exposing credentials, SAS or metadata.
+Workflow run titles include the selected stage to distinguish read-only runs.
+
 ### `preflight` (default; read-only and valid before first publication)
 
 Leave build/draft inputs empty and type the product ID confirmation. This stage
