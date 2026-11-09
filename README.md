@@ -1069,8 +1069,8 @@ publication waits for all test projects, the CI/Store guards and both package
 builds to pass; a failed prerequisite leaves the release unpublished as a draft.
 All test cases, concurrent scenarios inside tests, assertions and timeout
 bounds remain unchanged; no test filter or skip is applied.
-The video-recovery isolation fixture runs its synthetic sender on a dedicated
-serial context so shared test-runner scheduling does not stall the healthy audio
+The video-recovery isolation and delayed-video-key-proof fixtures run their
+synthetic senders on a dedicated serial context so shared test-runner scheduling does not stall the healthy audio
 source and writer. Production queue-pressure limits and recovery assertions
 remain unchanged.
 
