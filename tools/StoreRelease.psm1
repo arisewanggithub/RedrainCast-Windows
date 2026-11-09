@@ -415,7 +415,7 @@ function Get-StoreTransportDiagnostic {
                 $details += $entry.value
                 if ($entry.depth -ge 5 -or $entry.value -is [string] -or $null -eq $entry.value) { continue }
                 foreach ($property in $entry.value.PSObject.Properties | Select-Object -First 30) {
-                    if ($property.Name -cin @('error', 'errors', 'details', 'innerError', 'innererror')) {
+                    if ($property.Name -cin @('error', 'errors', 'detail', 'details', 'innerError', 'innererror')) {
                         foreach ($child in @($property.Value) | Select-Object -First 20) {
                             $queue.Enqueue([pscustomobject]@{ value = $child; depth = $entry.depth + 1 })
                         }
@@ -445,7 +445,7 @@ function Get-StoreTransportDiagnostic {
         $values = @()
         if ($item -is [string]) { $values = @($item) }
         else {
-            foreach ($name in @('message', 'target', 'propertyPath', 'field', 'parameter', 'details')) {
+            foreach ($name in @('message', 'target', 'propertyPath', 'field', 'parameter', 'detail', 'details')) {
                 $property = $item.PSObject.Properties[$name]
                 if ($null -ne $property -and $property.Value -is [string]) { $values += $property.Value }
             }

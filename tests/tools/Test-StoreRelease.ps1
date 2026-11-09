@@ -289,6 +289,7 @@ try {
         }
         Test 'nested Store details strings yield only fixed schema labels' {
             foreach ($text in @(
+                '{"code":"InvalidParameterValue","detail":"Invalid fileName fixture-token fixture-SAS"}',
                 '{"code":"InvalidParameterValue","details":"Invalid priceId fixture-token fixture-SAS"}',
                 '{"error":{"code":"InvalidParameterValue","innerError":{"details":[{"message":"Invalid enterpriseLicensing fixture-secret"}]}}}')) {
                 $safe = Get-StoreTransportDiagnostic $text
