@@ -55,7 +55,7 @@ function New-Mock {
             )
         }
         calls = New-Object 'Collections.Generic.List[string]'
-        changedMetadata = $false; failPublish = $false; failUpdate = $false; changedPointer = $false
+        changedMetadata = $false; changedPricingFlag = $false; failPublish = $false; failUpdate = $false; changedPointer = $false
         commits = 0; deletes = 0; uploads = 0; updates = 0
     }
     $cli = {
@@ -86,6 +86,7 @@ function New-Mock {
                     $state.submission.listings.'en-us'.baseListing.title = 'Unexpected change'
                     $state.submission | Add-Member -MemberType NoteProperty -Name cliAddedField -Value @{ internal = 'must be removed' }
                 }
+                if ($state.changedPricingFlag) { $state.submission.pricing.isAdvancedPricingModel = $false }
                 if ($state.changedPointer) { $state.app.lastPublishedApplicationSubmission.id = '51' }
                 return
             }
@@ -307,6 +308,26 @@ try {
         $m.state.submission.unknownFixtureField.nested[1] = 'changed'
         Assert ((Get-StoreMetadataFingerprint $m.state.submission) -cne $hash) 'Nested metadata was ignored.'
     }
+    Test 'advanced pricing model is non-authoritative but actual prices remain fingerprinted' {
+        $before = '{"Id":"50","Pricing":{"PriceId":"Tier1012","TrialPeriod":"NoFreeTrial","MarketSpecificPricings":{"US":"Tier1012"},"IsAdvancedPricingModel":true}}' | ConvertFrom-Json
+        $after = Copy-Json $before
+        $after.Pricing.IsAdvancedPricingModel = $false
+        Assert ((Get-StoreMetadataFingerprint $before) -ceq (Get-StoreMetadataFingerprint $after)) 'Non-authoritative dashboard flag changed business metadata.'
+        Assert ((Get-StoreSubmissionFingerprint $before) -ceq (Get-StoreSubmissionFingerprint $after)) 'Non-authoritative dashboard flag changed the stable submission fingerprint.'
+        $diff = Get-StoreMetadataDiffSummary $before $after
+        Assert ($diff.changedPropertyCount -eq 0 -and $diff.pricingChanges.Count -eq 0) 'Non-authoritative dashboard flag appeared as a pricing change.'
+        foreach ($field in @('PriceId', 'TrialPeriod', 'MarketSpecificPricings')) {
+            $changed = Copy-Json $after
+            if ($field -ceq 'MarketSpecificPricings') { $changed.Pricing.MarketSpecificPricings.US = 'Free' }
+            elseif ($field -ceq 'TrialPeriod') { $changed.Pricing.TrialPeriod = 'ThirtyDays' }
+            else { $changed.Pricing.PriceId = 'Free' }
+            Assert ((Get-StoreMetadataFingerprint $after) -cne (Get-StoreMetadataFingerprint $changed)) "$field changed without affecting business metadata."
+            $diff = Get-StoreMetadataDiffSummary $after $changed
+            Assert ($diff.pricingChanges.Count -eq 1 -and $diff.pricingChanges[0].propertyPath -ceq "pricing.$($field.Substring(0,1).ToLowerInvariant())$($field.Substring(1))") "$field change was not classified."
+        }
+        $evidence = @(Get-StorePricingEvidence $after | Where-Object { $_.propertyPath -ceq 'pricing.isAdvancedPricingModel' })
+        Assert ($evidence.Count -eq 1 -and $evidence[0].classification -ceq 'non-authoritative API flag') 'Dashboard flag was not identified as non-authoritative.'
+    }
     Test 'metadata diff is bounded, allowlisted and contains hashes rather than values' {
         $before = [pscustomobject]@{
             listings = @{ 'en-us' = @{ baseListing = @{ title = 'Private title'; description = 'Private description' } } }
@@ -413,13 +434,27 @@ try {
         Assert ($null -eq $m.state.submission.PSObject.Properties['cliAddedField']) 'An unrecognized CLI-added metadata field was retained.'
         Assert ($m.state.updates -eq 2 -and $m.state.commits -eq 0 -and $receipt.targetPublishMode -ceq 'Immediate') 'Metadata restore or final draft save did not follow the expected path.'
     }
+    Test 'CLI dashboard flag changes do not trigger metadata restoration or block certification' {
+        $m = New-Mock
+        $m.state.submission.pricing.isAdvancedPricingModel = $true
+        $m.state.changedPricingFlag = $true
+        $baselineHash = Get-StoreMetadataFingerprint $m.state.submission
+        $receipt = Upload $m
+        Assert ($m.state.submission.pricing.priceId -ceq 'Free' -and
+            (ConvertTo-StoreCanonicalJson $m.state.submission.pricing.marketSpecificPricings) -ceq '{"US":"Base"}') 'Business pricing changed while normalizing the dashboard flag.'
+        Assert ((Get-StoreMetadataFingerprint $m.state.submission) -ceq $baselineHash) 'Dashboard flag changed the saved business pricing fingerprint.'
+        Assert ($m.state.updates -eq 1) 'Dashboard flag triggered an unnecessary metadata restore.'
+        $m.state.submission.pricing.isAdvancedPricingModel = $true
+        $status = Submit-StoreCliDraft $identity $receipt (New-Packages) '123' ('a' * 40) $m.cli
+        Assert ($m.state.commits -eq 1 -and $status -ceq 'CommitStarted') 'Inconsistent dashboard flag blocked certification.'
+    }
     Test 'metadata restoration failure never requests certification' {
         $m = New-Mock; $m.state.changedMetadata = $true; $m.state.failUpdate = $true
         Reject { Upload $m } 'Simulated submission update failure'
         Assert ($m.state.commits -eq 0 -and $m.state.updates -eq 0) 'Failed restoration continued toward certification.'
     }
     Test 'official CLI PascalCase server fields are excluded and pricing children remain guarded' {
-        $before = '{"Id":"50","Status":"Published","StatusDetails":{},"FileUploadUrl":"fixture-SAS","ApplicationPackages":[],"TargetPublishMode":"Manual","TargetPublishDate":null,"FriendlyName":"Submission 1","Pricing":{"PriceId":"Free","TrialPeriod":"NoFreeTrial","MarketSpecificPricings":{},"IsAdvancedPricingModel":false},"HardwarePreferences":[]}' | ConvertFrom-Json
+        $before = '{"Id":"50","Status":"Published","StatusDetails":{},"FileUploadUrl":"fixture-SAS","ApplicationPackages":[],"TargetPublishMode":"Manual","TargetPublishDate":null,"FriendlyName":"Submission 1","Pricing":{"PriceId":"Free","TrialPeriod":"NoFreeTrial","MarketSpecificPricings":{},"IsAdvancedPricingModel":true},"HardwarePreferences":[]}' | ConvertFrom-Json
         $after = Copy-Json $before
         $after.Id = '60'; $after.Status = 'PendingCommit'; $after.FileUploadUrl = 'fixture-token'
         $after.ApplicationPackages = @([pscustomobject]@{ FileName = 'RedrainCast-x64.msix' })
@@ -427,6 +462,10 @@ try {
         Assert ((Get-StoreMetadataFingerprint $before) -ceq (Get-StoreMetadataFingerprint $after)) 'Server-generated fields changed business fingerprint.'
         $diff = Get-StoreMetadataDiffSummary $before $after
         Assert ($diff.changedPropertyCount -eq 0 -and $diff.unclassifiedPropertyChangeCount -eq 0) 'PascalCase server fields were classified as business changes.'
+        $after.Pricing.IsAdvancedPricingModel = $false
+        Assert ((Get-StoreMetadataFingerprint $before) -ceq (Get-StoreMetadataFingerprint $after)) 'Inconsistent advanced pricing flag changed the metadata fingerprint.'
+        $diff = Get-StoreMetadataDiffSummary $before $after
+        Assert ($diff.changedPropertyCount -eq 0 -and $diff.pricingChanges.Count -eq 0) 'Inconsistent advanced pricing flag appeared in the metadata diff.'
         $after.Pricing.TrialPeriod = '15Days'
         $diff = Get-StoreMetadataDiffSummary $before $after
         Assert ($diff.pricingChanges.Count -eq 1 -and $diff.pricingChanges[0].propertyPath -ceq 'pricing.trialPeriod') 'Pricing leaf change was not classified.'

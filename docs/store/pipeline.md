@@ -66,6 +66,13 @@ submission API. Removing/emptying `priceId` can instead silently make the app
 free; omitting the pricing object is rejected. This is a plausible explanation
 for earlier `InvalidParameterValue` failures, not proof of their actual cause.
 
+The pinned CLI's [`PublishCommandPricingUnitTests`](https://github.com/microsoft/msstore-cli/blob/v0.4.4/MSStore.CLI.UnitTests/PublishCommandPricingUnitTests.cs)
+explicitly states that `isAdvancedPricingModel` only describes the tier range
+shown by the dashboard and that the API reports it inconsistently for the same
+product. It is therefore excluded from business-metadata fingerprints and
+pricing-change diagnostics; it never overrides or substitutes for the actual
+base price, trial, or market-specific pricing, which remain guarded.
+
 Ordinary uploads preserve a usable existing price without `--priceId`. `Base`,
 missing pricing, or a missing/blank base price **stop before any upload**.
 `preflight`, `inspect-draft` and `status` report only a safe price classification,
