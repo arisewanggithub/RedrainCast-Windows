@@ -116,11 +116,41 @@ try {
             Write-Host 'Only the explicitly inspected unchanged pending draft was discarded. No replacement was uploaded.'
         }
         { $_ -cin @('upload-draft', 'release-latest') } {
+            $state = Get-StoreState $identity $cli
+            if ($null -ne $state.application.pendingApplicationSubmission) {
+                $id = [string]$state.submission.id
+                $raw = & gh api "repos/$env:GITHUB_REPOSITORY/actions/artifacts?name=store-draft-ownership-$id&per_page=100" 2>$null
+                if ($LASTEXITCODE -ne 0) { throw 'Unable to verify draft ownership. Existing draft is preserved.' }
+                $artifacts = @((($raw -join "`n") | ConvertFrom-Json).artifacts | Where-Object { -not $_.expired })
+                if ($artifacts.Count -ne 1) { throw 'Existing draft has no unique automation ownership record. Inspect and explicitly discard it.' }
+                $runId = [string]$artifacts[0].workflow_run.id
+                $raw = & gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$runId" 2>$null
+                if ($LASTEXITCODE -ne 0) { throw 'Unable to verify draft owner run. Existing draft is preserved.' }
+                $owner = ($raw -join "`n") | ConvertFrom-Json
+                $folder = Join-Path $WorkDirectory 'prior-ownership'
+                Receive-StoreArtifact $runId "store-draft-ownership-$id" $folder
+                $files = @(Get-ChildItem -LiteralPath $folder -Recurse -File)
+                if ($files.Count -ne 1 -or $files[0].Name -cne 'store-draft-ownership.json' -or $files[0].Length -gt 64KB) {
+                    throw 'Invalid draft ownership artifact. Existing draft is preserved.'
+                }
+                $ownership = Get-Content -LiteralPath $files[0].FullName -Raw | ConvertFrom-Json
+                Assert-StoreDraftOwner $owner $ownership $state $runId
+                Remove-StoreInspectedDraft $identity $ownership $id $cli $ownership.priorLastPublishedId
+                Write-Host "Discarded unchanged automation-owned PendingCommit draft $id from run $runId."
+            }
+            $saveOwnership = {
+                param($inspection, [string]$publishedId)
+                $inspection | Add-Member -NotePropertyName workflowRunId -NotePropertyValue $env:GITHUB_RUN_ID
+                $inspection.sourceSha = $env:GITHUB_SHA
+                $inspection | Add-Member -NotePropertyName priorLastPublishedId -NotePropertyValue $publishedId
+                $inspection | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $WorkDirectory 'store-draft-ownership.json') -Encoding UTF8
+                "draft-id=$($inspection.submissionId)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            }
             $publishProject = New-StorePublishProject (Join-Path (Split-Path -Parent $PSScriptRoot) 'src\RedrainCast.App') `
                 (Join-Path $WorkDirectory 'publish-project')
             $receipt = New-StoreCliDraft $identity $packages $BuildRunId $build.head_sha `
                 $publishProject `
-                (Join-Path $WorkDirectory 'private-submission.json') $ApprovedBasePriceId $cli
+                (Join-Path $WorkDirectory 'private-submission.json') $ApprovedBasePriceId $cli $saveOwnership
             $receipt | Add-Member -NotePropertyName sourceSha -NotePropertyValue $env:GITHUB_SHA
             $receipt | Add-Member -NotePropertyName workflowRunId -NotePropertyValue $env:GITHUB_RUN_ID
             $receipt | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $WorkDirectory 'store-draft-receipt.json') -Encoding UTF8
