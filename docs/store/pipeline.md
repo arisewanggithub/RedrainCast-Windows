@@ -12,12 +12,19 @@ See Microsoft's [CLI commands](https://learn.microsoft.com/windows/apps/publish/
 ## Gates and credentials
 
 Only trusted runs on `main` in `arisewanggithub/RedrainCast-Windows` may
-operate on **9P1153MP6R32**. Owner-authorized automatic delivery starts after a
-successful **Windows build** main **push** run completes. PRs, forks, failed runs
-and manual Windows builds cannot trigger it. The script revalidates the event
-against the GitHub run API before loading Store credentials. Manual Store
-dispatches still require the exact product confirmation. Both paths retain
-the `microsoft-store` environment's approval rules. Operations
+operate on **9P1153MP6R32**. Successful **Windows build** main **push** runs
+automatically run offline checks only; the credential-bearing `store` job is
+skipped. Publishing requires an explicit **Run workflow** action on `main`:
+select `release-latest` and enter `9P1153MP6R32` as confirmation after testing
+the release. This uploads the latest validated main-push release and requests
+certification; publication follows Microsoft approval.
+
+GitHub environment required reviewers are the preferred built-in approval gate,
+but GitHub rejected configuring them for this private repository because its
+billing plan does not support that rule. Manual dispatch is the fail-closed
+alternative, not an equivalent owner-only reviewer gate: users with workflow
+write permission can dispatch. Keep those permissions restricted. The existing
+`microsoft-store` environment and branch restrictions remain. Operations
 are serialized. Do not approve another publisher/browser changing the draft
 while a workflow is active: the Store API has no compare-and-swap protection.
 
@@ -160,12 +167,11 @@ blocking explicit-price-approval gate, not a reason to use browser automation.
    and projecting only saved package filenames, versions, architectures, and
    upload states. Missing ingestion fields stay null and are never inferred from
    CLI success.
-7. **`release-latest`**: manual end-to-end operation, also selected by the automatic
-   trigger. Takes no build or draft run input. Resolve GitHub's current latest
+7. **`release-latest`**: manually authorized end-to-end operation.
+   Takes no build or draft run input. Resolve GitHub's current latest
    published non-prerelease official release and its manifest; require successful
    main-push provenance, then perform all the normal release/manifest/MSIX checks.
-   For automatic runs, the latest release must belong to the exact triggering
-   build and attempt; a stale queued trigger fails without Store mutation.
+   Automatic build-completion runs never enter the Store job.
    Upload once, persist the exact draft receipt, and immediately run the same
    receipt-bound certification checks in this trusted run. Verify the same
    submission ID, an accepted certification/publication state and persisted
