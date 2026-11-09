@@ -30,7 +30,8 @@ saved and verified in Additional Testing Information; internal acceptance
 diagnostics were not submitted. This does not establish certification approval,
 publication or physical-device acceptance. The separately guarded official CLI update
 pipeline also uses automatic publication after successful certification, with
-separate owner-dispatched upload and certification stages.
+owner-authorized upload and receipt-bound certification after successful main
+release builds, plus a manual `release-latest` end-to-end operation.
 
 ## Localized listing drafts
 

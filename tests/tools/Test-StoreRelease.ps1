@@ -49,8 +49,8 @@ function New-Mock {
                 platformOverrides = @{ Windows81 = @{ description = 'retain override' } } } }
             notesForCertification = 'retain notes'; unknownFixtureField = @{ nested = @('retain', 'all') }
             applicationPackages = @(
-                [pscustomobject]@{ fileName = 'old-arm64.msix'; fileStatus = 'Uploaded'; id = '1' }
-                [pscustomobject]@{ fileName = 'old-x64.msix'; fileStatus = 'Uploaded'; id = '2' }
+                [pscustomobject]@{ fileName = 'old-arm64.msix'; fileStatus = 'Uploaded'; id = '1'; version = '1.2.2.0' }
+                [pscustomobject]@{ fileName = 'old-x64.msix'; fileStatus = 'Uploaded'; id = '2'; version = '1.2.2.0' }
             )
         }
         calls = New-Object 'Collections.Generic.List[string]'
@@ -148,6 +148,65 @@ New-Item -ItemType Directory -Path $work | Out-Null
 $payload = Join-Path $work 'private-submission.json'
 try {
     Test 'trusted successful main run accepted' { Assert-StoreRun (New-Run) '123' '.github/workflows/windows.yml' }
+    Test 'automatic trigger requires exact successful main push provenance' {
+        $run = New-Run
+        $event = [pscustomobject]@{ repository = @{ full_name = 'arisewanggithub/RedrainCast-Windows' }; workflow_run = Copy-Json $run }
+        Assert-StoreReleaseTrigger $event $run
+        foreach ($field in @('head_branch', 'head_sha', 'conclusion', 'event', 'run_attempt', 'id')) {
+            $changed = Copy-Json $event
+            $changed.workflow_run.$field = 'invalid'
+            Reject { Assert-StoreReleaseTrigger $changed $run }
+        }
+        $event.workflow_run.head_repository.full_name = 'fork/repo'
+        Reject { Assert-StoreReleaseTrigger $event $run }
+        $run.event = 'workflow_run'
+        Reject { Assert-StoreRun $run '123' '.github/workflows/windows.yml' }
+        $run.path = '.github/workflows/store-release.yml'
+        Assert-StoreRun $run '123' '.github/workflows/store-release.yml'
+    }
+    Test 'latest resolver requires current published release and successful main push source' {
+        $global:storeLatestFixture = [pscustomobject]@{
+            release = [pscustomobject]@{ tag_name = 'v0.2.4102'; draft = $false; prerelease = $false; target_commitish = ('a' * 40) }
+            run = New-Run
+        }
+        function global:gh {
+            $global:LASTEXITCODE = 0
+            if ($args[0] -ceq 'api') {
+                if ($args[1] -match '/releases/latest$') { return $global:storeLatestFixture.release | ConvertTo-Json -Depth 10 }
+                return $global:storeLatestFixture.run | ConvertTo-Json -Depth 10
+            }
+            $index = [Array]::IndexOf($args, '--dir')
+            @{ runId = '123'; version = '0.2.4102'; headSha = ('a' * 40) } |
+                ConvertTo-Json | Set-Content -LiteralPath (Join-Path $args[$index + 1] 'ci-manifest.json')
+        }
+        try {
+            $folder = Join-Path $work 'latest-valid'
+            New-Item -ItemType Directory -Path $folder | Out-Null
+            $run = Get-StoreLatestBuild $folder
+            Assert ([string]$run.id -ceq '123') 'Latest manifest run was not selected.'
+            foreach ($kind in @('draft', 'prerelease', 'tag', 'sha', 'event', 'failed')) {
+                $global:storeLatestFixture.release.draft = $false
+                $global:storeLatestFixture.release.prerelease = $false
+                $global:storeLatestFixture.release.tag_name = 'v0.2.4102'
+                $global:storeLatestFixture.release.target_commitish = ('a' * 40)
+                $global:storeLatestFixture.run = New-Run
+                switch ($kind) {
+                    'draft' { $global:storeLatestFixture.release.draft = $true }
+                    'prerelease' { $global:storeLatestFixture.release.prerelease = $true }
+                    'tag' { $global:storeLatestFixture.release.tag_name = 'v0.2.4601' }
+                    'sha' { $global:storeLatestFixture.release.target_commitish = ('b' * 40) }
+                    'event' { $global:storeLatestFixture.run.event = 'workflow_dispatch' }
+                    'failed' { $global:storeLatestFixture.run.conclusion = 'failure' }
+                }
+                $folder = Join-Path $work "latest-$kind"
+                New-Item -ItemType Directory -Path $folder | Out-Null
+                Reject { Get-StoreLatestBuild $folder }
+            }
+        } finally {
+            Remove-Item Function:\gh
+            Remove-Variable storeLatestFixture -Scope Global
+        }
+    }
     Test 'noninteractive cleanup deletes only exact native credential and known files without poisoning native exit' {
         $client = [guid]::NewGuid().ToString()
         $target = "MicrosoftStoreCli:user=$client"
@@ -282,6 +341,14 @@ try {
         Reject { Upload $m } 'Existing draft'
         Assert ($m.state.uploads -eq 0 -and $m.state.deletes -eq 0) 'Existing draft mutated.'
     }
+    Test 'duplicate, older and unversioned releases never reach upload' {
+        foreach ($version in @('1.2.3.0', '1.2.4.0', 'invalid')) {
+            $m = New-Mock
+            $m.state.submission.applicationPackages[0].version = $version
+            Reject { Upload $m } 'newer than'
+            Assert ($m.state.uploads -eq 0 -and $m.state.deletes -eq 0) 'Duplicate or downgrade mutated Store.'
+        }
+    }
     Test 'Base is not Free and cannot silently reach upload' {
         foreach ($price in @('Base', '', ' ')) {
             $m = New-Mock; $m.state.submission.pricing.priceId = $price
@@ -290,6 +357,9 @@ try {
         }
         $m = New-Mock; $m.state.submission.pricing = $null
         Reject { Upload $m } 'Price cannot'
+        Assert ((Get-StorePriceClassification $m.state.submission) -ceq 'Missing') 'Missing pricing summary changed.'
+        $m = New-Mock; $m.state.submission.pricing.priceId = 'Base'
+        Assert ((Get-StorePriceClassification $m.state.submission) -match 'not evidence of Free') 'Base pricing summary is misleading.'
     }
     Test 'explicit owner-approved price override is passed only when supplied' {
         $m = New-Mock; $m.state.submission.pricing.priceId = 'Base'
@@ -355,6 +425,22 @@ try {
             Assert ($m.state.commits -eq 0) 'Unsafe certification started.'
         }
     }
+    Test 'commit is verified accepted and is never retried' {
+        foreach ($status in @('CommitFailed', 'CertificationFailed', 'PendingCommit', 'PublishFailed')) {
+            $m = New-Mock; $receipt = Upload $m
+            $inner = $m.cli
+            $cli = {
+                param([string[]]$Arguments, [bool]$Json)
+                $result = & $inner $Arguments $Json
+                if ((($Arguments | Select-Object -First 2) -join ' ') -ceq 'submission publish') {
+                    $m.state.submission.status = $status
+                }
+                return $result
+            }
+            Reject { Submit-StoreCliDraft $identity $receipt (New-Packages) '123' ('a' * 40) $cli } 'acceptance'
+            Assert ($m.state.commits -eq 1) 'Commit was retried.'
+        }
+    }
     Test 'MSIX identity, worker, duplicate, debug and standalone helper guards retained' {
         $path = Join-Path $work 'package.msix'
         New-FixturePackage $path 'arm64'
@@ -392,6 +478,8 @@ try {
         $workflow = Get-Content -LiteralPath (Join-Path $root '.github\workflows\store-release.yml') -Raw
         Assert ($workflow -match 'microsoft/microsoft-store-apppublisher@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0') 'Official action not pinned.'
         Assert ($workflow -match 'version: v0.4.4' -and $workflow -match 'PARTNER_CENTER_SELLER_ID') 'CLI pin or seller ID missing.'
+        Assert ($workflow -match 'workflow_run:' -and $workflow -match 'workflows: \[Windows build\]' -and
+            $workflow -match "workflow_run.event == 'push'" -and $workflow -match 'release-latest') 'Automatic release provenance gate missing.'
         Assert ($workflow -notmatch 'resume-draft|upload-listings-draft|confirm_listings_commit') 'Legacy stage still exposed.'
         $module = Get-Content -LiteralPath (Join-Path $root 'tools\StoreCli.psm1') -Raw
         Assert ($module -notmatch 'Invoke-RestMethod|Invoke-WebRequest|Put.?Blob|oauth2/token') 'Custom transport remains.'

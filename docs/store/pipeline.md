@@ -1,6 +1,6 @@
 # Microsoft Store releases with the official CLI
 
-The manually dispatched **Microsoft Store release** workflow uses Microsoft's
+The **Microsoft Store release** workflow uses Microsoft's
 [`microsoft-store-apppublisher`](https://github.com/microsoft/microsoft-store-apppublisher)
 setup action, pinned to **v1.4** (`cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0`),
 and [`msstore-cli` v0.4.4](https://github.com/microsoft/msstore-cli/releases/tag/v0.4.4)
@@ -10,9 +10,13 @@ See Microsoft's [CLI commands](https://learn.microsoft.com/windows/apps/publish/
 
 ## Gates and credentials
 
-Only manual dispatches on `main` in `arisewanggithub/RedrainCast-Windows` may
-operate on **9P1153MP6R32**. Every dispatch requires that exact product
-confirmation and the `microsoft-store` environment's approval rules. Operations
+Only trusted runs on `main` in `arisewanggithub/RedrainCast-Windows` may
+operate on **9P1153MP6R32**. Owner-authorized automatic delivery starts after a
+successful **Windows build** main **push** run completes. PRs, forks, failed runs
+and manual Windows builds cannot trigger it. The script revalidates the event
+against the GitHub run API before loading Store credentials. Manual Store
+dispatches still require the exact product confirmation. Both paths retain
+the `microsoft-store` environment's approval rules. Operations
 are serialized. Do not approve another publisher/browser changing the draft
 while a workflow is active: the Store API has no compare-and-swap protection.
 
@@ -24,8 +28,8 @@ The environment needs these four secrets:
 - **`PARTNER_CENTER_SELLER_ID`** — the Partner Center seller/account ID, not the
   tenant ID or Store product ID. It is required for noninteractive CLI configuration.
 
-The migration's secret-name-only check found the first three, but **no seller ID**.
-The owner must add it; no credential values were retrieved. Run only on a fresh
+All four secrets are configured; read-only workflow **42567665907** verified
+authentication and noninteractive cleanup. Run only on a fresh
 GitHub-hosted Windows runner. CLI credentials/configuration are cleared in `finally`; never
 upload runner profiles, CLI logs, raw responses, or the private payload.
 CLI scratch files are redirected into the workflow's repository work directory.
@@ -58,7 +62,8 @@ for earlier `InvalidParameterValue` failures, not proof of their actual cause.
 
 Ordinary uploads preserve a usable existing price without `--priceId`. `Base`,
 missing pricing, or a missing/blank base price **stop before any upload**.
-`inspect-draft` reports only a safe price classification, never market data.
+`preflight`, `inspect-draft` and `status` report only a safe price classification,
+never market data. `status` remains read-only even when pricing cannot round-trip.
 `Base` is not evidence that the product is free.
 
 The optional `approved_base_price_id` input is an **explicit pricing-change
@@ -66,8 +71,9 @@ authorization** (`Free`, `NotAvailable`, or a real `Tier` number). Only supply i
 after the owner verifies the intended actual price in Partner Center or approves
 persisted price evidence. It passes the exact value to official `--priceId`.
 This sets a single base price; it is not a promise to preserve per-market pricing.
-Never choose `Free` just to bypass an API error. No pricing change is authorized
-by implementing or reviewing this migration.
+Never choose `Free` just to bypass an API error. Automatic delivery supplies no price override. The pinned CLI cannot export
+authoritative per-market retail pricing; a reported `Base` therefore remains a
+blocking explicit-price-approval gate, not a reason to use browser automation.
 
 ## Operations
 
@@ -105,6 +111,20 @@ by implementing or reviewing this migration.
    Call official `submission publish`, then `submission status`.
    **Certification is requested and publication is automatic when it passes.**
 6. **`status`**: official read-only status request, suppressing raw service messages.
+7. **`release-latest`**: manual end-to-end operation, also selected by the automatic
+   trigger. Takes no build or draft run input. Resolve GitHub's current latest
+   published non-prerelease official release and its manifest; require successful
+   main-push provenance, then perform all the normal release/manifest/MSIX checks.
+   For automatic runs, the latest release must belong to the exact triggering
+   build and attempt; a stale queued trigger fails without Store mutation.
+   Upload once, persist the exact draft receipt, and immediately run the same
+   receipt-bound certification checks in this trusted run. Verify the same
+   submission ID, an accepted certification/publication state and persisted
+   `Immediate` mode, then retain `store-certification-receipt`. Certification
+   failures are not success. No certification is skipped and no retry is made.
+   Existing drafts are always preserved; duplicate/older published package
+   versions are rejected before upload. A failed submit retains its sanitized
+   upload receipt for inspection, not automatic recovery.
 
 `-WhatIf` validates release/receipt inputs but never authenticates or calls Store.
 Offline tests mock CLI boundaries; they do not prove live Store ingestion.
@@ -116,14 +136,17 @@ for an already-published product. `--noCommit` is not a preservation flag.
 The old API-created draft **1152921505702349635** was last observed
 `PendingCommit` / `Immediate` with only the old **0.1.20.0** packages.
 It has not received the tested release and has not been submitted for certification.
-The migration must inspect it and obtain explicit discard authorization; it
-must not silently adopt or destroy it. An inspection fingerprint proves
+The owner has authorized replacing only this exact unchanged failed-pipeline
+draft if necessary. Run `inspect-draft`, review its fingerprint and current
+state, then explicitly dispatch `discard-draft` with that inspection run ID.
+No automatic stage deletes it, and other human drafts must not be discarded
+under this authorization. Then `release-latest` uploads and requests
+certification in one run. An inspection fingerprint proves
 unchanged CLI-visible state, not that a draft belongs to automation.
 
-The tested release is **v0.2.4601**, main Windows build **42551625236**,
-commit **24256a9d49d015051db14bbefe409aa2e90d5a7b**. Previously validated
-ARM64/x64 asset lengths are **175194142 / 184858073 bytes**; the normal release
-receipt validation remains authoritative. Nothing was uploaded during migration.
+Do not hard-code the earlier tested v0.2.4601 release. `release-latest` resolves
+the current official release at execution time; normal checksum and receipt
+validation remains authoritative.
 
 ### Official CLI constraints
 
@@ -146,8 +169,8 @@ The v0.4.4 contracts were verified directly against its tagged implementation
   writes JSON directly to stdout independently of progress output. The wrapper
   always passes `--output-stream stderr`, captures stdout, and suppresses stderr.
 
-These are source-verified command contracts, not a live authentication/upload
-test. No real CLI command requiring configuration was executed during review.
+These are source-verified command contracts. Read-only authentication has been
+verified; that is not proof of package ingestion or certification acceptance.
 
 - Loose-MSIX publishing takes one file. Use the existing WinUI project publisher,
   which finds both validated MSIX files exactly one directory below the isolated
@@ -179,8 +202,9 @@ Run `.\tests\tools\Test-StoreRelease.ps1` and
 `.\tests\tools\Test-CiBuild.ps1` without credentials/network. The workflow runs
 Store guards before loading environment credentials.
 
-Migration implementation and offline validation do **not** authorize a live
-discard, price change, upload, certification request, or merge. Review one
-coherent PR first. Remaining live inputs: seller ID, independently verified
-pricing/explicit approval if required, inspected-draft discard authorization,
-then separate upload/receipt-bound certification approvals.
+Review one coherent PR before activating delivery. The owner has authorized
+automatic package upload, certification and publication as soon as certification
+passes, including manual `release-latest` for the current release. This does not
+authorize an implicit pricing change or deleting an unknown draft. Any blocked
+pricing/inspection gate must be resolved explicitly through the release pipeline;
+never fall back to browser upload, submission or pricing inspection.

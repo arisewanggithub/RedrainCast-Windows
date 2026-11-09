@@ -1,6 +1,6 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [Parameter(Mandatory = $true)][ValidateSet('preflight', 'inspect-draft', 'discard-draft', 'upload-draft', 'submit-draft', 'status')][string]$Stage,
+    [Parameter(Mandatory = $true)][ValidateSet('preflight', 'inspect-draft', 'discard-draft', 'upload-draft', 'submit-draft', 'release-latest', 'status')][string]$Stage,
     [string]$InspectSubmissionId,
     [string]$InspectRunId,
     [string]$BuildRunId,
@@ -13,11 +13,12 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 Import-Module (Join-Path $PSScriptRoot 'StoreCli.psm1') -Force
 if ($env:GITHUB_REPOSITORY -cne 'arisewanggithub/RedrainCast-Windows' -or
-    $env:GITHUB_REF -cne 'refs/heads/main' -or $env:GITHUB_EVENT_NAME -cne 'workflow_dispatch') {
-    throw 'Live Store operations are restricted to manual main dispatches in the private source repository.'
+    $env:GITHUB_REF -cne 'refs/heads/main' -or $env:GITHUB_EVENT_NAME -cnotin @('workflow_dispatch', 'workflow_run')) {
+    throw 'Live Store operations require a trusted main workflow in the private source repository.'
 }
+if ($env:GITHUB_EVENT_NAME -ceq 'workflow_run' -and $Stage -cne 'release-latest') { throw 'Automatic events only support release-latest.' }
 if ($ConfirmStore -cne '9P1153MP6R32') { throw 'Exact Store ID confirmation is required.' }
-if ($ApprovedBasePriceId -and $Stage -cne 'upload-draft') { throw 'Base-price approval is only accepted for upload-draft.' }
+if ($ApprovedBasePriceId -and $Stage -cnotin @('upload-draft', 'release-latest')) { throw 'Base-price approval is only accepted for uploads.' }
 if ($Stage -cnotin @('inspect-draft', 'discard-draft') -and ($InspectSubmissionId -or $InspectRunId)) {
     throw 'Inspection inputs are only accepted for inspect-draft or discard-draft.'
 }
@@ -37,6 +38,14 @@ $identity = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoo
 if ($identity.StoreId -cne $ConfirmStore) { throw 'Store identity does not match the confirmation.' }
 New-Item -ItemType Directory -Path $WorkDirectory -WhatIf:$false | Out-Null
 $WorkDirectory = (Get-Item -LiteralPath $WorkDirectory).FullName
+if ($Stage -ceq 'release-latest') {
+    $build = Get-StoreLatestBuild $WorkDirectory
+    $BuildRunId = [string]$build.id
+    if ($env:GITHUB_EVENT_NAME -ceq 'workflow_run') {
+        $event = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+        Assert-StoreReleaseTrigger $event $build
+    }
+}
 $cli = {
     param([string[]]$Arguments, [bool]$Json)
     Invoke-StoreCli -Arguments $Arguments -Json:$Json
@@ -64,7 +73,7 @@ if ($Stage -ceq 'submit-draft') {
     if ($BuildRunId -and $BuildRunId -cne $receipt.sourceBuildRunId) { throw 'Build input differs from receipt.' }
     $BuildRunId = [string]$receipt.sourceBuildRunId
 }
-if ($Stage -cin @('upload-draft', 'submit-draft')) {
+if ($Stage -cin @('upload-draft', 'submit-draft', 'release-latest')) {
     $build = Get-StoreRun $BuildRunId '.github/workflows/windows.yml'
     . (Join-Path $PSScriptRoot 'CiBuild.ps1')
     $null = Receive-CiBuild -RunId $BuildRunId -RunAttempt $build.run_attempt -ExpectedSha $build.head_sha `
@@ -84,6 +93,7 @@ try {
     switch ($Stage) {
         'preflight' {
             $state = Get-StoreState $identity $cli
+            Write-Host "Current submission pricing: $(Get-StorePriceClassification $state.submission)."
             Assert-StorePricing $state.submission ''
             Write-Host "Product identity and pricing verified. Pending draft exists: $($null -ne $state.application.pendingApplicationSubmission)."
         }
@@ -92,16 +102,14 @@ try {
             $inspection = Get-StoreInspection $state $InspectSubmissionId $env:GITHUB_RUN_ID $env:GITHUB_SHA
             $inspection | Add-Member -NotePropertyName workflowRunId -NotePropertyValue $env:GITHUB_RUN_ID
             $inspection | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $WorkDirectory 'store-inspection.json') -Encoding UTF8
-            $price = [string]$state.submission.pricing.priceId
-            $priceClass = if ($price -ieq 'Base') { 'Base (not round-trippable; not evidence of Free)' }
-                elseif ($price -ceq 'Free') { 'Free' } elseif ($price -match '^Tier[0-9]+$') { 'Paid tier' } else { 'Other or missing' }
+            $priceClass = Get-StorePriceClassification $state.submission
             Write-Host "PendingCommit draft fingerprint saved. Pricing classification: $priceClass. No metadata or signed URLs logged."
         }
         'discard-draft' {
             Remove-StoreInspectedDraft $identity $inspection $InspectSubmissionId $cli
             Write-Host 'Only the explicitly inspected unchanged pending draft was discarded. No replacement was uploaded.'
         }
-        'upload-draft' {
+        { $_ -cin @('upload-draft', 'release-latest') } {
             $receipt = New-StoreCliDraft $identity $packages $BuildRunId $build.head_sha `
                 (Join-Path (Split-Path -Parent $PSScriptRoot) 'src\RedrainCast.App') `
                 (Join-Path $WorkDirectory 'private-submission.json') $ApprovedBasePriceId $cli
@@ -109,6 +117,15 @@ try {
             $receipt | Add-Member -NotePropertyName workflowRunId -NotePropertyValue $env:GITHUB_RUN_ID
             $receipt | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $WorkDirectory 'store-draft-receipt.json') -Encoding UTF8
             Write-Host "Validated packages uploaded to draft $($receipt.submissionId). No certification requested. Saved publication mode: Immediate."
+            if ($Stage -ceq 'release-latest') {
+                $status = Submit-StoreCliDraft $identity $receipt $packages $BuildRunId $build.head_sha $cli
+                [pscustomobject]@{
+                    submissionId = $receipt.submissionId; sourceBuildRunId = $BuildRunId
+                    sourceSha = $env:GITHUB_SHA; workflowRunId = $env:GITHUB_RUN_ID
+                    targetPublishMode = 'Immediate'; status = $status
+                } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $WorkDirectory 'store-certification-receipt.json') -Encoding UTF8
+                Write-Host "Certification request accepted and Immediate publication verified. Current state: $status."
+            }
         }
         'submit-draft' {
             $status = Submit-StoreCliDraft $identity $receipt $packages $BuildRunId $build.head_sha $cli
@@ -118,6 +135,7 @@ try {
             $state = Get-StoreState $identity $cli
             $null = & $cli @('submission', 'status', $ConfirmStore) $false
             Write-Host "Current submission state: $(Get-StoreSafeStatus $state.submission). Raw service messages suppressed."
+            Write-Host "Current submission pricing: $(Get-StorePriceClassification $state.submission). This is not a market-price export."
         }
     }
 } finally {
