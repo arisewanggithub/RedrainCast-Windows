@@ -264,6 +264,16 @@ public sealed unsafe partial class WasapiOutput : IDisposable
         }
     }
     public void BeginDrain() { lock (gate) draining = true; }
+    public void StopForRecovery()
+    {
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            if (!started) return;
+            Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, int>)Method(client, 11))(client));
+            started = false;
+        }
+    }
     public void Dispose()
     {
         lock (gate)

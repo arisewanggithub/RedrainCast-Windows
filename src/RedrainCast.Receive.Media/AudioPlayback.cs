@@ -7,7 +7,15 @@ namespace RedrainCast.Receive.Media;
 public sealed class AudioPlayback : IAsyncDisposable
 {
     private readonly string codec;
+    private readonly PlaybackClock clock;
+    private bool recoveryCatchup;
+    private long catchupPresentedStart;
+    private int encodedQueueDepth;
+    private volatile bool suspended;
+    private bool recoveringEpoch;
+    private volatile bool sessionStopped;
     private readonly object gate = new();
+    private readonly object startGate = new();
     private WasapiOutput? output;
     private AudioDecoder? decoder;
     private AudioRegulator? regulator;
@@ -23,7 +31,33 @@ public sealed class AudioPlayback : IAsyncDisposable
     private long recoveryCutoff = -1, firstRecoverySourcePts = -1;
     private TaskCompletionSource firstSourceSubmitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public long? FirstRecoverySourcePtsUs => Interlocked.Read(ref firstRecoverySourcePts) is var pts && pts >= 0 ? pts : null;
-    public void SetRecoveryCutoff(long pts) => Interlocked.Exchange(ref recoveryCutoff, pts);
+    public void SetRecoveryCutoff(long pts)
+    {
+        Interlocked.Exchange(ref recoveryCutoff, pts);
+        lock (gate)
+        {
+            if (firstRecoverySourcePts < 0)
+            {
+                recoveryCatchup = true;
+                regulator?.Buffer.PreserveStartupSource(true);
+            }
+        }
+    }
+    public void SetEncodedQueueDepth(int packets) => Volatile.Write(ref encodedQueueDepth, packets);
+    public void SuspendForRecovery()
+    {
+        suspended = true;
+        clock.BeginAudioRecovery();
+    }
+    public void StopSession()
+    {
+        lock (startGate)
+        {
+            sessionStopped = true;
+            suspended = true;
+            clock.DetachAudio();
+        }
+    }
 
     public (long ContentFrames, long? PtsUs) Position
     {
@@ -60,9 +94,10 @@ public sealed class AudioPlayback : IAsyncDisposable
             $"{regulator?.Diagnostics}; {output?.Diagnostics}"; }
     }
 
-    public AudioPlayback(string codec)
+    public AudioPlayback(string codec, PlaybackClock? clock = null)
     {
         this.codec = codec;
+        this.clock = clock ?? new PlaybackClock(audioExpected: true);
         AudioDecoder.ValidateCodec(codec);
         using (WasapiOutput.AudioThread()) { }
         output = new WasapiOutput();
@@ -75,23 +110,30 @@ public sealed class AudioPlayback : IAsyncDisposable
         lock (gate) configuring = true;
         try
         {
-            if (decoder is not null) await RetireAsync(true, token);
+            if (decoder is not null) await RetireAsync(!midstream, token);
             AudioDecoder? nextDecoder = null;
             AudioRegulator? nextRegulator = null;
             WasapiOutput? nextOutput = null;
+            CancellationTokenSource? nextStop = null;
+            AutoResetEvent? nextSignal = null;
             try
             {
                 nextDecoder = new AudioDecoder(format);
                 nextRegulator = new AudioRegulator();
+                nextRegulator.Buffer.PreserveStartupSource(midstream);
                 nextOutput = output ?? new WasapiOutput();
                 token.ThrowIfCancellationRequested();
                 var stop = new CancellationTokenSource();
                 var signal = new AutoResetEvent(false);
+                nextStop = stop;
+                nextSignal = signal;
                 var position = new AudioPresentation();
                 var ownedOutput = nextOutput;
                 var ownedRegulator = nextRegulator;
                 lock (gate)
                 {
+                    token.ThrowIfCancellationRequested();
+                    if (sessionStopped) throw new OperationCanceledException("Audio session has stopped.", token);
                     decoder = nextDecoder;
                     regulator = nextRegulator;
                     output = nextOutput;
@@ -99,7 +141,10 @@ public sealed class AudioPlayback : IAsyncDisposable
                     outputCancellation = stop;
                     dataReady = signal;
                     firstInputAt = null;
+                    suspended = false;
                     recoveryCutoff = -1; firstRecoverySourcePts = -1;
+                    recoveryCatchup = midstream; catchupPresentedStart = 0;
+                    recoveringEpoch = midstream;
                     firstSourceSubmitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
                     var submitted = firstSourceSubmitted;
                     outputTask = Task.Factory.StartNew(() => RunOutput(ownedOutput, ownedRegulator.Buffer, position, signal, submitted,
@@ -109,20 +154,37 @@ public sealed class AudioPlayback : IAsyncDisposable
                 nextDecoder = null;
                 nextRegulator = null;
                 nextOutput = null;
+                nextStop = null;
+                nextSignal = null;
             }
             finally
             {
                 nextDecoder?.Dispose();
                 nextRegulator?.Dispose();
                 if (nextOutput is not null && nextOutput != output) nextOutput.Dispose();
+                nextStop?.Dispose();
+                nextSignal?.Dispose();
             }
         }
         finally { lock (gate) configuring = false; }
     }
 
-    public ValueTask PresentAsync(Packet packet, CancellationToken token)
+    public async ValueTask PresentAsync(Packet packet, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
+        if (suspended || sessionStopped) return;
+        while (true)
+        {
+            bool wait;
+            lock (gate)
+            {
+                CheckWorker();
+                wait = recoveryCatchup && regulator is { } current &&
+                    current.Buffer.Frames >= current.Buffer.Target;
+            }
+            if (!wait) break;
+            await Task.Delay(2, token);
+        }
         MediaTiming.Record(MediaStage.DecodePushBegin, packet.Session, packet.Track, packet.Generation, packet.PtsUs);
         var waiting = Stopwatch.GetTimestamp();
         lock (gate)
@@ -146,14 +208,10 @@ public sealed class AudioPlayback : IAsyncDisposable
                 }
                 lastPts = packet.PtsUs;
                 receivedFrames += decoded.Data.Length / 4;
-                if (decoded.Data.Length == 0) return ValueTask.CompletedTask;
+                if (decoded.Data.Length == 0) return;
                 firstInputAt ??= Environment.TickCount64;
                 currentRegulator.Push(decoded);
                 dataReady!.Set();
-                if (recoveryCutoff >= 0 && firstRecoverySourcePts < 0 &&
-                    currentRegulator.Buffer.Frames >= currentRegulator.Buffer.Target)
-                    return new ValueTask(WaitForFirstSourceAsync(firstSourceSubmitted.Task, outputTask!, token));
-                return ValueTask.CompletedTask;
             }
             catch (ProtocolException) { throw; }
             catch (Exception error) when (error is not OperationCanceledException)
@@ -168,17 +226,6 @@ public sealed class AudioPlayback : IAsyncDisposable
                 maximumDecodePushUs = Math.Max(maximumDecodePushUs, (long)Stopwatch.GetElapsedTime(entered).TotalMicroseconds);
             }
         }
-    }
-
-    private static async Task WaitForFirstSourceAsync(Task submitted, Task outputWorker, CancellationToken token)
-    {
-        var completed = await Task.WhenAny(submitted, outputWorker).WaitAsync(token);
-        if (completed == submitted) { await submitted; return; }
-        try { await outputWorker; }
-        catch (Exception error) when (error is not OperationCanceledException)
-        { throw new ProtocolException($"Audio output worker failed before its first source submission: {error.Message}", "AUDIO_FAILED"); }
-        token.ThrowIfCancellationRequested();
-        throw new ProtocolException("Audio output stopped before its first source submission.", "AUDIO_FAILED");
     }
 
     private void RunOutput(WasapiOutput output, AudioBuffer buffer, AudioPresentation position,
@@ -196,9 +243,26 @@ public sealed class AudioPlayback : IAsyncDisposable
                     Math.Max(Interlocked.Read(ref maximumOutputLoopGapMs), loopAt - previousLoop));
                 previousLoop = loopAt;
                 token.ThrowIfCancellationRequested();
+                if (suspended || sessionStopped) return;
                 MediaTiming.Record(MediaStage.OutputWake, session, 2, generation,
                     traceSourcePts, a: traceContentFrames, b: traceContentFrames);
                 var played = position.Current(output.PlayedFrames());
+                lock (gate)
+                {
+                    lock (startGate)
+                    {
+                        if (!token.IsCancellationRequested && !suspended && !sessionStopped &&
+                            ReferenceEquals(this.output, output) && played.PtsUs is { } presentedPts)
+                            clock.ObserveAudio(presentedPts);
+                    }
+                    if (recoveryCatchup && Volatile.Read(ref encodedQueueDepth) == 0 &&
+                        played.ContentFrames - catchupPresentedStart >= buffer.Target &&
+                        buffer.Frames < buffer.Target)
+                    {
+                        recoveryCatchup = false;
+                        buffer.PreserveStartupSource(false);
+                    }
+                }
                 traceSourcePts = played.PtsUs ?? -1;
                 traceContentFrames = played.ContentFrames;
                 MediaTiming.Record(MediaStage.OutputPosition, session, 2, generation, played.PtsUs ?? -1,
@@ -207,6 +271,16 @@ public sealed class AudioPlayback : IAsyncDisposable
                 {
                     if (WaitHandle.WaitAny([dataReady, token.WaitHandle], 250) == 1) token.ThrowIfCancellationRequested();
                     continue;
+                }
+                if (!output.Started && recoveryCutoff >= 0)
+                {
+                    var cutoff = Math.Max(Interlocked.Read(ref recoveryCutoff), clock.CurrentUs ?? 0);
+                    buffer.DiscardBefore(cutoff);
+                    if (buffer.Frames < buffer.Target && !buffer.Draining)
+                    {
+                        if (WaitHandle.WaitAny([dataReady, token.WaitHandle], 2) == 1) token.ThrowIfCancellationRequested();
+                        continue;
+                    }
                 }
                 var padding = output.BufferedFrames;
                 if (buffer.Draining && buffer.Frames == 0 && padding == 0) return;
@@ -237,6 +311,16 @@ public sealed class AudioPlayback : IAsyncDisposable
                     }
                     if (block.Frames > 0)
                     {
+                        if (!output.Started && recoveryCutoff >= 0 && block.Spans.Length > 0)
+                        {
+                            while (clock.CurrentUs is { } source &&
+                                block.Spans[0].FirstPtsUs > source)
+                            {
+                                if (suspended || sessionStopped) return;
+                                if (token.WaitHandle.WaitOne(2)) token.ThrowIfCancellationRequested();
+                            }
+                        }
+                        if (suspended || sessionStopped) return;
                         var start = output.Written;
                         var writeStarted = Stopwatch.GetTimestamp();
                         MediaTiming.Record(MediaStage.OutputWriteBegin, session, 2, generation,
@@ -248,12 +332,18 @@ public sealed class AudioPlayback : IAsyncDisposable
                             (long)Stopwatch.GetElapsedTime(writeStarted).TotalMicroseconds));
                         if (written != block.Frames) throw new IOException("WASAPI did not accept the reserved output block.");
                         position.Submit(start, block);
-                        if (block.Spans.Length > 0 && Interlocked.Read(ref recoveryCutoff) >= 0)
+                        lock (startGate)
                         {
-                            Interlocked.CompareExchange(ref firstRecoverySourcePts, block.Spans[0].FirstPtsUs, -1);
-                            submitted.TrySetResult();
+                            if (!sessionStopped && !suspended && !token.IsCancellationRequested)
+                            {
+                                if (block.Spans.Length > 0)
+                                {
+                                    Interlocked.CompareExchange(ref firstRecoverySourcePts, block.Spans[0].FirstPtsUs, -1);
+                                    submitted.TrySetResult();
+                                }
+                                if (!output.Started) { buffer.Start(); output.Start(); }
+                            }
                         }
-                        if (!output.Started) { buffer.Start(); output.Start(); }
                     }
                 }
                 MediaTiming.Record(MediaStage.OutputWaitBegin, session, 2, generation);
@@ -267,6 +357,7 @@ public sealed class AudioPlayback : IAsyncDisposable
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        finally { if (suspended || sessionStopped) output.StopForRecovery(); }
     }
 
     private void CheckWorker()
@@ -284,7 +375,7 @@ public sealed class AudioPlayback : IAsyncDisposable
             {
                 CheckWorker();
                 output?.CheckHealth();
-                if (firstInputAt is { } start && Environment.TickCount64 - start > 3000 && PlayedFrames == 0)
+                if (!recoveringEpoch && firstInputAt is { } start && Environment.TickCount64 - start > 3000 && PlayedFrames == 0)
                     throw new ProtocolException("Real source audio did not start playing within three seconds.", "AUDIO_FAILED");
             }
             catch (ProtocolException) { throw; }
@@ -303,6 +394,9 @@ public sealed class AudioPlayback : IAsyncDisposable
         lock (gate)
         {
             ownedOutput = output; output = null;
+            if (ownedOutput is not null && presentation?.Current(ownedOutput.PlayedFrames()).PtsUs is { } pts)
+                clock.ObserveAudio(pts);
+            clock.DetachAudio();
             ownedDecoder = decoder; decoder = null;
             ownedRegulator = regulator; regulator = null;
             stop = outputCancellation; outputCancellation = null;

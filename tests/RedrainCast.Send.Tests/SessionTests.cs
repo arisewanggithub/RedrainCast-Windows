@@ -400,7 +400,7 @@ public sealed class SessionTests
         Assert.True(StrictJson.Boolean(offer.Json(), "uncappedFps"));
         var hello = RedrainCast.Protocol.JsonData.Object(("role", "receiver"),
             ("versions", RedrainCast.Protocol.JsonData.Value(new[] { 3 })), ("name", "Old receiver"),
-            ("streamRecovery", recovery), ("streamRecoveryVersion", 1));
+            ("streamRecovery", recovery), ("streamRecoveryVersion", 2));
         if (capability is not null) hello["uncappedFps"] = System.Text.Json.Nodes.JsonNode.Parse(capability);
         await Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0, hello), timeout.Token);
         var error = await Assert.ThrowsAsync<UncappedFpsUnavailableException>(() => run.WaitAsync(timeout.Token));
@@ -432,7 +432,7 @@ public sealed class SessionTests
         Assert.True(StrictJson.Boolean((await Wire.ReadAsync(stream, timeout.Token)).Json(), "uncappedFps"));
         var hello = RedrainCast.Protocol.JsonData.Object(("role", "receiver"),
             ("versions", RedrainCast.Protocol.JsonData.Value(new[] { 3 })), ("name", "Receiver"),
-            ("streamRecovery", recovery), ("streamRecoveryVersion", 1));
+            ("streamRecovery", recovery), ("streamRecoveryVersion", 2));
         if (capability is { } supported) hello["uncappedFps"] = supported;
         await Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0, hello), timeout.Token);
         var request = await Wire.ReadAsync(stream, timeout.Token);
@@ -500,7 +500,7 @@ public sealed class SessionTests
         Assert.Equal(MessageType.Hello, (await Wire.ReadAsync(stream, timeout.Token)).Type);
         await Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0,
             new { role = "receiver", versions = new[] { 3 }, name = "Test receiver",
-                uncappedFps = true, streamRecovery = recovery, streamRecoveryVersion = 1 }), timeout.Token);
+                uncappedFps = true, streamRecovery = recovery, streamRecoveryVersion = 2 }), timeout.Token);
         var request = await Wire.ReadAsync(stream, timeout.Token);
         Assert.Equal(MessageType.SessionRequest, request.Type);
         await Wire.WriteAsync(stream, Message.Control(MessageType.Reject, request.Session,

@@ -10,7 +10,6 @@ internal sealed class RecoverySender
     private readonly object gate = new();
     private readonly Queue<Message> video = new(), audio = new();
     private readonly SemaphoreSlim videoWake = new(0), audioWake = new(0), controlGate = new(1);
-    private readonly RecoveryDeadline deadline = new();
     private readonly TaskCompletionSource finished = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CaptureSettings settings;
@@ -22,9 +21,23 @@ internal sealed class RecoverySender
     private readonly NetworkStream control;
     private readonly CancellationTokenSource transport = new(), media = new(), laneWrites = new();
     private byte[]? configuration;
-    private uint generation = 1;
-    private bool videoReady, audioReady, awaitingKey = true, keyProven, audioReleased;
-    private long readyPts, sentKey = -1, completedKey = -1, completedAudio = -1, firstAudio = -1;
+    private enum RecoveryPhase { WaitReady, WaitSource, WaitProof, Active }
+    private sealed class TrackRecovery
+    {
+        public uint Generation = 1, Announced, ReadyGeneration;
+        public RecoveryPhase Phase = RecoveryPhase.WaitReady;
+        public readonly RecoveryDeadline Deadline = new();
+        public long Cutoff, SentKey = -1, Completed = -1;
+        public bool KeyProven;
+        public Message? Writing;
+    }
+    private readonly TrackRecovery videoRecovery = new(), audioRecovery = new();
+    private readonly List<(long Start, long End)> writtenAudio = [];
+    private long? pendingAudioCompletion;
+    private byte[]? audioConfiguration;
+    private bool initialReady, initialAudioCutoffPending;
+    private long phaseAt;
+    private bool stopping;
     private long lastInput = Environment.TickCount64, lastSync = long.MinValue;
     private bool remoteStop;
     private bool transmissionStarted;
@@ -64,7 +77,8 @@ internal sealed class RecoverySender
     private string TransportTiming()
     {
         var now = QpcUs();
-        return $"session={session}, generation={generation}, keyProven={keyProven}, audioReleased={audioReleased}; " +
+        return $"session={session}, videoGeneration={videoRecovery.Generation}, audioGeneration={audioRecovery.Generation}, " +
+            $"videoPhase={videoRecovery.Phase}, audioPhase={audioRecovery.Phase}; " +
             $"video [{videoTiming.Describe(video, now)}]; audio [{audioTiming.Describe(audio, now)}]";
     }
 
@@ -73,7 +87,6 @@ internal sealed class RecoverySender
     {
         this.settings = settings; this.source = source; this.audioSource = audioSource;
         this.status = status; this.session = session; this.control = control;
-        audioReady = audioSource is null;
     }
 
     public static async Task RunAsync(ReceiverEndpoint endpoint, CaptureSettings settings, IRecoverableVideoSource source,
@@ -93,7 +106,7 @@ internal sealed class RecoverySender
         Task? videoWriter = null, audioWriter = null, reader = null, videoWatch = null, audioWatch = null;
         var accepted = false;
         AssociationRejectionException? retiringAssociation = null;
-        using var registration = stop.Register(() => { media.Cancel(); finished.TrySetResult(); });
+        using var registration = stop.Register(() => { StopMedia(); finished.TrySetResult(); });
         try
         {
             using var setup = CancellationTokenSource.CreateLinkedTokenSource(stop, transport.Token, media.Token);
@@ -117,7 +130,12 @@ internal sealed class RecoverySender
             workers.Add(Monitor(HeartbeatAsync(), "TIMEOUT"));
             videoStream = await AttachAsync(videoClient, "video");
             audioStream = await AttachAsync(audioClient, "audio");
-            lock (gate) deadline.Begin(Environment.TickCount64);
+            lock (gate)
+            {
+                phaseAt = Environment.TickCount64;
+                videoRecovery.Deadline.Begin(phaseAt);
+                if (audioSource is not null) audioRecovery.Deadline.Begin(phaseAt);
+            }
             status("Initializing capture");
             videoWriter = Monitor(WriteLaneAsync(video, videoWake, videoStream));
             audioWriter = Monitor(WriteLaneAsync(audio, audioWake, audioStream), "AUDIO_FAILED");
@@ -164,14 +182,16 @@ internal sealed class RecoverySender
             retiringAssociation = error;
         }
         catch (OperationCanceledException) when (media.IsCancellationRequested || stop.IsCancellationRequested) { }
-        catch (Exception error) { terminal.Record(error); }
+        catch (Exception error) { terminal.Record(error, error is ProtocolException ? "PROTOCOL" : "CAPTURE_FAILED"); }
         finally
         {
-            media.Cancel();
+            StopMedia();
             status("Stopping");
             try
             {
                 await Task.WhenAll(new[] { videoWatch, audioWatch }.OfType<Task>());
+                // Retire started complete frames before terminal control, never reuse a partial frame.
+                await Task.WhenAll(new[] { videoWriter, audioWriter }.OfType<Task>());
                 if (terminal.IsProvisional && reader is not null)
                 {
                     try { await reader.WaitAsync(terminal.DrainRemaining); }
@@ -236,10 +256,16 @@ internal sealed class RecoverySender
         catch (OperationCanceledException) when (media.IsCancellationRequested || transport.IsCancellationRequested) { }
         catch (Exception error)
         {
-            terminal.Record(error, code);
-            media.Cancel();
+            terminal.Record(error, error is ProtocolException ? "PROTOCOL" : code);
+            StopMedia();
             finished.TrySetResult();
         }
+    }
+
+    private void StopMedia()
+    {
+        lock (gate) stopping = true;
+        media.Cancel();
     }
 
     private async Task WatchLaneAsync(NetworkStream stream)
@@ -253,38 +279,58 @@ internal sealed class RecoverySender
     private async Task WriteLaneAsync(Queue<Message> queue, SemaphoreSlim wake, NetworkStream stream)
     {
         var timing = ReferenceEquals(queue, audio) ? audioTiming : videoTiming;
+        var recovery = ReferenceEquals(queue, audio) ? audioRecovery : videoRecovery;
         while (true)
         {
             media.Token.ThrowIfCancellationRequested();
             Message? next;
             lock (gate)
             {
-                next = ReferenceEquals(queue, audio) && queue.TryPeek(out var head) &&
-                    head.Type == MessageType.AudioPacket && !audioReleased ? null :
-                    queue.TryDequeue(out var queued) ? queued : null;
+                if (stopping) return;
+                media.Token.ThrowIfCancellationRequested();
+                next = null;
+                if (queue.TryPeek(out var head) &&
+                    (head.Type == MessageType.StreamConfig
+                        ? recovery.Announced == recovery.ReadyGeneration
+                        : initialReady && recovery.ReadyGeneration == head.Generation &&
+                            recovery.Phase is RecoveryPhase.WaitProof or RecoveryPhase.Active))
+                {
+                    next = queue.Dequeue();
+                    if (next.Type == MessageType.StreamConfig) recovery.Announced = next.Generation;
+                    recovery.Writing = next;
+                    timing.WriteStartedUs = QpcUs();
+                }
             }
             if (next is null) { await wake.WaitAsync(media.Token); continue; }
             wake.Wait(0);
-            media.Token.ThrowIfCancellationRequested();
             var started = QpcUs();
-            lock (gate) timing.WriteStartedUs = started;
-            try { await WriteAsync(stream, next, laneWrites.Token); }
+            try
+            {
+                await WriteAsync(stream, next, laneWrites.Token);
+                lock (gate)
+                {
+                    // Stop and successful post-write recovery callbacks share the lifecycle lock.
+                    if (!stopping && !media.IsCancellationRequested) Written(next);
+                    recovery.Writing = null;
+                    timing.Written++;
+                }
+            }
             finally
             {
                 lock (gate)
                 {
+                    recovery.Writing = null;
                     timing.MaximumWriteUs = Math.Max(timing.MaximumWriteUs, QpcUs() - started);
                     timing.WriteStartedUs = 0;
                 }
             }
-            lock (gate) timing.Written++;
         }
     }
 
     private static async Task WriteAsync(NetworkStream stream, Message packet, CancellationToken token)
     {
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
-        limit.CancelAfter(TimeSpan.FromSeconds(10));
+        limit.CancelAfter(TimeSpan.FromSeconds(StreamRecovery.WriteTimeoutSeconds));
         try
         {
             MediaTiming.Record(MediaStage.TcpWriteBegin, packet.Session, packet.Track, packet.Generation,
@@ -305,8 +351,9 @@ internal sealed class RecoverySender
         try
         {
             if (controlBroken) throw new IOException("Recovery control writer is unusable.");
-            using var writing = CancellationTokenSource.CreateLinkedTokenSource(token, transport.Token);
-            try { await WriteAsync(control, packet, writing.Token); }
+            if (packet.Type == MessageType.Ping && media.IsCancellationRequested) return;
+            // Caller cancellation can abandon a queued frame, not one already started.
+            try { await WriteAsync(control, packet, transport.Token); }
             catch { controlBroken = true; throw; }
         }
         finally { controlGate.Release(); }
@@ -314,36 +361,75 @@ internal sealed class RecoverySender
 
     private void Enqueue(Queue<Message> queue, SemaphoreSlim wake, Message message)
     {
+        if (message.Type == MessageType.StreamConfig)
+        {
+            var configurations = video.Concat(audio).Where(packet => packet.Type == MessageType.StreamConfig).ToArray();
+            if (configurations.Length >= 64 || configurations.Sum(packet => (long)packet.Payload.Length) +
+                message.Payload.Length > 256 * 1024 || queue.Count >= 1024)
+                throw new IOException("CONGESTION: recovery configuration queue exceeded its control budget.");
+        }
         queue.Enqueue(message);
         wake.Release();
     }
 
-    private static bool Full(Queue<Message> queue, Message incoming, int maximumBytes) =>
-        queue.Count >= 64 || queue.Sum(p => p.Payload.Length) + incoming.Payload.Length > maximumBytes ||
-        queue.Any(p => p.Type == incoming.Type && incoming.PtsUs - p.PtsUs > 500_000);
+    private bool Full(Queue<Message> queue, Message incoming, int maximumBytes) =>
+        queue.Count >= 1024 ||
+        queue.Where(p => p.Type is MessageType.VideoFrame or MessageType.AudioPacket).Sum(p => (long)p.Payload.Length) +
+            ((ReferenceEquals(queue, video) ? videoRecovery : audioRecovery).Writing?.Payload.Length ?? 0) +
+            incoming.Payload.Length > maximumBytes ||
+        queue.Any(p => p.Type == incoming.Type && Math.Abs(incoming.PtsUs - p.PtsUs) > 500_000);
 
-    private void BeginAttempt(string reason)
+    private void CheckDeadlines()
     {
-        if (configuration is null) throw new ProtocolException("Recovery requested before video configuration.");
-        if (generation == int.MaxValue) throw new ProtocolException("Video recovery generation exhausted.");
-        status($"Recovery pressure timing: reason={reason}; {TransportTiming()}");
-        generation++;
-        deadline.Begin(Environment.TickCount64);
-        videoReady = false; awaitingKey = true; keyProven = false; audioReleased = false;
-        sentKey = -1; firstAudio = -1;
-        video.Clear(); audio.Clear();
-        while (videoWake.Wait(0)) { }
-        while (audioWake.Wait(0)) { }
-        Enqueue(video, videoWake, Configuration());
-        status($"Recovering video generation {generation}: {reason}");
+        var now = Environment.TickCount64;
+        videoRecovery.Deadline.Check(now);
+        if (audioSource is not null) audioRecovery.Deadline.Check(now);
+        if (!initialReady && phaseAt > 0 && now - phaseAt >= 10_000)
+            throw new TimeoutException("Initial track readiness exceeded ten seconds.");
     }
 
-    private Message Configuration()
+    private void BeginAttempt(uint track, string reason)
     {
+        CheckDeadlines();
+        var recovery = Track(track);
+        if (track == 1 ? configuration is null : audioConfiguration is null)
+            throw new ProtocolException("Recovery requested before track configuration.");
+        if (recovery.Generation == int.MaxValue) throw new ProtocolException("Track recovery generation exhausted.");
+        status($"Recovery pressure timing: reason={reason}; {TransportTiming()}");
+        recovery.Generation++;
+        recovery.Deadline.Begin(Environment.TickCount64);
+        recovery.Phase = RecoveryPhase.WaitReady;
+        recovery.Completed = recovery.SentKey = -1;
+        recovery.KeyProven = false;
+        var queue = track == 1 ? video : audio;
+        var wake = track == 1 ? videoWake : audioWake;
+        var configurations = queue.Where(p => p.Type == MessageType.StreamConfig).ToArray();
+        queue.Clear();
+        foreach (var packet in configurations) queue.Enqueue(packet);
+        if (track == 2)
+        {
+            audioRecovery.Cutoff = QpcUs();
+            initialAudioCutoffPending = false;
+            writtenAudio.Clear();
+            pendingAudioCompletion = null;
+        }
+        Enqueue(queue, wake, Configuration(track));
+        status($"Recovering track {track} generation {recovery.Generation}: {reason}");
+    }
+
+    private Message Configuration(uint track = 1)
+    {
+        if (track == 2)
+        {
+            var json = System.Text.Json.Nodes.JsonNode.Parse(audioConfiguration!)!.AsObject();
+            if (audioRecovery.Generation > 1)
+                json["recoveryPtsUs"] = StreamRecovery.Timestamp(audioRecovery.Cutoff);
+            return new(MessageType.StreamConfig, session, 2, audioRecovery.Generation, -1, 0, JsonData.Bytes(json));
+        }
         var value = JsonData.Object(("codec", settings.VideoCodec), ("width", source.Width), ("height", source.Height),
             ("csd", JsonData.Value(new[] { Convert.ToBase64String(configuration!) })));
         HdrVideoProtocol.AddFormat(value, source.ColorFormat);
-        return new(MessageType.StreamConfig, session, 1, generation, -1, 0, JsonData.Bytes(value));
+        return new(MessageType.StreamConfig, session, 1, videoRecovery.Generation, -1, 0, JsonData.Bytes(value));
     }
 
     private async Task CaptureVideoAsync()
@@ -354,12 +440,16 @@ internal sealed class RecoverySender
             var receipt = QpcUs();
             if (frame.PtsUs < 0 || frame.PtsUs < previous) throw new ProtocolException("Recovery capture timestamps are invalid or moved backwards.");
             previous = frame.PtsUs;
-            var csd = VideoBitstream.Configuration(settings.VideoCodec, frame.Configuration.Length > 0 ? frame.Configuration : frame.Data);
+            var csd = frame.Configuration.Length > 0
+                ? VideoBitstream.Configuration(settings.VideoCodec, frame.Configuration)
+                : configuration ?? VideoBitstream.Configuration(settings.VideoCodec, frame.Data);
             VideoBitstream.ValidateConfiguration(settings.VideoCodec, csd, source.Width, source.Height, source.ColorFormat);
             var key = VideoBitstream.IsKeyFrame(settings.VideoCodec, frame.Data, csd);
             VideoBitstream.ValidateFrame(settings.VideoCodec, frame.Data, csd);
             lock (gate)
             {
+                if (stopping || media.IsCancellationRequested) return;
+                CheckDeadlines();
                 videoTiming.ReceivedAt(frame.PtsUs, receipt, QpcUs());
                 if (configuration is null)
                 {
@@ -369,19 +459,21 @@ internal sealed class RecoverySender
                 }
                 if (!configuration.AsSpan().SequenceEqual(csd))
                     throw new ProtocolException("Encoder changed recovery configuration without a declared generation.");
-                if (!videoReady || !audioReady) continue;
-                if (awaitingKey)
+                if (!initialReady || videoRecovery.Phase == RecoveryPhase.WaitReady) continue;
+                if (videoRecovery.Phase == RecoveryPhase.WaitSource)
                 {
                     var now = QpcUs();
-                    if (!key || frame.PtsUs < readyPts || now - frame.PtsUs > StreamRecovery.MaximumKeyAgeUs ||
-                        frame.PtsUs > now + 50_000) continue;
-                    awaitingKey = false; sentKey = frame.PtsUs;
-                    status($"Recovery admitted KEY: generation={generation}, keyPtsUs={sentKey}, " +
-                        $"sourceReadyPtsUs={readyPts}, sourceAgeUs={now - sentKey}");
+                    if (!key || !FreshKeyTimestamp(frame.PtsUs, videoRecovery.Cutoff, now)) continue;
                 }
-                var packet = new Message(MessageType.VideoFrame, session, 1, generation, frame.PtsUs, key ? 1u : 0u, frame.Data);
-                if (Full(video, packet, settings.EnableAudio ? 7 * 1024 * 1024 : 8 * 1024 * 1024)) { BeginAttempt("unsent video queue pressure"); continue; }
+                var packet = new Message(MessageType.VideoFrame, session, 1, videoRecovery.Generation, frame.PtsUs, key ? 1u : 0u, frame.Data);
+                if (Full(video, packet, 8 * 1024 * 1024)) { BeginAttempt(1, "unsent video queue pressure"); continue; }
                 Enqueue(video, videoWake, packet);
+                if (videoRecovery.Phase == RecoveryPhase.WaitSource)
+                {
+                    videoRecovery.Phase = RecoveryPhase.WaitProof;
+                    videoRecovery.SentKey = frame.PtsUs;
+                    status($"Recovery admitted KEY: track=1, generation={videoRecovery.Generation}, keyPtsUs={frame.PtsUs}");
+                }
             }
         }
         if (!media.IsCancellationRequested) throw new IOException("Capture ended during recovery.");
@@ -389,8 +481,19 @@ internal sealed class RecoverySender
 
     private async Task CaptureAudioAsync()
     {
-        lock (gate) Enqueue(audio, audioWake, new(MessageType.StreamConfig, session, 2, 1, -1, 0,
-            JsonData.Bytes(audioSource!.Configuration)));
+        var config = JsonData.Bytes(audioSource!.Configuration);
+        var json = StrictJson.Parse(config);
+        if (StrictJson.String(json, "codec", 16) != "raw" ||
+            StrictJson.Integer(json, "sampleRate") != RecoveryAudio.Rate || StrictJson.Integer(json, "channels") != 2 ||
+            StrictJson.String(json, "sampleFormat", 16) != "s16le" ||
+            json.TryGetProperty("recoveryPtsUs", out _))
+            throw new ProtocolException("Windows recovery audio requires initial stereo 48 kHz PCM configuration.");
+        lock (gate)
+        {
+            if (stopping || media.IsCancellationRequested) return;
+            audioConfiguration = config;
+            Enqueue(audio, audioWake, Configuration(2));
+        }
         long previous = -1;
         await foreach (var packet in audioSource.ReadPacketsAsync(media.Token))
         {
@@ -401,37 +504,63 @@ internal sealed class RecoverySender
             previous = packet.PtsUs;
             foreach (var part in PcmPackets.Split(packet))
             {
-            _ = RecoveryAudio.Frames("raw", part.Data);
-            lock (gate)
-            {
-                audioTiming.ReceivedAt(part.PtsUs, receipt, QpcUs());
-                var message = new Message(MessageType.AudioPacket, session, 2, 1, part.PtsUs, 0, part.Data);
-                while (Full(audio, message, 1024 * 1024) && audio.TryPeek(out var oldest) && oldest.Type == MessageType.AudioPacket)
+                _ = RecoveryAudio.Frames("raw", part.Data);
+                if (part.PtsUs < previous) throw new ProtocolException("Split source PCM timestamps moved backwards.");
+                previous = part.PtsUs;
+                lock (gate)
                 {
-                    if (audioReleased) { BeginAttempt("unsent source PCM queue pressure"); break; }
-                    audio.Dequeue();
+                    if (stopping || media.IsCancellationRequested) return;
+                    CheckDeadlines();
+                    audioTiming.ReceivedAt(part.PtsUs, receipt, QpcUs());
+                    var message = new Message(MessageType.AudioPacket, session, 2, audioRecovery.Generation, part.PtsUs, 0, part.Data);
+                    if (initialReady && audioRecovery.Generation == 1 && initialAudioCutoffPending)
+                    {
+                        audioRecovery.Cutoff = Math.Max(QpcUs(), part.PtsUs);
+                        initialAudioCutoffPending = false;
+                    }
+                    if (audioRecovery.Phase is RecoveryPhase.WaitProof or RecoveryPhase.Active &&
+                        Full(audio, message, 512 * 1024))
+                    {
+                        BeginAttempt(2, "unsent source PCM queue pressure");
+                        continue;
+                    }
+                    // Initial/recovering audio retains bounded latest source packets, not an obsolete backlog.
+                    while (Full(audio, message, 512 * 1024))
+                    {
+                        var retained = audio.Where(p => p.Type != MessageType.AudioPacket).ToArray();
+                        var packets = audio.Where(p => p.Type == MessageType.AudioPacket).Skip(1).ToArray();
+                        if (packets.Length + retained.Length == audio.Count)
+                            throw new IOException("CONGESTION: source PCM recovery buffer exhausted.");
+                        audio.Clear();
+                        foreach (var entry in retained) audio.Enqueue(entry);
+                        foreach (var entry in packets) audio.Enqueue(entry);
+                    }
+                    Enqueue(audio, audioWake, message);
+                    ReleaseAudio();
                 }
-                if (Full(audio, message, 1024 * 1024)) throw new IOException("CONGESTION: source PCM recovery buffer exhausted.");
-                Enqueue(audio, audioWake, message);
-                if (keyProven) ReleaseAudio();
-            }
             }
         }
+        if (!media.IsCancellationRequested) throw new IOException("Audio capture ended during recovery.");
     }
 
     private void ReleaseAudio()
     {
-        if (audioReleased) return;
-        while (audio.TryPeek(out var packet))
+        if (!initialReady || audioRecovery.Phase != RecoveryPhase.WaitSource || initialAudioCutoffPending) return;
+        while (audio.TryPeek(out var packet) && packet.Type == MessageType.AudioPacket)
         {
             var frames = RecoveryAudio.Frames("raw", packet.Payload);
-            if (RecoveryAudio.End(packet.PtsUs, frames) <= sentKey) { audio.Dequeue(); continue; }
-            var skip = RecoveryAudio.Skip(packet.PtsUs, sentKey, frames);
+            if (RecoveryAudio.End(packet.PtsUs, frames) <= audioRecovery.Cutoff) { audio.Dequeue(); continue; }
+            var skip = RecoveryAudio.Skip(packet.PtsUs, audioRecovery.Cutoff, frames);
             var pts = checked(packet.PtsUs + skip * 1_000_000L / RecoveryAudio.Rate);
-            if (pts - sentKey > 250_000) { BeginAttempt($"source PCM starts {pts - sentKey}us beyond key"); return; }
+            if (pts - audioRecovery.Cutoff > 250_000)
+            {
+                BeginAttempt(2, $"source PCM starts {pts - audioRecovery.Cutoff}us beyond audio cutoff");
+                return;
+            }
             // The receiver trims decoded PCM; preserve the source packet's bytes and header PTS.
-            firstAudio = pts; audioReleased = true;
-            status($"Recovery audio released: generation={generation}, keyPtsUs={sentKey}, firstSourceSamplePtsUs={pts}, queuedPackets={audio.Count}");
+            audioRecovery.Phase = audioRecovery.Generation == 1 ? RecoveryPhase.Active : RecoveryPhase.WaitProof;
+            status($"Recovery audio released: track=2, generation={audioRecovery.Generation}, firstSourceSamplePtsUs={pts}");
+            StreamingIfActive();
             audioWake.Release();
             return;
         }
@@ -453,19 +582,40 @@ internal sealed class RecoverySender
                     if (!StrictJson.Boolean(json, "ok")) throw new ProtocolException("Recovery readiness failed.");
                     lock (gate)
                     {
-                        if (packet.Track == 2 && packet.Generation == 1 && !audioReady) audioReady = true;
-                        else if (packet.Track == 1 && packet.Generation == generation && !videoReady) videoReady = true;
-                        else throw new ProtocolException("Duplicate/stale recovery readiness.");
-                        if (videoReady && audioReady)
+                        if (stopping || media.IsCancellationRequested) break;
+                        CheckDeadlines();
+                        var recovery = Track(packet.Track);
+                        if (packet.Generation != recovery.Announced || packet.Generation == recovery.ReadyGeneration)
+                            throw new ProtocolException("Duplicate/stale recovery readiness.");
+                        recovery.ReadyGeneration = packet.Generation;
+                        if (!initialReady && videoRecovery.ReadyGeneration == 1 &&
+                            (audioSource is null || audioRecovery.ReadyGeneration == 1))
                         {
-                            readyPts = QpcUs();
-                            status($"Recovery outputs ready: generation={generation}, sourceReadyPtsUs={readyPts}");
+                            initialReady = true;
+                            phaseAt = 0;
+                            var first = audio.FirstOrDefault(p => p.Type == MessageType.AudioPacket);
+                            initialAudioCutoffPending = first is null;
+                            audioRecovery.Cutoff = Math.Max(QpcUs(), first?.PtsUs ?? 0);
+                            if (audioSource is not null)
+                                audioRecovery.Deadline.Complete(Environment.TickCount64);
                             if (!transmissionStarted)
                             {
                                 audioSource?.BeginTransmission();
                                 transmissionStarted = true;
                             }
                         }
+                        if (initialReady)
+                        {
+                            foreach (var lane in new[] { videoRecovery, audioRecovery })
+                            {
+                                if (lane.Phase != RecoveryPhase.WaitReady || lane.ReadyGeneration != lane.Generation) continue;
+                                lane.Phase = RecoveryPhase.WaitSource;
+                                if (ReferenceEquals(lane, videoRecovery)) lane.Cutoff = QpcUs();
+                            }
+                            ReleaseAudio();
+                        }
+                        videoWake.Release();
+                        audioWake.Release();
                     }
                     break;
                 case MessageType.Status:
@@ -482,8 +632,7 @@ internal sealed class RecoverySender
                 case MessageType.Stop:
                     stopReason = StrictJson.String(json, "reason", 1024); remoteStop = true;
                     terminal.RemoteStop();
-                    media.Cancel();
-                    laneWrites.Cancel();
+                    StopMedia();
                     finished.TrySetResult(); return;
                 case MessageType.SessionEnd:
                     _ = StrictJson.String(json, "reason", 1024);
@@ -503,44 +652,130 @@ internal sealed class RecoverySender
     {
         try
         {
+            var trackValue = StrictJson.Integer(json, "track");
+            if (trackValue is not (1 or 2)) throw new ProtocolException("Invalid recovery track.");
+            var track = (uint)trackValue;
             var proofGeneration = StreamRecovery.Generation(json);
-            var key = state == StreamRecovery.Request ? -1 : StreamRecovery.Timestamp(json, "keyPtsUs");
-            var audioPts = state == StreamRecovery.Complete && settings.EnableAudio ? StreamRecovery.Timestamp(json, "audioPtsUs") : -1;
+            if (track == 1 && json.TryGetProperty("audioPtsUs", out _) ||
+                track == 2 && json.TryGetProperty("keyPtsUs", out _) ||
+                state == StreamRecovery.Request && (json.TryGetProperty("keyPtsUs", out _) || json.TryGetProperty("audioPtsUs", out _)) ||
+                state == StreamRecovery.Key && track != 1)
+                throw new ProtocolException("Recovery proof has an incompatible track timestamp.");
+            var pts = state == StreamRecovery.Request ? -1 :
+                StreamRecovery.Timestamp(json, track == 1 ? "keyPtsUs" : "audioPtsUs");
             lock (gate)
             {
-                if (proofGeneration > generation) throw new ProtocolException("Future recovery proof generation.");
-                if (proofGeneration < generation) return;
-                deadline.Check(Environment.TickCount64);
+                if (stopping || media.IsCancellationRequested) return;
+                var recovery = Track(track);
+                CheckDeadlines();
+                if (proofGeneration > recovery.Generation) throw new ProtocolException("Future recovery proof generation.");
+                if (proofGeneration < recovery.Generation) return;
                 if (state == StreamRecovery.Request)
                 {
-                    if (!videoReady || awaitingKey) return;
-                    BeginAttempt("receiver requested epoch recovery"); return;
+                    if (recovery.Phase == RecoveryPhase.WaitReady) return;
+                    BeginAttempt(track, "receiver requested epoch recovery"); return;
                 }
-                if (key != sentKey || sentKey < 0) throw new ProtocolException("Recovery proof does not match the sent keyframe.");
+                if (track == 1 && (pts != recovery.SentKey || recovery.SentKey < 0) ||
+                    track == 2 && pts < recovery.Cutoff)
+                    throw new ProtocolException("Recovery proof does not match the track source window.");
                 if (state == StreamRecovery.Key)
                 {
-                    if (keyProven) return;
-                    var age = QpcUs() - key;
-                    status($"Recovery decoded KEY: generation={generation}, keyPtsUs={key}, sourceAgeUs={age}");
-                    // Capture freshness was checked before sending. Transit/decode/ACK delay is
-                    // bounded by the unresolved recovery deadline, not the capture-age limit.
-                    keyProven = true;
-                    if (audioSource is not null) ReleaseAudio();
+                    if (recovery.Phase is not (RecoveryPhase.WaitProof or RecoveryPhase.Active))
+                        throw new ProtocolException("Unexpected decoded-key proof.");
+                    if (!recovery.KeyProven)
+                        status($"Recovery decoded KEY: generation={recovery.Generation}, keyPtsUs={pts}, sourceAgeUs={QpcUs() - pts}, track=1");
+                    recovery.KeyProven = true;
                 }
                 else
                 {
-                    if (!keyProven || settings.EnableAudio && (!audioReleased || audioPts < firstAudio ||
-                        audioPts < key || audioPts - key > 250_000))
-                        throw new ProtocolException("Recovery COMPLETE lacks matching decoded-key/source-audio proof.");
-                    if (completedKey == key && completedAudio != audioPts) throw new ProtocolException("Conflicting duplicate audio proof.");
-                    completedKey = key; completedAudio = audioPts;
-                    status($"Recovery COMPLETE: generation={generation}, keyPtsUs={key}, audioPtsUs={audioPts}");
-                    deadline.Complete(Environment.TickCount64);
-                    status("Streaming");
+                    Complete(track, proofGeneration, pts);
                 }
             }
         }
         catch (FormatException error) { throw new ProtocolException(error.Message); }
+    }
+
+    private TrackRecovery Track(uint track) => track switch
+    {
+        1 => videoRecovery,
+        2 when audioSource is not null => audioRecovery,
+        _ => throw new ProtocolException("Recovery track is not enabled.")
+    };
+
+    private void Complete(uint track, uint proofGeneration, long pts)
+    {
+        var recovery = Track(track);
+        if (recovery.Phase == RecoveryPhase.Active)
+        {
+            if (recovery.Completed != pts) throw new ProtocolException("Conflicting recovery completion proof.");
+            return;
+        }
+        if (recovery.Phase != RecoveryPhase.WaitProof || track == 1 && !recovery.KeyProven)
+            throw new ProtocolException("Recovery COMPLETE lacks decoded-key/source-audio proof.");
+        if (track == 2)
+        {
+            if (pendingAudioCompletion is { } pending && pending != pts)
+                throw new ProtocolException("Conflicting in-flight audio completion proof.");
+            if (!writtenAudio.Any(interval => pts >= interval.Start && pts < interval.End))
+            {
+                var writing = recovery.Writing;
+                if (writing is null || writing.Type != MessageType.AudioPacket || writing.Generation != proofGeneration ||
+                    pts < Math.Max(writing.PtsUs, recovery.Cutoff) || pts >= AudioEnd(writing))
+                    throw new ProtocolException("Audio completion does not match successfully written source audio.");
+                pendingAudioCompletion = pts;
+                return;
+            }
+            pendingAudioCompletion = null;
+            writtenAudio.Clear();
+        }
+        recovery.Deadline.Complete(Environment.TickCount64);
+        recovery.Completed = pts;
+        recovery.Phase = RecoveryPhase.Active;
+        status($"Recovery COMPLETE: track={track}, generation={proofGeneration}, ptsUs={pts}");
+        StreamingIfActive();
+    }
+
+    private void StreamingIfActive()
+    {
+        if (videoRecovery.Phase == RecoveryPhase.Active &&
+            (audioSource is null || audioRecovery.Phase == RecoveryPhase.Active))
+            status("Streaming");
+    }
+
+    private static long AudioEnd(Message packet) =>
+        RecoveryAudio.End(packet.PtsUs, RecoveryAudio.Frames("raw", packet.Payload));
+
+    private static bool FreshKeyTimestamp(long pts, long readyPts, long now) =>
+        pts >= readyPts && now - pts <= StreamRecovery.MaximumKeyAgeUs && pts <= now + 50_000;
+
+    private void Written(Message packet)
+    {
+        if (packet.Type != MessageType.AudioPacket) return;
+        if (audioSource is null || packet.Track != 2 || packet.Session != session ||
+            packet.Generation > audioRecovery.Generation)
+            throw new ProtocolException("Invalid audio write completion.");
+        if (packet.Generation != audioRecovery.Generation ||
+            audioRecovery.Phase != RecoveryPhase.WaitProof) return;
+        CheckDeadlines();
+        var start = Math.Max(packet.PtsUs, audioRecovery.Cutoff);
+        var end = AudioEnd(packet);
+        if (start >= end) return;
+        var index = 0;
+        while (index < writtenAudio.Count && writtenAudio[index].End < start) index++;
+        while (index < writtenAudio.Count && writtenAudio[index].Start <= end)
+        {
+            var merged = writtenAudio[index];
+            start = Math.Min(start, merged.Start);
+            end = Math.Max(end, merged.End);
+            writtenAudio.RemoveAt(index);
+        }
+        if (writtenAudio.Count >= 4096)
+        {
+            BeginAttempt(2, "audio written-proof capacity exceeded 4096 disjoint intervals");
+            return;
+        }
+        writtenAudio.Insert(index, (start, end));
+        if (pendingAudioCompletion is { } pts) Complete(2, packet.Generation, pts);
     }
 
     private async Task HeartbeatAsync()
@@ -554,16 +789,23 @@ internal sealed class RecoverySender
             bool sync;
             lock (gate)
             {
-                deadline.Check(now);
-                sync = videoReady && audioReady && awaitingKey && (lastSync == long.MinValue || now - lastSync >= 500);
-                if (sync) lastSync = now;
+                if (stopping || media.IsCancellationRequested) return;
+                CheckDeadlines();
+                ReleaseAudio();
+                sync = initialReady && videoRecovery.Phase == RecoveryPhase.WaitSource &&
+                    (lastSync == long.MinValue || now - lastSync >= 500);
                 if (now >= nextTiming)
                 {
                     nextTiming = now + 5000;
                     status($"Recovery transport timing: {TransportTiming()}");
                 }
             }
-            if (sync) await source.RequestKeyFrameAsync(media.Token);
+            if (sync)
+            {
+                await source.RequestKeyFrameAsync(media.Token);
+                // A stale timer sample can shorten the interval between actual native requests.
+                lock (gate) lastSync = Environment.TickCount64;
+            }
             if (now - Interlocked.Read(ref lastInput) >= 10_000) throw new TimeoutException("Receiver recovery liveness timed out.");
             if (now >= nextPing)
             {

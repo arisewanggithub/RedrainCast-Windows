@@ -101,7 +101,11 @@ public sealed class HdrDiagnosticWiringTests
         Assert.Contains("new VideoPlayback", loopback);
         Assert.Contains("new HardwareDecoder", loopback);
         Assert.Contains("new GpuPresenter", loopback);
-        Assert.Contains("Recovery COMPLETE: generation=2,", loopback);
+        Assert.Contains("Recovery COMPLETE: track=1, generation=2,", loopback);
+        Assert.Contains("!playback.HasRecoveredOutput", loopback);
+        Assert.Contains("inner.LastPresentedPtsUs, 16, 1", loopback);
+        Assert.Contains("new(configuration.Generation, inner.DecodedFrames, PresentedFrames)", loopback);
+        Assert.Contains("progress with { KeyPtsUs = ptsUs }", loopback);
         Assert.Contains("HdrVideoProtocol.Format(packet.Object()) != source.ColorFormat", loopback);
         Assert.Contains("!source.Disposed || !active.Disposed", loopback);
     }

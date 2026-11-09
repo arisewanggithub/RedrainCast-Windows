@@ -8,8 +8,8 @@ public sealed unsafe class AudioRegulator : IDisposable
     private SwrContext* converter;
     private readonly AudioRateControl control = new();
     private AudioCompensation? compensation;
-    private long lastInputPts;
     private int lastInputFrames;
+    private readonly AudioConversionTimeline sourceTimeline = new();
     public AudioBuffer Buffer { get; } = new();
     public string Diagnostics
     {
@@ -43,8 +43,8 @@ public sealed unsafe class AudioRegulator : IDisposable
     {
         var inputFrames = decoded.Data.Length / 4;
         if (inputFrames == 0) return;
-        lastInputPts = decoded.PtsUs;
         lastInputFrames = inputFrames;
+        sourceTimeline.Append(decoded.PtsUs, inputFrames);
         var capacity = ffmpeg.swr_get_out_samples(converter, inputFrames);
         JsonObject.Require(capacity is > 0 and <= AudioBuffer.MaximumConvertedFrames,
             "Regulated audio exceeds the converted-frame bound.", "CONGESTION");
@@ -58,9 +58,16 @@ public sealed unsafe class AudioRegulator : IDisposable
             converted = ffmpeg.swr_convert(converter, &destination, capacity, &source, inputFrames);
         }
         NativeRuntime.Check(converted, "Regulate decoded audio");
-        if (converted > 0) Buffer.Push(data.AsSpan(0, converted * 4).ToArray(), decoded.PtsUs, inputFrames);
+        if (converted > 0)
+        {
+            var retained = ffmpeg.swr_get_delay(converter, AudioFormat.Rate);
+            JsonObject.Require(retained >= 0 && retained < sourceTimeline.PendingFrames,
+                "Audio regulator reported an impossible source delay.", "AUDIO_FAILED");
+            sourceTimeline.Submit(Buffer, data.AsSpan(0, converted * 4).ToArray(), checked((int)retained));
+        }
         var snapshot = Buffer.Snapshot;
-        var next = control.Observe(snapshot.Frames, inputFrames, converted, snapshot.Silence, snapshot.Dropped, snapshot.Target);
+        var next = control.Observe(snapshot.Frames, inputFrames, converted, snapshot.Silence, snapshot.Dropped,
+            snapshot.Target, snapshot.PreservingSource);
         if (next is not null)
         {
             NativeRuntime.Check(ffmpeg.swr_set_compensation(converter, next.Samples, next.Distance), "Apply audio clock compensation");
@@ -87,8 +94,7 @@ public sealed unsafe class AudioRegulator : IDisposable
                 NativeRuntime.Check(converted, "Drain audio regulator");
                 if (converted > 0)
                 {
-                    var pts = checked(lastInputPts + Math.Max(0, lastInputFrames - converted) * 1_000_000L / AudioFormat.Rate);
-                    Buffer.Push(data.AsSpan(0, converted * 4).ToArray(), pts, converted);
+                    sourceTimeline.Submit(Buffer, data.AsSpan(0, converted * 4).ToArray(), 0);
                 }
             }
         }

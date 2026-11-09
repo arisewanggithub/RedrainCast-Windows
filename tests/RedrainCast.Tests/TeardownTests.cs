@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using RedrainCast.Protocol;
 using RedrainCast.Send.Core;
 using Xunit;
 
@@ -59,7 +60,7 @@ public sealed class TeardownTests
             Assert.True(StrictJson.Boolean(hello.Json(), "uncappedFps"));
             await Wire.WriteAsync(stream, Message.Control(MessageType.Hello, 0,
                 new { role = "receiver", versions = new[] { 3 }, name = "Test", uncappedFps = true,
-                    streamRecovery = recovery, streamRecoveryVersion = 1 }), token);
+                    streamRecovery = recovery, streamRecoveryVersion = StreamRecovery.Version }), token);
             var request = await Wire.ReadAsync(stream, token);
             Assert.Equal(MessageType.SessionRequest, request.Type);
             Assert.Equal(0, request.Json().GetProperty("video").GetProperty("maxFps").GetInt32());

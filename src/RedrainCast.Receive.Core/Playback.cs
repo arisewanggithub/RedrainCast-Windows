@@ -1,6 +1,12 @@
 namespace RedrainCast.Receive.Core;
 
-public sealed record ReceiverRecoveryState(long Session, uint Generation, uint ActiveGeneration, bool Recovering);
+public sealed record ReceiverRecoveryState(long Session, uint Generation, uint ActiveGeneration, bool Recovering)
+{
+    public uint AudioGeneration { get; init; }
+    public uint ActiveAudioGeneration { get; init; }
+    public bool VideoRecovering { get; init; }
+    public bool AudioRecovering { get; init; }
+}
 
 public sealed record AvTimingSample(uint Generation, long VideoPtsUs, long PlayedSourceAudioPtsUs,
     long PlayedSourceFrames, long SignedSkewUs, long ObservedAtMilliseconds);
@@ -17,8 +23,16 @@ public interface IPlaybackFactory
 
 public interface IStreamRecoveryPlayback : IPlayback
 {
+    long? SourcePositionUs => null;
     long? DecodedRecoveryKeyPtsUs { get; }
+    // Actual source written by this audio epoch, including initial playback; never inserted silence.
     long? FirstRecoverySourceAudioPtsUs { get; }
+    ValueTask ConfigureRecoveryTrackAsync(Packet configuration, bool midstream, CancellationToken token);
+    void SetAudioRecoveryCutoff(long cutoffPtsUs);
+    void UpdateEncodedQueueDepth(uint track, int packets) { }
+    void BeginTrackRecovery(uint track) { }
+    void BeginSessionStop() { BeginTrackRecovery(1); BeginTrackRecovery(2); }
+    void CheckTrackHealth(uint track) => CheckHealth();
     ValueTask ConfigureRecoveryAsync(Packet video, Packet? audio, bool midstream, CancellationToken token);
     void SetRecoveryKey(long keyPtsUs);
 }

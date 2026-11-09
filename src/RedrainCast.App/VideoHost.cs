@@ -196,7 +196,8 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
             presenter = new GpuPresenter(request.VideoProcessingFramesPerSecond, request.ColorFormat);
             if (CollectPresentationSamples) presenter.EnablePresentationDiagnostics();
             decoder = new HardwareDecoder(presenter.Device, request.VideoCodec, request.ColorFormat);
-            if (request.AudioCodec is not null) audio = new AudioPlayback(request.AudioCodec);
+            var clock = new PlaybackClock(audioExpected: request.AudioCodec is not null);
+            if (request.AudioCodec is not null) audio = new AudioPlayback(request.AudioCodec, clock);
             var ownedPresenter = presenter;
             await OnUiAsync(() =>
             {
@@ -225,7 +226,7 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
             })), detail => new ValueTask(OnUiAsync(() =>
             {
                 if (active == ownedPresenter) status(detail);
-            })), audio, request.VideoCodec, request.ColorFormat);
+            })), audio, request.VideoCodec, request.ColorFormat, clock);
             preparedPlayback = ownedPlayback;
             await OnUiAsync(() =>
             {

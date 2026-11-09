@@ -406,51 +406,44 @@ and WinUI presenter, including non-key pictures, a second configuration generati
 reset to zero, fullscreen, Stop and return to READY. It uses only generated video;
 it does not claim that a physical Android cast has been tested.
 
-### Optional bounded stream recovery v1
+### Optional independent track recovery v2
 
-Version 0.1.17 implements the corrected Android recovery v1 policy for normal Windows
-hardware-worker sending and receiving. Both control HELLOs must explicitly
-acknowledge Boolean `streamRecovery:true` and integer `streamRecoveryVersion:1`.
-Malformed capabilities/revisions fail; absent/false, missing revision or an
-unsupported positive offer revision leaves the strict legacy queues unchanged.
-An explicit true acknowledgement with a missing/incompatible revision is rejected.
-Version 0.1.15 still never acknowledges recovery.
+Both control HELLOs must explicitly acknowledge Boolean `streamRecovery:true`
+and integer `streamRecoveryVersion:2`. An unsupported offer does not negotiate
+recovery; an explicit true acknowledgement with a missing or incompatible
+revision is rejected. There is no shared-reset v1 fallback.
 
-Recovery uses existing session-scoped STATUS packets (track/generation zero,
-PTS -1, flags zero), with required `state`, `message`, and positive signed-int32
-`generation` referring to the video generation:
+Recovery uses session-scoped STATUS packets with header track/generation zero,
+PTS -1 and flags zero. The JSON includes `state`, `message`, a track (1 video,
+2 enabled audio), and that track's positive sequential signed-int32 generation.
+REQUEST has no proof. Video KEY and COMPLETE carry the exact `keyPtsUs` sent
+for that generation; audio COMPLETE carries `audioPtsUs` and no video-key
+dependency. Timestamps are canonical nonnegative signed-int64 decimal strings.
+Valid stale generations are ignored, future or conflicting proofs fail, and
+matching duplicate proofs are idempotent.
 
-| Direction | State | Additional fields |
-|---|---|---|
-| Receiver to sender | `stream-recovery-request` | None |
-| Receiver to sender | `stream-recovery-key` | `keyPtsUs` |
-| Receiver to sender | `stream-recovery-complete` | `keyPtsUs`; `audioPtsUs` when audio is enabled |
+Video and audio have independent bounded queues, generations, workers and
+first-unresolved ten-second deadlines. Pressure or reconstruction on one track
+does not intentionally reset or gate the healthy track. The initial all-track
+READY barrier applies only once; subsequent recovery waits only for the affected
+track. Retrying, configuration, READY and proof receipt do not extend a pending
+deadline. A started transport frame completes before another frame or Stop;
+failed writes retire the transport.
+For v2, a receiver-initiated Stop allows up to 22 seconds after its STOP frame
+is written for started media/control writes (each bounded to ten seconds) and
+SESSION_END to finish. Legacy sessions retain their two-second acknowledgement
+bound. This does not extend any media recovery deadline.
 
-Timestamps are canonical nonnegative signed-int64 decimal **strings**, not JSON
-numbers. Future/invalid generations and conflicting proofs fail; valid stale
-proofs are ignored and matching duplicate proofs are idempotent. Duplicate
-STREAM_READY is an error. Generic STATUS reception is not an acknowledgement.
-
-Capture and the video/audio writers run independently under the existing byte,
-entry and 500 ms backlog caps. Pressure retires only **unsent complete obsolete
-chains**, never a started packet. A serialized video writer places cached same-
-codec/raster STREAM_CONFIG at the next sequential generation behind any already-
-started frame. Receiver admission keeps consuming obsolete framed data while a
-dedicated serialized worker retires/recreates both native outputs. Audio wire
-generation/format stay unchanged. No software, codec, quality or timestamp
-fallback occurs, and genuine current-epoch codec/transport failures stay fatal.
-
-READY follows actual configuration of both outputs. The sender drains/discards
-capture while waiting, requests a Media Foundation hardware sync frame no faster
-than every 500 ms, and sends only a verified fresh random-access picture at/after
-READY, at most 250 ms old at admission. Cached CSD and decoder-visible raster
-must match. Rotation and original PTS remain picture-scoped. Dependent pictures
-resume after the key; KEY proves decoded output, not merely admission. KEY must
-match the live generation and exact sent random-access PTS. Its receipt age is
-logged, but transit, decode and return-control delay is not mistaken for capture
-staleness: a valid proof received after 250 ms remains eligible within the original
-ten-second transaction deadline. Versions through 0.1.16 RC3 incorrectly retried
-such proofs and could repeatedly reconstruct outputs until the cast timed out.
+Video resumes from a verified fresh random-access picture with matching codec
+configuration; decoded KEY and COMPLETE prove the exact sent key. A valid proof
+is not rejected merely because decoding or transport delayed its receipt. Audio
+recovery uses the original source timeline and an explicit `recoveryPtsUs`, with
+unchanged negotiated format, ordered compressed preroll and sample-frame PCM
+trimming. Audio COMPLETE proves actual current-generation source audio written
+to the output, not silence or a queued packet. Temporary A/V mismatch is not
+itself a reason to reset either track.
+Resampling may consume tiny source intervals without producing an output frame;
+those intervals are retired without inventing output spans or failing playback.
 
 The isolated Windows capture worker is prepared before connecting to the receiver,
 under a separate 30-second bootstrap bound. Its private `RCW2` READY handshake
@@ -465,69 +458,15 @@ consume the unchanged ten-second first-unresolved media/recovery deadline.
 The private worker command also requires `--prepare`; older helpers reject the
 extra argument before opening a capture source rather than starting capture early.
 
-Audio remains bounded and gated until KEY. Windows sends PCM and trims a
-captured buffer into packets of at most 120 ms (5760 stereo sample frames),
-preserving every byte and each subpacket's source sample-aligned timestamp.
-This packetization also applies to unnegotiated sending for Android compatibility.
-The receiver trims a
-straddling packet on sample-frame boundaries; it never retimes the remaining
-samples. Receiving Opus retains contiguous duration-aware 80 ms preroll (including
-60/120 ms packets), and AAC-LC retains one 960/1024-sample access unit. Retained
-compressed packets are decoded in order; decoded samples before the key are
-discarded. Midstream Opus resets do not reapply initial pre-skip. A fresh output/
-clock epoch skips the retired backlog rather than filling it with silence.
-AAC preroll is rounded upward (1024 frames = 21334 us). The first retained
-compressed packet must start at/before the preroll window; one-sample timestamp
-rounding tolerance applies only between subsequent packets. Malformed Opus CBR
-and truncated VBR/count headers fail instead of supplying a plausible duration.
-COMPLETE proves an actual source-sample WASAPI submission at/after the key and
-within 250 ms, not inserted silence. Video-only COMPLETE needs no audio proof.
-This 250 ms range is a source-timeline alignment requirement, not a wall-clock
-delivery deadline. The receiver does not reset just because audio takes more than
-250 ms to arrive after KEY. It waits for real bounded retained coverage within
-the unresolved transaction deadline. If the sender's capped queue actually loses
-the needed audio prefix and the first eligible sample is beyond that source
-window, it starts an explicit bounded retry; it does not grow buffers or rewrite
-timestamps. Missing source audio still fails after ten seconds, without a
-wall-clock-driven reconstruction loop.
-Coverage distinguishes missing-but-still-possible input from irrecoverable
-monotonic gaps. RAW/AAC prefixes or continuity that can no longer cover the source
-window request a bounded retry. Opus is different: its existing protocol allows
-equal/reversed source-PTS observations in arrival/decode order. An apparent
-timestamp gap alone therefore does not prove loss; retain bounded preroll and
-wait rather than sorting packets or rejecting permitted reversals. Exhausting
-that preroll budget requests recovery, and the original deadline still applies.
+Windows sends PCM in packets of at most 120 ms, preserving source sample
+timestamps. Midstream Opus reconstruction does not reapply initial pre-skip.
+The native recovery self-test uses an owned animated window, H.264 hardware and
+generated PCM; portable socket regressions use explicitly fake codecs. Neither
+substitutes for a physical Android interoperability test.
+Native recovery probes require generation-local decode/presentation deltas and
+a presented source timestamp at or after that generation's verified key; prior
+generation lifetime counters cannot satisfy recovery success.
 
-During native audio startup, reaching the existing FIFO target waits for the
-first actual source-sample output submission before admitting more decoded
-blocks. Network admission remains independent and bounded. This prevents a
-released backlog burst from dropping the required key-aligned prefix before
-WASAPI first writes it; FIFO targets and packet budgets are not enlarged.
-
-One ten-second deadline starts at the first unresolved recovery and covers every
-retry, configuration, READY, sync, key and completion; retries never extend it.
-KEY/COMPLETE handlers also check this deadline synchronously, including before
-clearing it: a late proof cannot slip past expiry between watchdog ticks.
-The initial capture/recovery deadline starts after bounded session/media-socket
-setup, rather than consuming its budget while negotiating/accepting a connection.
-Connection setup retains its own ten-second bound. RC2 corrects RC1's premature
-startup timeout when those individually bounded stages together exceed ten seconds.
-Native resets are at least one second apart. Generation exhaustion is fatal.
-Stop prevents stale workers, failures, READY or proofs from reviving a retired
-epoch. Started control/media frames finish before the next frame/Stop; any
-failed partial write retires the transport rather than reusing it.
-
-`RedrainCast.App.exe --recovery-self-test <report.json>` uses an owned animated
-window, native H.264 encoder/decoder, generated silent PCM and real WASAPI output.
-A bounded test-only decoder delay forces queue pressure and verifies same-session
-video/audio reconstruction, KEY/COMPLETE, resumed presentation and child cleanup.
-An additional 350 ms delay on the first picture of each native epoch verifies
-that a legitimately late decoded-KEY proof does not cause extra reconstructions.
-Real-socket regressions also test 450 ms delayed-but-covered PCM, actual capped
-audio-prefix eviction, and absent audio reaching the unchanged ten-second limit.
-Portable real-socket tests use explicitly fake codecs; neither test claims
-physical Android interoperability or full-resolution/HEVC stability.
-The policy follows the exact v1 contract in the Android protocol documentation.
 Prior art inspected: scrcpy's [demuxer](https://github.com/Genymobile/scrcpy/blob/a60891aea193d92e7e5c3942700eca63f9d19a5f/app/src/demuxer.c),
 [decoder](https://github.com/Genymobile/scrcpy/blob/a60891aea193d92e7e5c3942700eca63f9d19a5f/app/src/decoder.c)
 and [frame buffer](https://github.com/Genymobile/scrcpy/blob/a60891aea193d92e7e5c3942700eca63f9d19a5f/app/src/frame_buffer.c).

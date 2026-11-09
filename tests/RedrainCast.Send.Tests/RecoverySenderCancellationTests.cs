@@ -13,7 +13,7 @@ public sealed class RecoverySenderCancellationTests
     [InlineData(true, false)]
     [InlineData(false, true)]
     [InlineData(true, true)]
-    public async Task ReceiverStopCancelsAnInProgressMediaPayloadWithoutCancelingControl(bool audioLane, bool localStopPending)
+    public async Task ReceiverStopFinishesAnInProgressMediaPayloadWithoutRevivingOutput(bool audioLane, bool localStopPending)
     {
         using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -54,8 +54,10 @@ public sealed class RecoverySenderCancellationTests
             }
             await Invoke("ReadControlsAsync").WaitAsync(limit.Token);
             Assert.True(media.IsCancellationRequested);
-            Assert.True(laneWrites.IsCancellationRequested);
+            Assert.False(laneWrites.IsCancellationRequested);
             Assert.False(transport.IsCancellationRequested);
+            Assert.False(writing.IsCompleted);
+            lane.ReleasePayload.TrySetResult();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(
                 () => writing.WaitAsync(TimeSpan.FromSeconds(1), limit.Token));
             await Invoke("Monitor", Task.FromCanceled(media.Token), "CAPTURE_FAILED");
@@ -95,12 +97,13 @@ public sealed class RecoverySenderCancellationTests
     private sealed class BlockedPayloadStream(Socket socket) : NetworkStream(socket, ownsSocket: false)
     {
         public TaskCompletionSource PayloadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleasePayload { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int WriteCalls { get; private set; }
         public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
         {
             if (++WriteCalls == 1) return;
             PayloadStarted.TrySetResult();
-            await Task.Delay(Timeout.Infinite, cancellationToken);
+            await ReleasePayload.Task.WaitAsync(cancellationToken);
         }
     }
 

@@ -12,10 +12,11 @@ public sealed class AudioRateControl
     private bool active;
 
     public AudioCompensation? Observe(int bufferedFrames, int inputFrames, int outputFrames, long silence, long dropped,
-        int targetFrames = AudioBuffer.TargetFrames)
+        int targetFrames = AudioBuffer.TargetFrames, bool preservingSource = false)
     {
         JsonObject.Require(targetFrames is >= AudioBuffer.TargetFrames and <= AudioBuffer.MaximumTargetFrames &&
-            bufferedFrames >= 0 && bufferedFrames <= targetFrames * 11 / 10 + AudioFormat.Rate * 60 / 1000 &&
+            bufferedFrames >= 0 && bufferedFrames <= (preservingSource ? AudioBuffer.MaximumBufferedFrames :
+                targetFrames * 11 / 10 + AudioFormat.Rate * 60 / 1000) &&
             inputFrames is > 0 and <= AudioFormat.MaximumFrames &&
             outputFrames is >= 0 and <= AudioBuffer.MaximumConvertedFrames &&
             silence >= previousSilence && dropped >= previousDropped,

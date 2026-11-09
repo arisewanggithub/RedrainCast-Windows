@@ -112,6 +112,28 @@ public sealed class QueueAndTrackTests
         Assert.Throws<ProtocolException>(() => queue.Add(Media(0, size: 1)));
     }
 
+    [Theory]
+    [InlineData(1u, 2u)]
+    [InlineData(2u, 1u)]
+    public async Task SaturatedTrackEntryBudgetDoesNotBlockOtherTrack(uint saturatedTrack, uint healthyTrack)
+    {
+        using var queue = new ReceiveQueue();
+        var started = Media(0, saturatedTrack, size: 1);
+        queue.Add(started);
+        Assert.Same(started, await queue.TakeAsync(saturatedTrack, default));
+        for (var index = 1; index < ReceiveQueue.MaximumEntries; index++)
+            queue.Add(Media(0, saturatedTrack, size: 1));
+        Assert.Equal("CONGESTION",
+            Assert.Throws<ProtocolException>(() => queue.Add(Media(0, saturatedTrack, size: 1))).Code);
+
+        var healthy = Media(0, healthyTrack, size: 1);
+        queue.Add(healthy);
+        Assert.Same(healthy, await queue.TakeAsync(healthyTrack, default));
+        queue.Complete(healthy);
+        queue.Complete(started);
+        queue.Add(Media(0, saturatedTrack, size: 1));
+    }
+
     [Fact]
     public async Task WaitingQueueHonorsCancellation()
     {

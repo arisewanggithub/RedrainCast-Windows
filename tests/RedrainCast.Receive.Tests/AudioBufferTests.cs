@@ -156,6 +156,38 @@ public sealed class AudioBufferTests
     }
 
     [Fact]
+    public void RecoveryRegulatorAcceptsAnIntact120MillisecondSourcePacketBeforeOutputStarts()
+    {
+        var buffer = new AudioBuffer();
+        buffer.PreserveStartupSource(true);
+        var data = Data(5760);
+        buffer.Push(data, 1_000_000, 5760);
+        var snapshot = buffer.Snapshot;
+        Assert.Equal(5760, snapshot.Frames);
+        Assert.Equal(0, snapshot.Dropped);
+        Assert.True(snapshot.PreservingSource);
+        var control = new AudioRateControl();
+        Assert.Null(control.Observe(snapshot.Frames, 5760, 5760, snapshot.Silence, snapshot.Dropped,
+            snapshot.Target, snapshot.PreservingSource));
+        var block = buffer.Pull(5760);
+        Assert.Equal(data, block.Data);
+        var span = Assert.Single(block.Spans);
+        Assert.Equal(1_000_000, span.FirstPtsUs);
+        Assert.Equal(1_120_000, span.EndPtsUs);
+    }
+
+    [Fact]
+    public void RegulatorPreservationUsesTheExactBoundWithoutRelaxingNormalPlayback()
+    {
+        var control = new AudioRateControl();
+        Assert.Throws<ProtocolException>(() => control.Observe(AudioBuffer.PlayingMaximumFrames + 1, 960, 960, 0, 0));
+        Assert.Null(control.Observe(AudioBuffer.MaximumBufferedFrames, 960, 960, 0, 0, preservingSource: true));
+        Assert.Throws<ProtocolException>(() =>
+            control.Observe(AudioBuffer.MaximumBufferedFrames + 1, 960, 960, 0, 0, preservingSource: true));
+        Assert.Throws<ProtocolException>(() => control.Observe(5760, 960, 960, 0, 0));
+    }
+
+    [Fact]
     public void InvalidBlocksAndPresentationPositionsFailExplicitly()
     {
         var buffer = new AudioBuffer();
