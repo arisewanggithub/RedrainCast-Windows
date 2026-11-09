@@ -300,6 +300,25 @@ try {
         $m.state.submission.unknownFixtureField.nested[1] = 'changed'
         Assert ((Get-StoreMetadataFingerprint $m.state.submission) -cne $hash) 'Nested metadata was ignored.'
     }
+    Test 'metadata diff is bounded, allowlisted and contains hashes rather than values' {
+        $before = [pscustomobject]@{
+            listings = @{ 'en-us' = @{ baseListing = @{ title = 'Private title'; description = 'Private description' } } }
+            pricing = @{ priceId = 'Free' }; fileUploadUrl = 'https://fixture.invalid/?sig=fixture-SAS'
+            unknownFixtureField = 'Private unknown value'; targetPublishMode = 'Manual'
+        }
+        $after = Copy-Json $before
+        $after.listings.'en-us'.baseListing.title = 'Changed private title'
+        $after.pricing.priceId = 'Tier1012'
+        $after.unknownFixtureField = 'Changed private unknown value'
+        $after.targetPublishMode = 'Immediate'
+        $summary = Get-StoreMetadataDiffSummary $before $after
+        $json = ConvertTo-Json $summary -Compress -Depth 6
+        Assert ($summary.changedPropertyCount -eq 2 -and $summary.unclassifiedPropertyChangeCount -eq 1) 'Diff counts include ignored or unknown paths incorrectly.'
+        Assert ($json -match '"propertyPath":"listings"' -and $json -match '"changeClass":"value-changed"') 'Allowlisted listing change is missing.'
+        Assert ($json -match '"propertyPath":"pricing"' -and $json -match '[a-f0-9]{64}') 'Allowlisted pricing hash is missing.'
+        Assert ($json -notmatch 'Private title|Private description|Tier1012|fixture-SAS|Private unknown value|Changed private') 'Diff leaked field values.'
+        Reject { Get-StoreMetadataDiffSummary $before $after 21 } 'between 1 and 20'
+    }
     Test 'first publication guard is explicit and read-only' {
         $m = New-Mock
         $m.state.app.lastPublishedApplicationSubmission = $null
@@ -374,9 +393,17 @@ try {
     Test 'CLI metadata changes or published pointer changes block follow-up update and receipt' {
         foreach ($field in @('changedMetadata', 'changedPointer')) {
             $m = New-Mock; $m.state.$field = $true
-            Reject { Upload $m } 'changed preserved metadata'
+            Reject { Upload $m } 'Safe structural diff'
             Assert ($m.state.updates -eq 0 -and $m.state.commits -eq 0) 'Unexpected follow-up mutation.'
         }
+    }
+    Test 'failed CLI preservation check identifies only safe metadata paths and hashes' {
+        $m = New-Mock; $m.state.changedMetadata = $true
+        $message = $null
+        try { Upload $m | Out-Null } catch { $message = $_.Exception.Message }
+        Assert ($message -match '"propertyPath":"listings"' -and $message -match '"beforeSha256":"[a-f0-9]{64}"') 'Safe structural diagnostics were not included.'
+        Assert ($message -notmatch 'Unexpected change|Retain title|fixture-SAS|retain notes') 'Structural diagnostics leaked metadata.'
+        Assert ($m.state.updates -eq 0 -and $m.state.commits -eq 0) 'Failed preservation check mutated or submitted the draft.'
     }
     Test 'failed upload is never automatically retried or deleted' {
         $m = New-Mock; $m.state.failPublish = $true
