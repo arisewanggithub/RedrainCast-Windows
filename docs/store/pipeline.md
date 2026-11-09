@@ -144,6 +144,9 @@ Transport failures now identify authentication, Store application lookup,
 draft creation, submission metadata, archive upload, commit or status operations
 and HTTP status. JSON and Azure XML errors are limited to 16 KiB and 20
 allowlisted error entries; free-form messages and unknown codes are suppressed.
+For recognized JSON validation errors, fixed API schema labels and fixed reason
+categories mentioned by the response can be logged; arbitrary paths, indices,
+parameter values and message text remain suppressed.
 No retry or draft cleanup is automatic. This distinguishes a Store metadata
 PUT from an Azure archive PUT without exposing credentials, SAS or metadata.
 Workflow run titles include the selected stage to distinguish read-only runs.

@@ -427,8 +427,35 @@ function Get-StoreTransportDiagnostic {
     } catch { return 'Service details unavailable or suppressed.' }
     $codes = @(Get-StoreSafeErrors $details)
     if (-not $codes.Count) { return 'Service details unavailable or suppressed.' }
+    $fields = New-Object 'Collections.Generic.List[string]'
+    $reasons = New-Object 'Collections.Generic.List[string]'
+    foreach ($item in $details | Select-Object -First 20) {
+        if ($null -eq $item -or $item -is [string]) { continue }
+        foreach ($name in @('message', 'target', 'propertyPath', 'field', 'parameter')) {
+            $property = $item.PSObject.Properties[$name]
+            if ($null -eq $property) { continue }
+            $value = [string]$property.Value
+            # Report only fixed schema labels and fixed reason categories, never matched text.
+            foreach ($field in @('applicationPackages', 'fileName', 'fileStatus', 'minimumDirectXVersion',
+                'minimumSystemRam', 'targetPublishMode', 'targetPublishDate', 'pricing', 'priceId',
+                'marketSpecificPricings', 'sales', 'listings', 'baseListing', 'images', 'packageDeliveryOptions',
+                'packageRollout', 'isMandatoryUpdate', 'allowTargetFutureDeviceFamilies', 'fileUploadUrl')) {
+                if ($value -match ('(?i)(?<![a-z0-9_])' + [regex]::Escape($field) + '(?![a-z0-9_])') -and -not $fields.Contains($field)) {
+                    $fields.Add($field)
+                }
+            }
+            foreach ($reason in @('duplicate', 'required', 'unsupported', 'invalid', 'missing', 'read-only')) {
+                if ($value -match ('(?i)\b' + [regex]::Escape($reason) + '\b') -and -not $reasons.Contains($reason)) {
+                    $reasons.Add($reason)
+                }
+            }
+        }
+    }
     # Never echo free-form service messages, which can contain submitted metadata or signed URLs.
-    return 'Service codes: ' + ($codes -join ', ') + '. Service messages suppressed.'
+    $structure = ''
+    if ($fields.Count) { $structure += ' Schema labels: ' + ($fields -join ', ') + '.' }
+    if ($reasons.Count) { $structure += ' Reason categories: ' + ($reasons -join ', ') + '.' }
+    return 'Service codes: ' + ($codes -join ', ') + '.' + $structure + ' Service messages suppressed.'
 }
 
 function Invoke-StoreHttp {
