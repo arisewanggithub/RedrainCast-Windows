@@ -407,7 +407,7 @@ try {
         $baselineHash = Get-StoreMetadataFingerprint $m.state.submission
         $receipt = Upload $m
         Assert ((Get-StoreMetadataFingerprint $m.state.submission) -ceq $baselineHash) 'Published metadata was not restored exactly.'
-        Assert ($m.state.submission.friendlyName -ceq 'Retain friendly name' -and
+        Assert ($null -eq $m.state.submission.friendlyName -and
             $m.state.submission.pricing.priceId -ceq 'Free' -and
             $m.state.submission.listings.'en-us'.baseListing.title -ceq 'Retain title') 'Business metadata was not preserved.'
         Assert ($null -eq $m.state.submission.PSObject.Properties['cliAddedField']) 'An unrecognized CLI-added metadata field was retained.'
@@ -417,6 +417,39 @@ try {
         $m = New-Mock; $m.state.changedMetadata = $true; $m.state.failUpdate = $true
         Reject { Upload $m } 'Simulated submission update failure'
         Assert ($m.state.commits -eq 0 -and $m.state.updates -eq 0) 'Failed restoration continued toward certification.'
+    }
+    Test 'official CLI PascalCase server fields are excluded and pricing children remain guarded' {
+        $before = '{"Id":"50","Status":"Published","StatusDetails":{},"FileUploadUrl":"fixture-SAS","ApplicationPackages":[],"TargetPublishMode":"Manual","TargetPublishDate":null,"FriendlyName":"Submission 1","Pricing":{"PriceId":"Free","TrialPeriod":"NoFreeTrial","MarketSpecificPricings":{},"IsAdvancedPricingModel":false},"HardwarePreferences":[]}' | ConvertFrom-Json
+        $after = Copy-Json $before
+        $after.Id = '60'; $after.Status = 'PendingCommit'; $after.FileUploadUrl = 'fixture-token'
+        $after.ApplicationPackages = @([pscustomobject]@{ FileName = 'RedrainCast-x64.msix' })
+        $after.FriendlyName = $null; $after.TargetPublishMode = 'Immediate'
+        Assert ((Get-StoreMetadataFingerprint $before) -ceq (Get-StoreMetadataFingerprint $after)) 'Server-generated fields changed business fingerprint.'
+        $diff = Get-StoreMetadataDiffSummary $before $after
+        Assert ($diff.changedPropertyCount -eq 0 -and $diff.unclassifiedPropertyChangeCount -eq 0) 'PascalCase server fields were classified as business changes.'
+        $after.Pricing.TrialPeriod = '15Days'
+        $diff = Get-StoreMetadataDiffSummary $before $after
+        Assert ($diff.pricingChanges.Count -eq 1 -and $diff.pricingChanges[0].propertyPath -ceq 'pricing.trialPeriod') 'Pricing leaf change was not classified.'
+        Assert ((Get-StoreMetadataFingerprint $before) -cne (Get-StoreMetadataFingerprint $after)) 'Pricing change bypassed fingerprint.'
+    }
+    Test 'restoration preserves empty and single-item arrays without replacing package data' {
+        $before = '{"HardwarePreferences":[],"GamingOptions":["value"],"Pricing":{"PriceId":"Free"}}' | ConvertFrom-Json
+        $after = '{"HardwarePreferences":null,"GamingOptions":null,"Pricing":{"PriceId":"NotAvailable"},"ApplicationPackages":[{"FileName":"RedrainCast-new.msix"}]}' | ConvertFrom-Json
+        $packageHash = ConvertTo-StoreCanonicalJson $after.ApplicationPackages
+        & (Get-Module StoreCli) { param($Before, $After) Restore-StoreSubmissionMetadata $Before $After } $before $after
+        Assert ($after.HardwarePreferences -is [array] -and $after.HardwarePreferences.Count -eq 0) 'Empty array became null.'
+        Assert ($after.GamingOptions -is [array] -and $after.GamingOptions.Count -eq 1) 'Single-item array became scalar.'
+        Assert ((ConvertTo-StoreCanonicalJson $after.ApplicationPackages) -ceq $packageHash) 'Restoration overwrote uploaded packages.'
+    }
+    Test 'inspection projects only safe package names versions architectures and states' {
+        $m = New-Mock; Set-Pending $m
+        $m.state.submission.applicationPackages[0].fileName = 'RedrainCast-arm64.msix'
+        $m.state.submission.applicationPackages[0] | Add-Member -NotePropertyName architecture -NotePropertyValue 'ARM64'
+        $m.state.submission.applicationPackages[1].fileName = 'https://fixture.invalid/?sig=fixture-SAS'
+        $inspection = Get-StoreInspection (Get-StoreState $identity $m.cli) '60' '456' ('b' * 40)
+        Assert ($inspection.packages.Count -eq 2 -and $inspection.packages[0].version -ceq '1.2.2.0' -and
+            $inspection.packages[0].architecture -ceq 'ARM64' -and $inspection.packages[0].fileStatus -ceq 'Uploaded') 'Package evidence missing.'
+        Assert ((ConvertTo-Json $inspection -Depth 10) -notmatch 'fixture-SAS|Retain title|fixture.invalid') 'Unsafe package metadata escaped.'
     }
     Test 'failed upload is never automatically retried or deleted' {
         $m = New-Mock; $m.state.failPublish = $true

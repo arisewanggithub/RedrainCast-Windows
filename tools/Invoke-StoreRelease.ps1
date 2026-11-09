@@ -107,6 +107,7 @@ try {
             $inspection | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $WorkDirectory 'store-inspection.json') -Encoding UTF8
             $priceClass = Get-StorePriceClassification $state.submission
             Write-Host "PendingCommit draft fingerprint saved. Pricing classification: $priceClass. No metadata or signed URLs logged."
+            Write-Host ('Saved package evidence: ' + (ConvertTo-Json -InputObject $inspection.packages -Compress -Depth 5))
         }
         'discard-draft' {
             Remove-StoreInspectedDraft $identity $inspection $InspectSubmissionId $cli
