@@ -323,6 +323,62 @@ try {
         Assert ($json -notmatch 'fixture-|https:|message' -and $json -match 'InvalidRequest' -and
             $json -match 'UnknownOrSuppressed') 'Unsafe inspection output.'
     }
+    Test 'explicit inspected draft recovery updates the same draft without create or delete' {
+        $mock = New-Mock; $mock.state.app.pendingApplicationSubmission = @{ id = '60' }
+        $mock.state.draft.targetPublishMode = 'Immediate'
+        $snapshot = $null
+        $null = Get-StoreDraftInspection $identity '60' $mock.request ([ref]$snapshot)
+        Assert ((ConvertTo-Json $snapshot) -notmatch 'fixture-|fileUploadUrl|listings|pricing') 'Snapshot leaked metadata.'
+        $mock.state.calls.Clear()
+        $provenance = New-Object 'Collections.Generic.List[object]'
+        $record = { param($value) $provenance.Add(($value | ConvertTo-Json -Depth 5 | ConvertFrom-Json)) }.GetNewClosure()
+        $result = Resume-StoreDraft $identity $archive '123' ('a' * 40) $snapshot '60' $mock.request $record
+        Assert ($result.submissionId -ceq '60' -and $mock.state.uploadCount -eq 1 -and $mock.state.commitCount -eq 0) 'Recovery did not upload exact draft.'
+        Assert (@($mock.state.calls | Where-Object { $_ -match '^POST|^DELETE' }).Count -eq 0) 'Recovery created/deleted/committed a draft.'
+        Assert ($provenance.Count -eq 1 -and $provenance[0].packagesFingerprint -ceq $snapshot.packagesFingerprint) 'Missing early safe provenance.'
+        $status = Submit-StoreDraft $identity $result $archive.packages '123' ('a' * 40) $mock.request
+        Assert ($status -ceq 'CommitStarted' -and $mock.state.commitCount -eq 1) 'Recovered receipt did not pass existing submit gates.'
+    }
+    Test 'recovery refuses changed pointers metadata package states status mode and snapshots' {
+        foreach ($change in @('pending', 'published', 'metadata', 'package', 'fileStatus', 'status', 'mode', 'id', 'fingerprint', 'repository')) {
+            $mock = New-Mock; $mock.state.app.pendingApplicationSubmission = @{ id = '60' }
+            $mock.state.draft.targetPublishMode = 'Immediate'
+            $snapshot = $null
+            $null = Get-StoreDraftInspection $identity '60' $mock.request ([ref]$snapshot)
+            switch ($change) {
+                pending { $mock.state.app.pendingApplicationSubmission.id = '61' }
+                published { $mock.state.app.lastPublishedApplicationSubmission.id = '51' }
+                metadata { $mock.state.draft.pricing.priceId = 'Tier9' }
+                package { $mock.state.draft.applicationPackages[0].version = '9.0.0.0' }
+                fileStatus { $mock.state.draft.applicationPackages[0].fileStatus = 'PendingUpload' }
+                status { $mock.state.draft.status = 'CommitStarted' }
+                mode { $mock.state.draft.targetPublishMode = 'Manual' }
+                id { $snapshot.submissionId = '61' }
+                fingerprint { $snapshot.metadataFingerprint = 'invalid' }
+                repository { $snapshot.repository = 'other/repository' }
+            }
+            $mock.state.calls.Clear()
+            Reject { Resume-StoreDraft $identity $archive '123' ('a' * 40) $snapshot '60' $mock.request }
+            Assert (@($mock.state.calls | Where-Object { -not $_.StartsWith('GET ') }).Count -eq 0) "Changed $change reached a mutation."
+        }
+    }
+    Test 'recovery records provenance before a failed PUT and never retries or commits' {
+        $mock = New-Mock; $mock.state.app.pendingApplicationSubmission = @{ id = '60' }
+        $mock.state.draft.targetPublishMode = 'Immediate'
+        $snapshot = $null
+        $null = Get-StoreDraftInspection $identity '60' $mock.request ([ref]$snapshot)
+        $original = $mock.request
+        $events = New-Object 'Collections.Generic.List[string]'
+        $request = {
+            param($method, $path, $body, $inFile)
+            if ($method -ceq 'PUT') { $events.Add('PUT'); throw 'Simulated transport failure.' }
+            return & $original $method $path $body $inFile
+        }.GetNewClosure()
+        $record = { param($value) $events.Add('provenance') }.GetNewClosure()
+        Reject { Resume-StoreDraft $identity $archive '123' ('a' * 40) $snapshot '60' $request $record } 'transport'
+        Assert (($events -join ',') -ceq 'provenance,PUT') 'Provenance missing, late or request retried.'
+        Assert ($mock.state.uploadCount -eq 0 -and $mock.state.commitCount -eq 0) 'Failed metadata PUT uploaded or committed.'
+    }
     Test 'read-only preflight reports readiness for a published product without mutations' {
         $mock = New-Mock
         $ready = Get-StoreReadiness $identity $mock.request
@@ -821,6 +877,11 @@ function Receive-CiBuild {
                         (ConvertTo-Json -InputObject $global:StoreTestReceipt -Depth 100), (New-Object Text.UTF8Encoding($false)))
                     return
                 }
+                if ($name -ceq 'store-inspection') {
+                    [IO.File]::WriteAllText((Join-Path $destination 'store-inspection.json'),
+                        (ConvertTo-Json -InputObject $global:StoreTestSnapshot -Depth 5), (New-Object Text.UTF8Encoding($false)))
+                    return
+                }
                 throw 'Only the sanitized Store receipt may be downloaded from Actions.'
             }
             throw 'Unexpected offline GitHub request.'
@@ -899,15 +960,31 @@ function Receive-CiBuild {
             } 'successful, completed main run'
             $global:StoreTestRun.event = 'push'
             Assert ($global:StoreTestCiCalls.Count -eq 7) 'Untrusted source reached the release downloader.'
+            $global:StoreTestSnapshot = [pscustomobject]@{ inspectionRunId = '456'; sourceSha = ('a' * 40) }
+            $before = $global:StoreTestCiCalls.Count
+            & $entrypointPath -Stage resume-draft -InspectSubmissionId '60' -InspectRunId '456' -BuildRunId '123' `
+                -ConfirmStore $identity.StoreId -WorkDirectory (Join-Path $fixtures 'resume-whatif') -WhatIf
+            Assert ($global:StoreTestCiCalls.Count -eq ($before + 1)) 'Recovery WhatIf did not validate the exact private build.'
+            $global:StoreTestSnapshot.sourceSha = 'b' * 40
+            Reject {
+                & $entrypointPath -Stage resume-draft -InspectSubmissionId '60' -InspectRunId '456' -BuildRunId '123' `
+                    -ConfirmStore $identity.StoreId -WorkDirectory (Join-Path $fixtures 'resume-untrusted-snapshot') -WhatIf
+            } 'trusted workflow'
+            Assert ($global:StoreTestCiCalls.Count -eq ($before + 1)) 'Untrusted snapshot accessed private builds.'
+            Reject {
+                & $entrypointPath -Stage resume-draft -InspectSubmissionId '60' -BuildRunId '123' `
+                    -ConfirmStore $identity.StoreId -WhatIf
+            } 'explicit successful inspection'
+            $beforeGh = $global:StoreTestGhCount
             $env:GITHUB_REF = 'refs/heads/feature'
             Reject { & $entrypointPath -Stage upload-draft -BuildRunId '123' -ConfirmStore $identity.StoreId -WorkDirectory (Join-Path $fixtures 'badbranch') -WhatIf } 'manual main'
-            Assert ($global:StoreTestGhCount -eq 12 -and $global:StoreTestCiCalls.Count -eq 7) 'Branch rejection accessed release downloads.'
+            Assert ($global:StoreTestGhCount -eq $beforeGh -and $global:StoreTestCiCalls.Count -eq ($before + 1)) 'Branch rejection accessed release downloads.'
         } finally {
             Remove-Item Function:\gh
             if ($null -ne $oldGh) { Set-Item Function:\gh $oldGh.ScriptBlock }
             foreach ($name in $environment.Keys) { [Environment]::SetEnvironmentVariable($name, $environment[$name]) }
             Remove-Variable StoreTestRun, StoreTestFixturePath, StoreTestGhCount, StoreTestDraftRun, StoreTestReceipt,
-                StoreTestCiCalls, StoreTestCiFailure -Scope Global
+                StoreTestCiCalls, StoreTestCiFailure, StoreTestSnapshot -Scope Global
         }
     }
     Write-Host "$script:passed offline Store tests passed. No live Store, Azure, native build, signing, installation, or capture operations ran."

@@ -531,7 +531,7 @@ function Get-StoreReadiness {
 }
 
 function Get-StoreDraftInspection {
-    param($Identity, [string]$SubmissionId, [scriptblock]$Request)
+    param($Identity, [string]$SubmissionId, [scriptblock]$Request, [ref]$Snapshot)
     if ($SubmissionId -cnotmatch '^[1-9][0-9]{0,19}$') { throw 'Inspection requires an exact numeric submission ID.' }
     $app = & $Request GET "applications/$script:Product" $null $null
     Assert-StoreApplication $app $Identity -AllowUnpublished
@@ -541,6 +541,9 @@ function Get-StoreDraftInspection {
     }
     $draft = & $Request GET "applications/$script:Product/submissions/$SubmissionId" $null $null
     if ([string]$draft.id -cne $SubmissionId) { throw 'Inspection response ID mismatch.' }
+    if ($PSBoundParameters.ContainsKey('Snapshot')) {
+        $Snapshot.Value = New-StoreRecoverySnapshot $app $draft
+    }
     $packages = @()
     foreach ($package in @($draft.applicationPackages) | Select-Object -First 20) {
         $row = [ordered]@{}
@@ -573,6 +576,50 @@ function Get-StoreDraftInspection {
     }
 }
 
+function New-StoreRecoverySnapshot {
+    param($Application, $Draft)
+    $published = $Application.PSObject.Properties['lastPublishedApplicationSubmission']
+    $priorId = if ($null -ne $published -and $null -ne $published.Value) { [string]$published.Value.id } else { '' }
+    return [pscustomobject]@{
+        schemaVersion = 1; repository = $script:Repository; applicationId = $script:Product
+        submissionId = [string]$Draft.id; priorLastPublishedId = $priorId
+        metadataFingerprint = Get-StoreMetadataFingerprint $Draft
+        activePackagesFingerprint = Get-StoreActivePackageFingerprint $Draft
+        deletedPackagesFingerprint = Get-StoreHash (ConvertTo-StoreCanonicalJson @($Draft.applicationPackages | Where-Object { $_.fileStatus -ceq 'PendingDelete' }))
+        packagesFingerprint = Get-StoreHash (ConvertTo-StoreCanonicalJson @($Draft.applicationPackages))
+    }
+}
+
+function Resume-StoreDraft {
+    param($Identity, $Archive, [string]$BuildRunId, [string]$BuildHeadSha,
+        $Snapshot, [string]$SubmissionId, [scriptblock]$Request, [scriptblock]$RecordProvenance)
+    if ($null -ne $Archive.listingUpdate) { throw 'Recovery supports package-only updates, never listings.' }
+    if ($Snapshot.schemaVersion -ne 1 -or $Snapshot.repository -cne $script:Repository -or
+        $Snapshot.applicationId -cne $script:Product -or $SubmissionId -cnotmatch '^[1-9][0-9]{0,19}$' -or
+        $Snapshot.submissionId -cne $SubmissionId -or [string]$Snapshot.priorLastPublishedId -cnotmatch '^[1-9][0-9]{0,19}$') {
+        throw 'Recovery snapshot identity is invalid.'
+    }
+    foreach ($field in @('metadataFingerprint', 'activePackagesFingerprint', 'deletedPackagesFingerprint', 'packagesFingerprint')) {
+        if ([string]$Snapshot.$field -cnotmatch '^[a-f0-9]{64}$') { throw 'Recovery snapshot fingerprint is invalid.' }
+    }
+    $app = & $Request GET "applications/$script:Product" $null $null
+    Assert-StoreApplication $app $Identity
+    if ($null -eq $app.pendingApplicationSubmission -or [string]$app.pendingApplicationSubmission.id -cne $SubmissionId -or
+        [string]$app.lastPublishedApplicationSubmission.id -cne $Snapshot.priorLastPublishedId) {
+        throw 'Recovery pending or published pointer changed; no Store mutation performed.'
+    }
+    $draft = & $Request GET "applications/$script:Product/submissions/$SubmissionId" $null $null
+    if ([string]$draft.id -cne $SubmissionId -or $draft.status -cne 'PendingCommit' -or $draft.targetPublishMode -cne 'Immediate') {
+        throw 'Recovery requires the exact pending-commit draft with immediate publication.'
+    }
+    $current = New-StoreRecoverySnapshot $app $draft
+    foreach ($field in @('metadataFingerprint', 'activePackagesFingerprint', 'deletedPackagesFingerprint', 'packagesFingerprint')) {
+        if ($current.$field -cne $Snapshot.$field) { throw 'Draft changed since inspection; recovery refused without mutation.' }
+    }
+    if ($null -ne $RecordProvenance) { [void](& $RecordProvenance $current) }
+    return Set-StoreDraftPackages $draft $Snapshot.priorLastPublishedId $Archive $BuildRunId $BuildHeadSha $Request
+}
+
 function Assert-StorePackages {
     param($Submission, $Packages, [string]$DeletedFingerprint)
     $active = @($Submission.applicationPackages | Where-Object { $_.fileStatus -cne 'PendingDelete' })
@@ -592,7 +639,8 @@ function Assert-StorePackages {
 }
 
 function New-StoreDraft {
-    param($Identity, $Archive, [string]$BuildRunId, [string]$BuildHeadSha, [scriptblock]$Request)
+    param($Identity, $Archive, [string]$BuildRunId, [string]$BuildHeadSha, [scriptblock]$Request,
+        [scriptblock]$RecordProvenance)
     $app = & $Request GET "applications/$script:Product" $null $null
     Assert-StoreApplication $app $Identity
     $pending = $app.PSObject.Properties['pendingApplicationSubmission']
@@ -600,6 +648,12 @@ function New-StoreDraft {
     $previousId = [string]$app.lastPublishedApplicationSubmission.id
     $draft = & $Request POST "applications/$script:Product/submissions" $null $null
     if ([string]$draft.id -notmatch '^[1-9][0-9]*$' -or $draft.status -cne 'PendingCommit') { throw 'Unexpected new draft response; inspect Partner Center manually.' }
+    if ($null -ne $RecordProvenance) { [void](& $RecordProvenance (New-StoreRecoverySnapshot $app $draft)) }
+    return Set-StoreDraftPackages $draft $previousId $Archive $BuildRunId $BuildHeadSha $Request
+}
+
+function Set-StoreDraftPackages {
+    param($Draft, [string]$PreviousId, $Archive, [string]$BuildRunId, [string]$BuildHeadSha, [scriptblock]$Request)
     $id = [string]$draft.id
     foreach ($old in $draft.applicationPackages) { $old.fileStatus = 'PendingDelete' }
     $deleted = @($draft.applicationPackages)
@@ -709,5 +763,5 @@ Export-ModuleMember -Function Assert-StoreRun, Get-StoreRun, Receive-StoreArtifa
     Get-StoreHash, Get-StoreMetadataFingerprint, Get-StoreActivePackageFingerprint, Read-StorePackage,
     Assert-StoreArchiveLength, New-StorePackageArchive,
     Get-StoreListingLocales, Assert-StoreListingApproval, Read-StoreListings, Set-StoreDraftListings, Assert-StoreListingImages,
-    Get-StoreSafeErrors, Get-StoreTransportDiagnostic, Get-StoreDraftInspection,
+    Get-StoreSafeErrors, Get-StoreTransportDiagnostic, Get-StoreDraftInspection, Resume-StoreDraft,
     Invoke-StoreHttp, Get-StoreToken, Assert-StoreApplication, Get-StoreReadiness, Assert-StorePackages, New-StoreDraft, Submit-StoreDraft

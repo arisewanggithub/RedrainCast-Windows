@@ -1,7 +1,8 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [Parameter(Mandatory = $true)][ValidateSet('preflight', 'inspect-draft', 'upload-draft', 'upload-listings-draft', 'submit-draft')][string]$Stage,
+    [Parameter(Mandatory = $true)][ValidateSet('preflight', 'inspect-draft', 'resume-draft', 'upload-draft', 'upload-listings-draft', 'submit-draft')][string]$Stage,
     [string]$InspectSubmissionId,
+    [string]$InspectRunId,
     [string]$BuildRunId,
     [string]$DraftRunId,
     [Parameter(Mandatory = $true)][string]$ConfirmStore,
@@ -21,7 +22,11 @@ if ($Stage -ceq 'upload-listings-draft') {
 } elseif ($ConfirmListingsCommit) { throw 'Listing commit confirmation is only valid for upload-listings-draft.' }
 $identity = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'StoreIdentity.json') -Raw | ConvertFrom-Json
 if ($identity.StoreId -cne $ConfirmStore) { throw 'Store identity does not match the confirmation.' }
-if ($Stage -cne 'inspect-draft' -and $InspectSubmissionId) { throw 'Inspection ID is only valid for inspect-draft.' }
+if ($Stage -cnotin @('inspect-draft', 'resume-draft') -and $InspectSubmissionId) { throw 'Inspection ID is only valid for inspect-draft or resume-draft.' }
+if ($Stage -cne 'resume-draft' -and $InspectRunId) { throw 'Inspection run is only valid for resume-draft.' }
+if ($Stage -ceq 'resume-draft' -and ($InspectRunId -cnotmatch '^[1-9][0-9]*$' -or $InspectSubmissionId -cnotmatch '^[1-9][0-9]{0,19}$')) {
+    throw 'Recovery requires an explicit successful inspection run and exact submission ID.'
+}
 if ($Stage -cin @('preflight', 'inspect-draft')) {
     if ($BuildRunId -or $DraftRunId) { throw 'Read-only stage does not accept build or draft run inputs.' }
     if ($Stage -ceq 'inspect-draft' -and $InspectSubmissionId -cnotmatch '^[1-9][0-9]{0,19}$') {
@@ -35,7 +40,14 @@ if ($Stage -cin @('preflight', 'inspect-draft')) {
         Invoke-StoreHttp GET "https://manage.devcenter.microsoft.com/v1.0/my/$path" $headers
     }.GetNewClosure()
     if ($Stage -ceq 'inspect-draft') {
-        $inspection = Get-StoreDraftInspection $identity $InspectSubmissionId $request
+        if (Test-Path -LiteralPath $WorkDirectory) { throw 'Work directory must be new; existing files are preserved.' }
+        $snapshot = $null
+        $inspection = Get-StoreDraftInspection $identity $InspectSubmissionId $request ([ref]$snapshot)
+        $snapshot | Add-Member -NotePropertyName inspectionRunId -NotePropertyValue $env:GITHUB_RUN_ID
+        $snapshot | Add-Member -NotePropertyName sourceSha -NotePropertyValue $env:GITHUB_SHA
+        New-Item -ItemType Directory -Path $WorkDirectory | Out-Null
+        [IO.File]::WriteAllText((Join-Path $WorkDirectory 'store-inspection.json'),
+            (ConvertTo-Json -InputObject $snapshot -Depth 5), (New-Object Text.UTF8Encoding($false)))
         Write-Host (ConvertTo-Json -InputObject $inspection -Depth 5 -Compress)
         return
     }
@@ -46,6 +58,19 @@ if ($Stage -cin @('preflight', 'inspect-draft')) {
 if (Test-Path -LiteralPath $WorkDirectory) { throw 'Work directory must be new; existing files are preserved.' }
 New-Item -ItemType Directory -Path $WorkDirectory -WhatIf:$false | Out-Null
 try {
+    if ($Stage -ceq 'resume-draft') {
+        $inspectRun = Get-StoreRun $InspectRunId '.github/workflows/store-release.yml'
+        $inspectFolder = Join-Path $WorkDirectory 'inspection'
+        Receive-StoreArtifact $InspectRunId 'store-inspection' $inspectFolder
+        $snapshots = @(Get-ChildItem -LiteralPath $inspectFolder -Recurse -File)
+        if ($snapshots.Count -ne 1 -or $snapshots[0].Name -cne 'store-inspection.json' -or $snapshots[0].Length -gt 16KB) {
+            throw 'Expected exactly one small trusted inspection snapshot.'
+        }
+        $snapshot = Get-Content -LiteralPath $snapshots[0].FullName -Raw | ConvertFrom-Json
+        if ($snapshot.inspectionRunId -cne $InspectRunId -or $snapshot.sourceSha -cne $inspectRun.head_sha) {
+            throw 'Inspection snapshot does not match the trusted workflow run and commit.'
+        }
+    }
     if ($Stage -ceq 'submit-draft') {
         $draftRun = Get-StoreRun $DraftRunId '.github/workflows/store-release.yml'
         $receiptFolder = Join-Path $WorkDirectory 'receipt'
@@ -86,18 +111,29 @@ try {
             Invoke-StoreHttp $method "https://manage.devcenter.microsoft.com/v1.0/my/$path" $headers $json
         }
     }.GetNewClosure()
-    if ($Stage -cin @('upload-draft', 'upload-listings-draft')) {
-        $receipt = New-StoreDraft $identity $archive $BuildRunId $build.head_sha $request
+    $recordProvenance = {
+        param($snapshot)
+        $snapshot | Add-Member -NotePropertyName sourceBuildRunId -NotePropertyValue $BuildRunId
+        $snapshot | Add-Member -NotePropertyName uploadRunId -NotePropertyValue $env:GITHUB_RUN_ID
+        [IO.File]::WriteAllText((Join-Path $WorkDirectory 'store-draft-provenance.json'),
+            (ConvertTo-Json -InputObject $snapshot -Depth 5), (New-Object Text.UTF8Encoding($false)))
+    }.GetNewClosure()
+    if ($Stage -cin @('upload-draft', 'upload-listings-draft', 'resume-draft')) {
+        if ($Stage -ceq 'resume-draft') {
+            $receipt = Resume-StoreDraft $identity $archive $BuildRunId $build.head_sha $snapshot $InspectSubmissionId $request $recordProvenance
+        } else {
+            $receipt = New-StoreDraft $identity $archive $BuildRunId $build.head_sha $request $recordProvenance
+        }
         $receiptPath = Join-Path $WorkDirectory 'store-draft-receipt.json'
         [IO.File]::WriteAllText($receiptPath, (ConvertTo-Json -InputObject $receipt -Depth 100), (New-Object Text.UTF8Encoding($false)))
-        Write-Host "API-owned draft $($receipt.submissionId) uploaded. Certification has NOT been requested."
+        Write-Host "Draft $($receipt.submissionId) uploaded and receipt verified. Certification has NOT been requested."
     } else {
         $status = Submit-StoreDraft $identity $receipt $archive.packages $BuildRunId $build.head_sha $request
         Write-Host "Commit accepted; observed processing state: $status. Publication is automatic after successful certification; monitor Partner Center."
     }
 } finally {
     # Do not leave downloaded binaries in later artifact steps. Only the sanitized receipt may survive.
-    foreach ($name in @('arm64', 'x64', 'receipt', 'store-packages.zip')) {
+    foreach ($name in @('arm64', 'x64', 'receipt', 'inspection', 'store-packages.zip')) {
         $path = Join-Path $WorkDirectory $name
         if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force -WhatIf:$false }
     }
