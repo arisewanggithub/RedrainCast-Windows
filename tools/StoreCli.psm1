@@ -182,6 +182,8 @@ function Get-StoreMetadataDiffSummary {
             propertyPath = "pricing.$name"
             beforeSha256 = Get-StoreHash (ConvertTo-StoreCanonicalJson $beforeValue)
             afterSha256 = Get-StoreHash (ConvertTo-StoreCanonicalJson $afterValue)
+            beforeKind = if ($null -eq $beforeValue) { 'null' } else { $beforeValue.GetType().Name }
+            afterKind = if ($null -eq $afterValue) { 'null' } else { $afterValue.GetType().Name }
         }
     }
     return [pscustomobject]@{
@@ -547,12 +549,14 @@ function New-StoreCliDraft {
         else { $state.submission.pricing.priceId = $ApprovedBasePriceId }
     }
     $metadataHash = Get-StoreMetadataFingerprint $state.submission
+    Write-Host ('Validated release package bytes: ' + (ConvertTo-Json -InputObject $PackageSet.packages -Compress -Depth 5))
     $args = @('publish', $ProjectPath, '--appId', $script:Product, '--inputDirectory', $PackageSet.directory,
         '--noCommit', '--uploadTimeout', '600')
     if ($ApprovedBasePriceId) { $args += @('--priceId', $ApprovedBasePriceId) }
     $null = & $Cli $args $false
     $uploaded = Get-StoreState $Identity $Cli
     $draft = $uploaded.submission
+    Write-Host ('CLI-created package evidence: ' + (ConvertTo-Json -InputObject @(Get-StorePackageEvidence $draft) -Compress -Depth 5))
     $pending = $uploaded.application.pendingApplicationSubmission
     $pendingPointerChanged = $null -eq $pending -or [string]$pending.id -cne [string]$draft.id
     $publishedPointerChanged = [string]$uploaded.application.lastPublishedApplicationSubmission.id -cne [string]$state.application.lastPublishedApplicationSubmission.id
