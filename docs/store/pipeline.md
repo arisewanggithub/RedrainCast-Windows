@@ -80,6 +80,9 @@ by implementing or reviewing this migration.
    Official `submission update --payload` then retires all old packages and
    saves `Immediate` publication. Re-read and verify preserved metadata/listings
    and exactly the new pair; save a schema-3 receipt. No certification.
+   Any populated server package version/architecture must match the validated
+   MSIX. Unknown ingestion metadata is allowed only while `PendingUpload`;
+   `Uploaded` packages require both fields before a receipt/certification.
 5. **`submit-draft`**: supply the successful upload's `draft_run_id`. Download its
    trusted receipt, re-download and validate the identical official release,
    and verify exact draft/published pointers and full CLI-visible fingerprint.
@@ -107,6 +110,28 @@ ARM64/x64 asset lengths are **175194142 / 184858073 bytes**; the normal release
 receipt validation remains authoritative. Nothing was uploaded during migration.
 
 ### Official CLI constraints
+
+The v0.4.4 contracts were verified directly against its tagged implementation
+(not inferred from our mocks):
+
+- [`UpdateCommand.cs` lines 28–41, 164, 204](https://github.com/microsoft/msstore-cli/blob/v0.4.4/MSStore.CLI/Commands/Submission/UpdateCommand.cs):
+  the inline product argument is optional, `--payload` resolves the JSON file,
+  and successful `submission update` writes serialized JSON via `StandardOutput`.
+- [`PublishCommand.cs` lines 92–150](https://github.com/microsoft/msstore-cli/blob/v0.4.4/MSStore.CLI/Commands/PublishCommand.cs):
+  `--appId`, `--inputDirectory`, `--noCommit`, and `--uploadTimeout` are actual
+  parser options; 600 seconds is within the accepted 100–100000 range.
+- [`WinUIProjectConfigurator.cs` lines 26–28](https://github.com/microsoft/msstore-cli/blob/v0.4.4/MSStore.CLI/ProjectConfigurators/WinUIProjectConfigurator.cs)
+  and [`FileProjectConfigurator.cs` lines 169–179](https://github.com/microsoft/msstore-cli/blob/v0.4.4/MSStore.CLI/ProjectConfigurators/FileProjectConfigurator.cs):
+  recursive MSIX discovery is filtered to files whose parent directory's parent
+  is the input root. Thus `cli-input\arm64\*.msix` and
+  `cli-input\x64\*.msix` are both selected in one invocation.
+- [`StoreHostBuilderExtensions.cs` lines 112, 126](https://github.com/microsoft/msstore-cli/blob/v0.4.4/MSStore.CLI/StoreHostBuilderExtensions.cs)
+  registers `--output-stream` on commands; [`StandardOutput.cs` lines 28–29](https://github.com/microsoft/msstore-cli/blob/v0.4.4/MSStore.CLI/Helpers/StandardOutput.cs)
+  writes JSON directly to stdout independently of progress output. The wrapper
+  always passes `--output-stream stderr`, captures stdout, and suppresses stderr.
+
+These are source-verified command contracts, not a live authentication/upload
+test. No real CLI command requiring configuration was executed during review.
 
 - Loose-MSIX publishing takes one file. Use the existing WinUI project publisher,
   which finds both validated MSIX files exactly one directory below the isolated

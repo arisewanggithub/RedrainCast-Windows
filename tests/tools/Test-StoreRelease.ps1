@@ -203,6 +203,34 @@ try {
         $m.state.submission.unknownFixtureField.nested[1] = 'changed'
         Assert ((Get-StoreMetadataFingerprint $m.state.submission) -cne $hash) 'Nested metadata was ignored.'
     }
+    Test 'first publication guard is explicit and read-only' {
+        $m = New-Mock
+        $m.state.app.lastPublishedApplicationSubmission = $null
+        Reject { Get-StoreState $identity $m.cli } 'First publication'
+        Assert ($m.state.calls.Count -eq 1 -and $m.state.calls[0] -ceq 'apps get') 'Unpublished product reached submission operations.'
+    }
+    Test 'pending ingestion permits unknown metadata but populated version and architecture must match' {
+        $expected = (New-Packages).packages
+        foreach ($status in @('PendingUpload', 'Uploaded')) {
+            $submission = [pscustomobject]@{ applicationPackages = @($expected | ForEach-Object {
+                [pscustomobject]@{ fileName = $_.fileName; fileStatus = $status; version = $_.version; architecture = $_.architecture.ToUpperInvariant() }
+            }) }
+            Assert-StoreUploadedPackages $submission $expected
+            foreach ($field in @('version', 'architecture')) {
+                $changed = Copy-Json $submission
+                $changed.applicationPackages[0].$field = 'wrong'
+                Reject { Assert-StoreUploadedPackages $changed $expected } 'version or architecture'
+                $changed.applicationPackages[0].$field = $null
+                if ($status -ceq 'Uploaded') {
+                    Reject { Assert-StoreUploadedPackages $changed $expected } 'metadata is incomplete'
+                } else {
+                    Assert-StoreUploadedPackages $changed $expected
+                    $changed.applicationPackages[0].PSObject.Properties.Remove($field)
+                    Assert-StoreUploadedPackages $changed $expected
+                }
+            }
+        }
+    }
     Test 'package-only upload uses official CLI, preserves listings and retires all old packages' {
         $m = New-Mock; $listings = ConvertTo-StoreCanonicalJson $m.state.submission.listings
         $receipt = Upload $m

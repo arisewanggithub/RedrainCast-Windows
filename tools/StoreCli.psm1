@@ -124,9 +124,13 @@ function Get-StoreState {
     param($Identity, [scriptblock]$Cli)
     $app = & $Cli @('apps', 'get', $script:Product) $true
     Assert-StoreApplication $app $Identity
-    $submission = & $Cli @('submission', 'get', $script:Product) $true
     $pending = $app.pendingApplicationSubmission
-    $expectedId = if ($null -ne $pending) { $pending.id } else { $app.lastPublishedApplicationSubmission.id }
+    $published = $app.lastPublishedApplicationSubmission
+    if ($null -eq $pending -and $null -eq $published) {
+        throw 'First publication must be completed before automated updates. No Store mutation was performed.'
+    }
+    $submission = & $Cli @('submission', 'get', $script:Product) $true
+    $expectedId = if ($null -ne $pending) { $pending.id } else { $published.id }
     if ([string]$expectedId -cnotmatch '^[1-9][0-9]*$' -or [string]$submission.id -cne [string]$expectedId) {
         throw 'Application and submission pointers do not match. No Store mutation was performed.'
     }
@@ -272,6 +276,17 @@ function Assert-StoreUploadedPackages {
         $found = @($active | Where-Object { $_.fileName -ceq $expected.fileName })
         if ($found.Count -ne 1 -or $found[0].fileStatus -cnotin @('PendingUpload', 'Uploaded')) {
             throw 'Draft package names or upload states do not match the validated release.'
+        }
+        foreach ($field in @('version', 'architecture')) {
+            $property = $found[0].PSObject.Properties[$field]
+            $value = if ($null -ne $property) { [string]$property.Value } else { '' }
+            # PendingUpload may precede ingestion; never accept contradictory populated metadata.
+            if ([string]::IsNullOrWhiteSpace($value)) {
+                if ($found[0].fileStatus -ceq 'Uploaded') { throw 'Uploaded package ingestion metadata is incomplete; inspect before certification.' }
+                continue
+            }
+            $matches = if ($field -ceq 'architecture') { $value -ieq [string]$expected.$field } else { $value -ceq [string]$expected.$field }
+            if (-not $matches) { throw 'Draft package version or architecture differs from the validated release.' }
         }
     }
 }
