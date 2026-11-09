@@ -684,6 +684,7 @@ try {
         Assert ($workflow -match 'version: v0.4.4' -and $workflow -match 'PARTNER_CENTER_SELLER_ID') 'CLI pin or seller ID missing.'
         Assert ($workflow -match 'workflow_run:' -and $workflow -match 'workflows: \[Windows build\]' -and
             $workflow -match "workflow_run.event == 'push'" -and $workflow -match 'release-latest') 'Automatic release provenance gate missing.'
+        Assert ($workflow -match "store:\s+needs: offline-checks\s+if: github.event_name == 'workflow_dispatch' &&") 'Store credentials and publication must require explicit manual dispatch.'
         Assert ($workflow -match 'always\(\) && steps.operation.outputs.draft-id' -and
             $workflow -match 'name: store-draft-ownership-\$\{\{ steps.operation.outputs.draft-id \}\}') 'Failed runs must persist draft-specific ownership evidence.'
         Assert ($workflow -notmatch 'resume-draft|upload-listings-draft|confirm_listings_commit') 'Legacy stage still exposed.'

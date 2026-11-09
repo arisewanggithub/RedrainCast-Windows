@@ -54,7 +54,7 @@ jobs:
         run: .\tests\tools\Test-StoreRelease.ps1
   store:
     needs: offline-checks
-    if: github.ref == 'refs/heads/main' && github.repository == 'arisewanggithub/RedrainCast-Windows'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.repository == 'arisewanggithub/RedrainCast-Windows'
     runs-on: [self-hosted, Windows, X64, arise-local]
     environment: microsoft-store
     steps:
