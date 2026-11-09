@@ -233,6 +233,9 @@ function Get-StoreSafeStatus {
 
 function Get-StoreInspection {
     param($State, [string]$SubmissionId, [string]$RunId, [string]$SourceSha)
+    if ([string]::IsNullOrWhiteSpace($SubmissionId) -and $null -ne $State.application.pendingApplicationSubmission) {
+        $SubmissionId = [string]$State.application.pendingApplicationSubmission.id
+    }
     if ($SubmissionId -cnotmatch '^[1-9][0-9]*$' -or $null -eq $State.application.pendingApplicationSubmission -or
         [string]$State.application.pendingApplicationSubmission.id -cne $SubmissionId -or
         [string]$State.submission.id -cne $SubmissionId -or $State.submission.status -cne 'PendingCommit') {

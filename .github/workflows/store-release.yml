@@ -14,7 +14,7 @@ on:
         type: choice
         options: [preflight, inspect-draft, discard-draft, upload-draft, submit-draft, release-latest, status]
       inspect_submission_id:
-        description: Exact pending submission ID (inspection or explicitly authorized discard only)
+        description: Optional ID for inspection; exact ID required for explicitly authorized discard
         type: string
       inspect_run_id:
         description: Successful main inspection run with unchanged snapshot (discard-draft only)

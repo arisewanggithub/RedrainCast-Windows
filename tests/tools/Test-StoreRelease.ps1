@@ -390,6 +390,13 @@ try {
         Remove-StoreInspectedDraft $identity $inspection '60' $m.cli
         Assert ($m.state.deletes -eq 1 -and $m.state.uploads -eq 0) 'Discard uploaded a replacement.'
     }
+    Test 'read-only inspection can resolve the current pending submission ID' {
+        $m = New-Mock; Set-Pending $m
+        $state = Get-StoreState $identity $m.cli
+        $inspection = Get-StoreInspection $state '' '456' ('b' * 40)
+        Assert ($inspection.submissionId -ceq '60') 'Inspection did not resolve the current pending ID.'
+        Assert ($m.state.deletes -eq 0 -and $m.state.uploads -eq 0 -and $m.state.commits -eq 0) 'Read-only inspection mutated Store state.'
+    }
     Test 'stale inspection, wrong ID, nonpending draft and legacy snapshots never delete' {
         foreach ($change in @('metadata', 'id', 'status', 'schema')) {
             $m = New-Mock; Set-Pending $m
