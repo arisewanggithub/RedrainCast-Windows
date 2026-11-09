@@ -114,9 +114,15 @@ blocking explicit-price-approval gate, not a reason to use browser automation.
    Copy (do not rebuild) the exact bytes into unique run-bound filenames.
    Refuse **every** existing pending draft, including a prior automation draft.
    Invoke official `publish --appId 9P1153MP6R32 --noCommit` on the existing
-   WinUI project with the isolated two-architecture `--inputDirectory`.
-   This does not rebuild the packages. Official project detection may restore
-   the WinUI project's dependencies; the workflow supplies .NET 10 for this.
+   restore-only publishing project with the isolated two-architecture `--inputDirectory`.
+   CLI v0.4.4 recognizes WinUI only when restored assets contain the umbrella
+   `Microsoft.WindowsAppSDK` package. The shipping app references the smaller
+   WinUI component instead, which the CLI misclassifies as UWP and then silently
+   discovers no staged MSIX files. An isolated project copies the app manifest
+   and references the umbrella at the app's WinUI version with all assets excluded.
+   It exists only for CLI detection/restore: neither it nor its dependencies are
+   built or copied into the validated shipping packages. The workflow supplies
+   .NET 10 for this restore; release package bytes are never rebuilt.
    The workflow compares the CLI-created draft with the CLI-visible published
    metadata snapshot held only in process memory. If metadata differs, it
    restores that exact snapshot through official `submission update --payload`,
