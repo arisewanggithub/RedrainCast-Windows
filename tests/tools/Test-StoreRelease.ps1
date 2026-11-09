@@ -160,7 +160,8 @@ try {
         Set-Content -LiteralPath $settings -Value '{"ClientId":"offline-fixture"}'
         Set-Content -LiteralPath $cache -Value 'offline-fixture'
         Set-Content -LiteralPath $keep -Value 'keep'
-        $priorExit = $global:LASTEXITCODE
+        $priorExitVariable = Get-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
+        $priorExit = if ($null -eq $priorExitVariable) { 0 } else { $priorExitVariable.Value }
         try {
             $null = & cmdkey "/generic:$target" '/user:offline-fixture' '/pass:offline-fixture-value' 2>$null
             Assert ($LASTEXITCODE -eq 0) 'Could not create isolated native credential fixture.'
