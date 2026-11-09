@@ -200,7 +200,13 @@ public sealed class HdrNegotiationTests
             Preparation = async token =>
             {
                 elapsed.Start();
-                await Task.Delay(TimeSpan.FromSeconds(12), token);
+                var minimumPreparation = TimeSpan.FromSeconds(12);
+                while (elapsed.Elapsed < minimumPreparation)
+                {
+                    var remaining = minimumPreparation - elapsed.Elapsed;
+                    await Task.Delay(remaining > TimeSpan.FromMilliseconds(1)
+                        ? remaining : TimeSpan.FromMilliseconds(1), token);
+                }
                 elapsed.Stop();
             }
         };
