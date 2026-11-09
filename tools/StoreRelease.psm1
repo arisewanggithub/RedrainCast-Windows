@@ -407,9 +407,20 @@ function Get-StoreTransportDiagnostic {
         if ($Text.TrimStart().StartsWith('{')) {
             $json = $Text | ConvertFrom-Json -ErrorAction Stop
             $details += $json
-            foreach ($name in @('error', 'errors')) {
-                $property = $json.PSObject.Properties[$name]
-                if ($null -ne $property) { $details += @($property.Value) }
+            $queue = New-Object 'Collections.Generic.Queue[object]'
+            $queue.Enqueue([pscustomobject]@{ value = $json; depth = 0 })
+            $details = @()
+            while ($queue.Count -and $details.Count -lt 100) {
+                $entry = $queue.Dequeue()
+                $details += $entry.value
+                if ($entry.depth -ge 5 -or $entry.value -is [string] -or $null -eq $entry.value) { continue }
+                foreach ($property in $entry.value.PSObject.Properties | Select-Object -First 30) {
+                    if ($property.Name -cin @('error', 'errors', 'details', 'innerError', 'innererror')) {
+                        foreach ($child in @($property.Value) | Select-Object -First 20) {
+                            $queue.Enqueue([pscustomobject]@{ value = $child; depth = $entry.depth + 1 })
+                        }
+                    }
+                }
             }
         } elseif ($Text.TrimStart().StartsWith('<')) {
             $settings = New-Object Xml.XmlReaderSettings
@@ -430,16 +441,24 @@ function Get-StoreTransportDiagnostic {
     $fields = New-Object 'Collections.Generic.List[string]'
     $reasons = New-Object 'Collections.Generic.List[string]'
     foreach ($item in $details | Select-Object -First 20) {
-        if ($null -eq $item -or $item -is [string]) { continue }
-        foreach ($name in @('message', 'target', 'propertyPath', 'field', 'parameter')) {
-            $property = $item.PSObject.Properties[$name]
-            if ($null -eq $property) { continue }
-            $value = [string]$property.Value
+        if ($null -eq $item) { continue }
+        $values = @()
+        if ($item -is [string]) { $values = @($item) }
+        else {
+            foreach ($name in @('message', 'target', 'propertyPath', 'field', 'parameter', 'details')) {
+                $property = $item.PSObject.Properties[$name]
+                if ($null -ne $property -and $property.Value -is [string]) { $values += $property.Value }
+            }
+        }
+        foreach ($value in $values) {
             # Report only fixed schema labels and fixed reason categories, never matched text.
             foreach ($field in @('applicationPackages', 'fileName', 'fileStatus', 'minimumDirectXVersion',
                 'minimumSystemRam', 'targetPublishMode', 'targetPublishDate', 'pricing', 'priceId',
                 'marketSpecificPricings', 'sales', 'listings', 'baseListing', 'images', 'packageDeliveryOptions',
-                'packageRollout', 'isMandatoryUpdate', 'allowTargetFutureDeviceFamilies', 'fileUploadUrl')) {
+                'packageRollout', 'isMandatoryUpdate', 'allowTargetFutureDeviceFamilies', 'fileUploadUrl',
+                'applicationCategory', 'visibility', 'enterpriseLicensing', 'friendlyName', 'notesForCertification',
+                'automaticBackupEnabled', 'hasExternalInAppProducts', 'meetAccessibilityGuidelines',
+                'trailers', 'hardwarePreferences', 'gamingOptions')) {
                 if ($value -match ('(?i)(?<![a-z0-9_])' + [regex]::Escape($field) + '(?![a-z0-9_])') -and -not $fields.Contains($field)) {
                     $fields.Add($field)
                 }

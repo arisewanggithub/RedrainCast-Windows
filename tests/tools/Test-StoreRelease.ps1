@@ -287,6 +287,15 @@ try {
             $safe = Get-StoreTransportDiagnostic $text
             Assert ($safe -ceq 'Service details unavailable or suppressed.') 'Unsafe malformed diagnostic.'
         }
+        Test 'nested Store details strings yield only fixed schema labels' {
+            foreach ($text in @(
+                '{"code":"InvalidParameterValue","details":"Invalid priceId fixture-token fixture-SAS"}',
+                '{"error":{"code":"InvalidParameterValue","innerError":{"details":[{"message":"Invalid enterpriseLicensing fixture-secret"}]}}}')) {
+                $safe = Get-StoreTransportDiagnostic $text
+                Assert ($safe -match 'InvalidParameterValue' -and $safe -match 'Schema labels:' -and
+                    $safe -notmatch 'fixture-|innerError|details:') 'Nested error details were unsafe or lost.'
+            }
+        }
         $codes = @(Get-StoreSafeErrors @((1..30 | ForEach-Object { [pscustomobject]@{ code = 'InvalidRequest' } })))
         Assert ($codes.Count -eq 1) 'Error codes were not deduplicated.'
     }
