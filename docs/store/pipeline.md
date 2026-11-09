@@ -96,8 +96,9 @@ owner action, never an automatic pipeline step.
    reviewers for a private repository are not available on ordinary
    Free/Pro/Team plans; availability depends on GitHub's plan/features (for
    example Enterprise). Where unavailable, restrict dispatch/write access,
-   review changes, use the explicit stage/product confirmation below, and
-   retain manual Partner Center final publication. A typed input is an
+   review changes and use the explicit stage/product confirmation below.
+   Certification dispatch authorizes automatic publication after successful
+   certification. A typed input is an
    operator acknowledgment, **not** an independent security boundary.
 5. Confirm the API supports your account/product features. Microsoft documents
    restrictions including mandatory updates. This product uses **Pricing
@@ -168,8 +169,9 @@ The server's create operation must also reject a racing pending submission.
 It creates one API-owned draft copied from the last published submission,
 marks all previous package entries `PendingDelete` (preserving their fields),
 adds both new packages as `PendingUpload`, and sets `targetPublishMode` to
-**Manual**. All other returned metadata is retained, including all languages,
-images, pricing, availability, certification notes and delivery settings.
+**Immediate** (automatic publication after successful certification). All
+other returned metadata is retained, including all languages, images, pricing,
+availability, certification notes and delivery settings.
 The complete JSON uses depth 100 and fails on serialization-depth warnings.
 
 For the default package-only mode, one ZIP containing only
@@ -202,7 +204,7 @@ Use this instead of `upload-draft` when an update should also replace the
 prepared base listing text and desktop screenshots. This is a separate,
 explicitly selected upload mode, not a command to edit an existing pending
 draft. It uses the same successful Windows build input and all the same
-first-publication, human-draft refusal, package and Manual-publication guards.
+first-publication, human-draft refusal, package and Immediate-publication guards.
 The initial publication still requires Partner Center.
 
 Review all [22 listing drafts](listings) and their **44 screenshots** at the
@@ -252,7 +254,7 @@ hashes. It contains no listing text, captions, image bytes, credentials or
 URLs. After upload, select `submit-draft` using this successful upload run.
 Do not run either upload mode again while that draft exists.
 
-### 2. `submit-draft` (certification request; still not public publication)
+### 2. `submit-draft` (certification request; automatic publication after passing)
 
 Review the upload run's sanitized receipt and the exact package acceptance.
 Dispatch again, select `submit-draft`, supply that successful **upload workflow
@@ -269,7 +271,7 @@ For a listing-enabled receipt, its listing commit and upload run must match
 that trusted upload workflow run; malformed or incomplete image bindings fail.
 
 It re-reads the application and exact submission, verifies the pending ID,
-previous published ID, `PendingCommit` status, Manual publication mode and all
+previous published ID, `PendingCommit` status, Immediate publication mode and all
 metadata/package fingerprints. Canonical hashes sort object keys ordinally,
 preserve array order and include unknown metadata. Only submission ID, status,
 status details, SAS URL and the separately checked package collection are
@@ -288,9 +290,9 @@ It rechecks the application pointer immediately before one REST `/commit`
 request. This starts processing/certification, **not** an immediate public
 release. One bounded read-only status request reports the observed processing
 state; a successful workflow is not evidence of certification acceptance.
-Unknown or failed states cause a failure. Keep monitoring in Partner Center
-and make the **final publish decision manually** after certification/acceptance.
-There is intentionally no `Immediate` or scheduled-publication option here.
+Unknown or failed states cause a failure. Keep monitoring in Partner Center.
+The submission is configured to publish automatically after successful
+certification; there is no manual-hold or scheduled-publication option here.
 
 ## Draft ownership and recovery
 

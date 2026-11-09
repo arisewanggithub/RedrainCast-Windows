@@ -278,8 +278,12 @@ function Read-StorePackage {
             'capture-worker/coreclr.dll', 'PRIVACY.md', 'THIRD_PARTY_NOTICES.txt')) {
             if (@($names | Where-Object { $_ -ceq $required }).Count -ne 1) { throw 'MSIX is missing a required shipping file or has duplicate entries.' }
         }
-        if (@($names | Where-Object { $_ -match '(?i)\.pdb$|(^|/)(CaptureProbe|ffmpeg|ffprobe|RecordExport)([^/]*)(\.exe|\.dll)$' }).Count) {
-            throw 'MSIX contains debug symbols or forbidden standalone helpers.'
+        $forbidden = @($names | Where-Object {
+            $_ -match '(?i)\.pdb$|(^|/)(CaptureProbe|ffmpeg|ffprobe|RecordExport)([^/]*)(\.exe|\.dll)$' -and
+            $_ -cnotin @('FFmpeg.AutoGen.dll', 'capture-worker/FFmpeg.AutoGen.dll')
+        })
+        if ($forbidden.Count) {
+            throw "MSIX contains debug symbols or forbidden standalone helpers: $($forbidden -join ', ')"
         }
         $reader = New-Object IO.StreamReader($archive.GetEntry('AppxManifest.xml').Open())
         try { $xmlText = $reader.ReadToEnd() } finally { $reader.Dispose() }
@@ -483,7 +487,7 @@ function New-StoreDraft {
         [pscustomobject]@{ fileName = $_.fileName; fileStatus = 'PendingUpload'; minimumDirectXVersion = 'None'; minimumSystemRam = 'None' }
     })
     $draft.applicationPackages = @($deleted) + @($newPackages)
-    $draft.targetPublishMode = 'Manual'
+    $draft.targetPublishMode = 'Immediate'
     $listingUpdate = $Archive.listingUpdate
     $imageNames = @()
     if ($null -ne $listingUpdate) {
@@ -510,7 +514,7 @@ function New-StoreDraft {
         repository = $script:Repository; sourceBuildRunId = $BuildRunId; buildHeadSha = $BuildHeadSha
         priorLastPublishedId = $previousId; packages = $packageReceipt
         metadataFingerprint = $metadataHash; deletedPackagesFingerprint = $deletedHash
-        activePackagesFingerprint = Get-StoreActivePackageFingerprint $saved; targetPublishMode = 'Manual'
+        activePackagesFingerprint = Get-StoreActivePackageFingerprint $saved; targetPublishMode = 'Immediate'
     }
     if ($null -ne $listingUpdate) {
         $receipt.schemaVersion = 2
@@ -527,7 +531,7 @@ function Submit-StoreDraft {
     if ($Receipt.schemaVersion -notin @(1, 2) -or $Receipt.repository -cne $script:Repository -or
         $Receipt.applicationId -cne $script:Product -or [string]$Receipt.submissionId -notmatch '^[1-9][0-9]*$' -or
         $Receipt.sourceBuildRunId -cne $BuildRunId -or $Receipt.buildHeadSha -cne $BuildHeadSha -or
-        $Receipt.targetPublishMode -cne 'Manual' -or $Receipt.metadataFingerprint -notmatch '^[a-f0-9]{64}$' -or
+        $Receipt.targetPublishMode -cne 'Immediate' -or $Receipt.metadataFingerprint -notmatch '^[a-f0-9]{64}$' -or
         $Receipt.deletedPackagesFingerprint -notmatch '^[a-f0-9]{64}$' -or
         $Receipt.activePackagesFingerprint -notmatch '^[a-f0-9]{64}$') { throw 'Receipt identity or build binding is invalid.' }
     $imageNames = @()
@@ -557,7 +561,7 @@ function Submit-StoreDraft {
         $app.lastPublishedApplicationSubmission.id -cne $Receipt.priorLastPublishedId) { throw 'Pending or last-published submission no longer matches the upload receipt.' }
     $path = "applications/$script:Product/submissions/$($Receipt.submissionId)"
     $draft = & $Request GET $path $null $null
-    if ($draft.id -cne $Receipt.submissionId -or $draft.status -cne 'PendingCommit' -or $draft.targetPublishMode -cne 'Manual' -or
+    if ($draft.id -cne $Receipt.submissionId -or $draft.status -cne 'PendingCommit' -or $draft.targetPublishMode -cne 'Immediate' -or
         (Get-StoreMetadataFingerprint $draft $imageNames) -cne $Receipt.metadataFingerprint) { throw 'Draft metadata changed or draft is no longer pending commit. Certification was not started.' }
     Assert-StorePackages $draft $Packages $Receipt.deletedPackagesFingerprint
     if ($Receipt.schemaVersion -eq 2) { Assert-StoreListingImages $draft $Receipt.listingUpdate.images }

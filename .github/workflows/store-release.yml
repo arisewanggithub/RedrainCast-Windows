@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: Read-only preflight, draft upload, listing upload, or certification request (Manual publication hold)
+        description: Read-only preflight, draft upload, listing upload, or certification request (automatic publication after certification)
         required: true
         default: preflight
         type: choice

@@ -29,7 +29,8 @@ naming/JSON candidates were not uploaded. Public setup/test instructions were
 saved and verified in Additional Testing Information; internal acceptance
 diagnostics were not submitted. This does not establish certification approval,
 publication or physical-device acceptance. The separately guarded REST update
-pipeline retains its Manual publication mode.
+pipeline also uses automatic publication after successful certification, with
+separate owner-dispatched upload and certification stages.
 
 ## Localized listing drafts
 
