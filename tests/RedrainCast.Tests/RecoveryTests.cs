@@ -252,7 +252,12 @@ public sealed class RecoveryTests
                 Assert.Single(factory.AudioThreadEntries);
                 Assert.Empty(factory.AudioThreadExits);
                 Assert.False(factory.Outputs[0].Disposed);
-                Assert.Equal(0, Volatile.Read(ref factory.RecoveredAudio));
+                string[] recoveryDetails;
+                lock (notices)
+                lock (states)
+                    recoveryDetails = notices.Concat(states).ToArray();
+                Assert.True(Volatile.Read(ref factory.RecoveredAudio) == 0,
+                    "Healthy audio unexpectedly recovered:\n" + string.Join("\n", recoveryDetails));
                 Assert.True(Volatile.Read(ref factory.AudioPresented) > 0);
             }
             stop.Cancel();
