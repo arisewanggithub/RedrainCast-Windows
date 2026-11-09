@@ -1229,6 +1229,11 @@ The application executable dispatches `--capture-worker` before starting WinUI.
 The capture worker is a separate process of that same executable, launched with
 the app's dependency graph and runtime configuration; no second apphost or
 worker-specific runtime configuration is published.
+The app references the Windows App SDK WinUI component and its required
+dependency closure rather than the umbrella SDK package. Self-contained
+publication retains the UI, windowing and localization runtime without the
+unused AI/ML, Search and Widgets components. Shipping checks reject those
+unused runtime DLLs. Managed trimming remains disabled.
 The pinned native preparation script downloads the FFmpeg 7.1.3 decoder/audio
 runtime in a user-local cache, along with its LGPL license, credits, configuration
 and build provenance. No native compiler or network-transport library is needed.

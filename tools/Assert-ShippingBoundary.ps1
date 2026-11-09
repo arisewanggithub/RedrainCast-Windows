@@ -20,6 +20,9 @@ foreach ($assembly in $removedMembers.Keys) {
     }
 }
 foreach ($file in @(Get-ChildItem -LiteralPath $PublishedDirectory -Recurse -Force)) {
+    if ($file.Name -match '(?i)^(onnxruntime.*|DirectML|Microsoft\.Windows\.AI.*|Microsoft\.AI.*|Microsoft\.Asg\..*|Microsoft\.Windows\.Search.*|Microsoft\.Windows\.Widgets.*)\.dll$') {
+        throw "Unused Windows App SDK component is forbidden: $($file.FullName)"
+    }
     if ($file.Name -match '(?i)^Scrcpy.*\.(dll|exe|deps\.json|runtimeconfig\.json)$') {
         throw "Obsolete project output is forbidden: $($file.FullName)"
     }
