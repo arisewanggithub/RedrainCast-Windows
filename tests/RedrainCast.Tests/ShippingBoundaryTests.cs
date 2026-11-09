@@ -91,6 +91,8 @@ public sealed class ShippingBoundaryTests
         Assert.DoesNotContain("Microsoft.WindowsAppSDK", packages);
         Assert.Contains("Microsoft.WindowsAppSDK.Runtime", packages);
         Assert.Equal("false", project.Descendants("WindowsAppSDKSelfContained").Single().Value);
+        Assert.Equal("true", project.Descendants("WindowsAppSDKBootstrapAutoInitializeOptions_OnPackageIdentity_NoOp").Single().Value);
+        Assert.Equal("true", project.Descendants("WindowsAppSDKBootstrapAutoInitializeOptions_OnNoMatch_ShowUI").Single().Value);
         Assert.Contains("--self-contained true", Fixture("Publish.ps1"));
         Assert.Contains("Microsoft.WindowsAppRuntime.2", Fixture("Package.ps1"));
         Assert.Contains("Microsoft.WindowsAppRuntime.Bootstrap.dll", Fixture("Publish.ps1"));
