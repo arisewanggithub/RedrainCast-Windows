@@ -105,7 +105,7 @@ function Get-StoreMetadataFingerprint {
     param($Submission)
     $metadata = [ordered]@{}
     foreach ($property in $Submission.PSObject.Properties) {
-        if ($property.Name -in @('id', 'status', 'statusDetails', 'fileUploadUrl', 'applicationPackages', 'targetPublishMode', 'targetPublishDate')) { continue }
+        if ($property.Name -in @('id', 'status', 'statusDetails', 'fileUploadUrl', 'applicationPackages', 'targetPublishMode', 'targetPublishDate', 'friendlyName')) { continue }
         $metadata[$property.Name.ToLowerInvariant()] = $property.Value
     }
     return Get-StoreHash (ConvertTo-StoreCanonicalJson $metadata)
@@ -117,7 +117,7 @@ function Get-StoreMetadataDiffSummary {
     $allowlisted = @(
         'allowmicrosoftdecideappavailabilitytofuturedevicefamilies', 'allowtargetfuturedevicefamilies',
         'applicationcategory', 'automaticbackupenabled', 'caninstallonremovablemedia', 'enterpriselicensing',
-        'friendlyname', 'gamingoptions', 'hardwarepreferences', 'hasexternalinappproducts',
+        'gamingoptions', 'hardwarepreferences', 'hasexternalinappproducts',
         'isgamedvrenabled', 'listings', 'meetaccessibilityguidelines', 'notesforcertification',
         'packagedeliveryoptions', 'pricing', 'trailers', 'visibility'
     )
@@ -158,11 +158,11 @@ function Get-StoreMetadataDiffSummary {
     $beforeAll = @{}
     $afterAll = @{}
     foreach ($property in $Before.PSObject.Properties) {
-        if ($property.Name -cin @('id', 'status', 'statusDetails', 'fileUploadUrl', 'applicationPackages', 'targetPublishMode', 'targetPublishDate')) { continue }
+        if ($property.Name -in @('id', 'status', 'statusDetails', 'fileUploadUrl', 'applicationPackages', 'targetPublishMode', 'targetPublishDate', 'friendlyName')) { continue }
         $beforeAll[$property.Name.ToLowerInvariant()] = $property.Value
     }
     foreach ($property in $After.PSObject.Properties) {
-        if ($property.Name -cin @('id', 'status', 'statusDetails', 'fileUploadUrl', 'applicationPackages', 'targetPublishMode', 'targetPublishDate')) { continue }
+        if ($property.Name -in @('id', 'status', 'statusDetails', 'fileUploadUrl', 'applicationPackages', 'targetPublishMode', 'targetPublishDate', 'friendlyName')) { continue }
         $afterAll[$property.Name.ToLowerInvariant()] = $property.Value
     }
     $unclassifiedChanges = 0
@@ -173,18 +173,41 @@ function Get-StoreMetadataDiffSummary {
             $unclassifiedChanges++
         }
     }
+    $pricingChanges = @()
+    foreach ($name in @('priceId', 'trialPeriod', 'marketSpecificPricings', 'isAdvancedPricingModel')) {
+        $beforeValue = Get-StoreObjectField (Get-StoreObjectField $Before 'pricing') $name
+        $afterValue = Get-StoreObjectField (Get-StoreObjectField $After 'pricing') $name
+        if ((ConvertTo-StoreCanonicalJson $beforeValue) -ceq (ConvertTo-StoreCanonicalJson $afterValue)) { continue }
+        $pricingChanges += [pscustomobject]@{
+            propertyPath = "pricing.$name"
+            beforeSha256 = Get-StoreHash (ConvertTo-StoreCanonicalJson $beforeValue)
+            afterSha256 = Get-StoreHash (ConvertTo-StoreCanonicalJson $afterValue)
+            beforeKind = if ($null -eq $beforeValue) { 'null' } else { $beforeValue.GetType().Name }
+            afterKind = if ($null -eq $afterValue) { 'null' } else { $afterValue.GetType().Name }
+        }
+    }
     return [pscustomobject]@{
         changedPropertyCount = $changed.Count
         unclassifiedPropertyChangeCount = $unclassifiedChanges
         changes = @($changed | Select-Object -First $MaximumChanges)
+        pricingChanges = $pricingChanges
     }
+}
+
+function Get-StoreObjectField {
+    param($Object, [string]$Name)
+    if ($null -eq $Object) { return $null }
+    if ($Object -is [Collections.IDictionary]) { return ,$Object[$Name] }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -ne $property) { return ,$property.Value }
+    return $null
 }
 
 function Restore-StoreSubmissionMetadata {
     param($PublishedSubmission, $Draft)
     $preservedProperties = @(
         'id', 'status', 'statusdetails', 'fileuploadurl', 'applicationpackages',
-        'targetpublishmode', 'targetpublishdate'
+        'targetpublishmode', 'targetpublishdate', 'friendlyname'
     )
     $publishedProperties = @{}
     foreach ($property in $PublishedSubmission.PSObject.Properties) {
@@ -197,7 +220,8 @@ function Restore-StoreSubmissionMetadata {
         $Draft.PSObject.Properties.Remove($property.Name)
     }
     foreach ($property in $publishedProperties.Values) {
-        $value = ConvertFrom-Json -InputObject (ConvertTo-Json -InputObject $property.Value -Depth 100)
+        $wrapper = [pscustomobject]@{ value = $property.Value } | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+        $value = $wrapper.value
         $existing = $Draft.PSObject.Properties[$property.Name]
         if ($null -ne $existing) { $existing.Value = $value }
         else { $Draft | Add-Member -MemberType NoteProperty -Name $property.Name -Value $value }
@@ -338,6 +362,45 @@ function Get-StoreInspection {
         schemaVersion = 3; applicationId = $script:Product; submissionId = $SubmissionId
         inspectionRunId = $RunId; sourceSha = $SourceSha
         fingerprint = Get-StoreHash (ConvertTo-StoreCanonicalJson $State.submission)
+        status = Get-StoreSafeStatus $State.submission
+        pricingClassification = Get-StorePriceClassification $State.submission
+        pricingFields = @(Get-StorePricingEvidence $State.submission)
+        packages = @(Get-StorePackageEvidence $State.submission)
+    }
+}
+
+function Get-StorePricingEvidence {
+    param($Submission)
+    foreach ($name in @('priceId', 'trialPeriod', 'marketSpecificPricings', 'isAdvancedPricingModel')) {
+        $value = Get-StoreObjectField (Get-StoreObjectField $Submission 'pricing') $name
+        $classification = if ($null -eq $value) { 'null' }
+            elseif ($name -ceq 'priceId') { Get-StorePriceClassification $Submission }
+            elseif ($name -ceq 'trialPeriod' -and [string]$value -cin @('NoFreeTrial', 'OneDay', 'TrialNeverExpires', 'SevenDays', 'FifteenDays', 'ThirtyDays')) { [string]$value }
+            elseif ($name -ceq 'isAdvancedPricingModel' -and $value -is [bool]) { [string]$value }
+            else { 'value (hashed)' }
+        [pscustomobject]@{
+            propertyPath = "pricing.$name"; classification = $classification
+            sha256 = Get-StoreHash (ConvertTo-StoreCanonicalJson $value)
+        }
+    }
+}
+
+function Get-StorePackageEvidence {
+    param($Submission)
+    foreach ($package in @($Submission.applicationPackages)) {
+        $safe = [ordered]@{}
+        foreach ($field in @('fileName', 'version', 'architecture', 'fileStatus')) {
+            $property = $package.PSObject.Properties[$field]
+            $value = if ($null -ne $property) { [string]$property.Value } else { '' }
+            $valid = switch ($field) {
+                'fileName' { $value -cmatch '^RedrainCast[-a-zA-Z0-9._]*\.msix$' }
+                'version' { $value -cmatch '^\d+\.\d+\.\d+\.\d+$' }
+                'architecture' { $value -imatch '^(arm64|x64|x86|arm|neutral)$' }
+                'fileStatus' { $value -cin @('PendingUpload', 'Uploaded', 'PendingDelete') }
+            }
+            $safe[$field] = if ($valid) { $value } elseif (-not $value) { $null } else { 'Other (suppressed)' }
+        }
+        [pscustomobject]$safe
     }
 }
 
@@ -503,12 +566,14 @@ function New-StoreCliDraft {
         else { $state.submission.pricing.priceId = $ApprovedBasePriceId }
     }
     $metadataHash = Get-StoreMetadataFingerprint $state.submission
+    Write-Host ('Validated release package bytes: ' + (ConvertTo-Json -InputObject $PackageSet.packages -Compress -Depth 5))
     $args = @('publish', $ProjectPath, '--appId', $script:Product, '--inputDirectory', $PackageSet.directory,
         '--noCommit', '--uploadTimeout', '600')
     if ($ApprovedBasePriceId) { $args += @('--priceId', $ApprovedBasePriceId) }
     $null = & $Cli $args $false
     $uploaded = Get-StoreState $Identity $Cli
     $draft = $uploaded.submission
+    Write-Host ('CLI-created package evidence: ' + (ConvertTo-Json -InputObject @(Get-StorePackageEvidence $draft) -Compress -Depth 5))
     $pending = $uploaded.application.pendingApplicationSubmission
     $pendingPointerChanged = $null -eq $pending -or [string]$pending.id -cne [string]$draft.id
     $publishedPointerChanged = [string]$uploaded.application.lastPublishedApplicationSubmission.id -cne [string]$state.application.lastPublishedApplicationSubmission.id
@@ -608,5 +673,5 @@ function Submit-StoreCliDraft {
 Export-ModuleMember -Function Assert-StoreRun, Assert-StoreReleaseTrigger, Get-StoreLatestBuild, Get-StoreRun, Receive-StoreArtifact,
     ConvertTo-StoreCanonicalJson, Get-StoreHash, Get-StoreMetadataFingerprint, Get-StoreMetadataDiffSummary, Invoke-StoreCli,
     Initialize-StoreCli, Clear-StoreCliCredentials, Assert-StoreApplication, Get-StoreState, Get-StoreSafeStatus, Get-StoreInspection,
-    Remove-StoreInspectedDraft, Get-StorePriceClassification, Assert-StorePricing, Read-StorePackage, Get-StorePackageSet,
+    Remove-StoreInspectedDraft, Get-StorePriceClassification, Get-StorePricingEvidence, Assert-StorePricing, Read-StorePackage, Get-StorePackageSet,
     Assert-StoreUploadedPackages, New-StoreCliDraft, Submit-StoreCliDraft

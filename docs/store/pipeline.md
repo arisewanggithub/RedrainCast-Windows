@@ -86,7 +86,9 @@ blocking explicit-price-approval gate, not a reason to use browser automation.
 1. **`preflight`**: official `apps get` and `submission get`; verify identity,
    consistent pointers, and round-trippable pricing. No mutation.
 2. **`inspect-draft`**: supply the exact pending submission ID. Save a fingerprint
-   of the CLI-visible `PendingCommit` draft and a safe price classification.
+   of the CLI-visible `PendingCommit` draft, a safe price classification, and
+   explicit package filenames, versions, architectures and upload states.
+   Missing ingestion fields stay null; they are not evidence of ingestion.
    No mutation. This stage still works when pricing is `Base`.
 3. **`discard-draft`** (only when separately authorized): supply that exact ID
    and successful `inspect_run_id`. Re-read and fingerprint the draft; refuse
@@ -110,9 +112,13 @@ blocking explicit-price-approval gate, not a reason to use browser automation.
    restores that exact snapshot through official `submission update --payload`,
    retaining the new submission identity, package state, and publication
    fields; it then re-reads and requires the complete metadata fingerprint to
-   match. An unverified restore stops before certification. Diagnostics contain
+   match. Microsoft's [submission resource documentation](https://learn.microsoft.com/windows/uwp/monetize/manage-app-submissions#app-submission-resource)
+   defines `friendlyName` as generated on submission creation; it is retained
+   from the new draft rather than copied or compared as business metadata.
+   Empty and single-item arrays are preserved during private snapshot cloning.
+   An unverified restore stops before certification. Diagnostics contain
    only bounded allowlisted property paths, change classes, SHA-256 hashes, and
-   pointer/status booleans—never values, listing text, signed URLs, or raw CLI
+   pointer/status booleans, including separate pricing-field hashes—never values, listing text, signed URLs, or raw CLI
    output. A final official update retires all old packages and saves
    `Immediate` publication. Re-read and verify preserved metadata/listings and
    exactly the new pair; save a schema-3 receipt. No certification.

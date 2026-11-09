@@ -97,6 +97,7 @@ try {
         'preflight' {
             $state = Get-StoreState $identity $cli
             Write-Host "Current submission pricing: $(Get-StorePriceClassification $state.submission)."
+            Write-Host ('Pricing field evidence: ' + (ConvertTo-Json -InputObject @(Get-StorePricingEvidence $state.submission) -Compress -Depth 5))
             Assert-StorePricing $state.submission ''
             Write-Host "Product identity and pricing verified. Pending draft exists: $($null -ne $state.application.pendingApplicationSubmission)."
         }
@@ -107,6 +108,8 @@ try {
             $inspection | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $WorkDirectory 'store-inspection.json') -Encoding UTF8
             $priceClass = Get-StorePriceClassification $state.submission
             Write-Host "PendingCommit draft fingerprint saved. Pricing classification: $priceClass. No metadata or signed URLs logged."
+            Write-Host ('Saved package evidence: ' + (ConvertTo-Json -InputObject $inspection.packages -Compress -Depth 5))
+            Write-Host ('Pricing field evidence: ' + (ConvertTo-Json -InputObject $inspection.pricingFields -Compress -Depth 5))
         }
         'discard-draft' {
             Remove-StoreInspectedDraft $identity $inspection $InspectSubmissionId $cli
