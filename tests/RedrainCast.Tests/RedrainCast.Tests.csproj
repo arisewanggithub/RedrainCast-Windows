@@ -23,6 +23,7 @@
     <None Include="..\..\src\RedrainCast.App\ReportJson.cs" Link="fixtures\ReportJson.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.Receive.Core\ReceiverServer.cs" Link="fixtures\ReceiverServer.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\Directory.Build.props" Link="fixtures\Directory.Build.props" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\Directory.Build.targets" Link="fixtures\Directory.Build.targets" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\tools\Publish.ps1" Link="fixtures\Publish.ps1" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\tools\Package.ps1" Link="fixtures\Package.ps1" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\tools\Validate-Localization.ps1" Link="fixtures\Validate-Localization.ps1" CopyToOutputDirectory="PreserveNewest"/>

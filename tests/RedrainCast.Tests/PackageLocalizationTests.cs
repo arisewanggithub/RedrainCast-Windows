@@ -5,6 +5,20 @@ namespace RedrainCast.Tests;
 public sealed class PackageLocalizationTests
 {
     [Fact]
+    public void ExecutableManifestIsVersionedBeforeWindowsAppSdkCapturesIt()
+    {
+        var document = System.Xml.Linq.XDocument.Load(
+            Path.Combine(AppContext.BaseDirectory, "fixtures", "Directory.Build.targets"));
+        var target = Assert.Single(document.Root!.Elements("Target"),
+            element => (string?)element.Attribute("Name") == "PrepareVersionedApplicationManifest");
+        Assert.Contains("GetNewAppManifestValues", ((string)target.Attribute("BeforeTargets")!).Split(';'));
+        Assert.Contains("_SetEmbeddedWin32ManifestProperties", ((string)target.Attribute("BeforeTargets")!).Split(';'));
+        Assert.Contains("CoreCompile", ((string)target.Attribute("BeforeTargets")!).Split(';'));
+        Assert.Contains("GetAssemblyVersion", ((string)target.Attribute("DependsOnTargets")!).Split(';'));
+        Assert.Equal("$(AssemblyVersion)", (string?)target.Element("XmlPoke")!.Attribute("Value"));
+    }
+
+    [Fact]
     public void PackageUsesOfficialSdkWithFullRootResourceValidation()
     {
         var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "Package.ps1"));

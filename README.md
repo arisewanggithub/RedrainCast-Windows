@@ -1007,6 +1007,10 @@ manual and separately confirmed; nothing automatically dispatches a Store upload
 
 CI overrides the local default version for **both architectures**: publishing
 receives `X.Y.Z`, packaging receives `X.Y.Z.0` with the same version identity.
+PR packaging uses an explicit non-default `0.2.1` version to verify that both
+executable manifests, file versions and assemblies follow version overrides.
+The source executable manifest is versioned before Windows App SDK captures
+and merges its self-contained activation declarations.
 With workflow run number
 `N` and run attempt `A`, its three-component version is
 `0.(2 + floor((N - 1) / 655)).(100 * ((N - 1) % 655) + A)`.
@@ -1059,8 +1063,10 @@ The three Windows test projects run in parallel on separate CI runners.
 Within each project, xUnit collections remain serialized to avoid CPU scheduling
 noise in wall-clock protocol deadline tests; global single-CPU/build limits
 are unnecessary for these single-project jobs. Read-only PR packaging for ARM64
-and x64 starts alongside the tests. Official release preparation still waits for
-all test projects and the separate CI/Store guard job to pass.
+and x64 starts alongside the tests. On main, private draft preparation and
+ARM64/x64 signing/packaging also run alongside tests. Only final release
+publication waits for all test projects, the CI/Store guards and both package
+builds to pass; a failed prerequisite leaves the release unpublished as a draft.
 All test cases, concurrent scenarios inside tests, assertions and timeout
 bounds remain unchanged; no test filter or skip is applied.
 The video-recovery isolation fixture runs its synthetic sender on a dedicated

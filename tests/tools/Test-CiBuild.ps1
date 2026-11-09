@@ -292,6 +292,7 @@ try {
     Assert ($testJob -match 'name: test-results-\$\{\{ matrix.project \}\}') 'Parallel test jobs require unique diagnostic artifact names.'
     $packageJob = [regex]::Match($workflow, '(?ms)^  package:\r?\n(?<body>.*?)(?=^  [a-z][a-z-]*:\r?\n|\z)').Groups['body'].Value
     Assert ($packageJob -and $packageJob -notmatch '(?m)^    needs:') 'Read-only PR packaging must run alongside tests.'
+    Assert ($packageJob -match '\.\\tools\\Publish.ps1 -Architecture \$\{\{ matrix.architecture \}\} -Version 0\.2\.1(?:\r?\n|$)') 'PR packaging must validate a non-default version so embedded manifest drift cannot be masked by the source baseline.'
     foreach ($job in @('package', 'release-package')) {
         $body = [regex]::Match($workflow, ('(?ms)^  ' + $job + ':\r?\n(?<body>.*?)(?=^  [a-z][a-z-]*:\r?\n|\z)')).Groups['body'].Value
         Assert ($body -match "if: matrix.architecture == 'x64'") "$job must restrict launch smoke to x64."
@@ -306,7 +307,11 @@ try {
     Assert ($signingStep -match 'MSIX_SIGNING_PFX_BASE64: \$\{\{ secrets.MSIX_SIGNING_PFX_BASE64 \}\}' -and
         $signingStep -match 'MSIX_SIGNING_PASSWORD: \$\{\{ secrets.MSIX_SIGNING_PASSWORD \}\}') 'Only trusted release packaging should receive both signing secrets.'
     $prepareJob = [regex]::Match($workflow, '(?ms)^  prepare-release:\r?\n(?<body>.*?)(?=^  [a-z][a-z-]*:\r?\n|\z)').Groups['body'].Value
-    Assert ($prepareJob -match 'needs: \[guards, test\]') 'Private release writes must wait for all guards and test matrix jobs.'
+    Assert ($prepareJob -notmatch '(?m)^    needs:') 'Draft preparation must start alongside guards and tests.'
+    Assert ($releasePackageJob -match '(?m)^    needs: prepare-release\s*$') 'Packaging must wait only for its private draft, not tests.'
+    $completeJob = [regex]::Match($workflow, '(?ms)^  complete-release:\r?\n(?<body>.*?)(?=^  [a-z][a-z-]*:\r?\n|\z)').Groups['body'].Value
+    Assert ($completeJob -match 'needs: \[guards, test, release-package\]') 'Publishing must wait for successful guards, every test project and both package builds.'
+    Assert ($completeJob -notmatch 'always\(\)|!cancelled\(\)|continue-on-error: true') 'Final release publication must not bypass failed prerequisites.'
     Assert ($workflow -notmatch 'dotnet test[^\r\n]*--filter') 'CI scheduling must not exclude application tests.'
     foreach ($job in @('prepare-release', 'release-package', 'complete-release')) {
         $block = [regex]::Match($workflow, ('(?ms)^  ' + [regex]::Escape($job) +
