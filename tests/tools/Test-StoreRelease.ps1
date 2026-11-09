@@ -310,7 +310,7 @@ try {
         Assert ($result.applicationPackages[0].fileName -ceq 'RedrainCast-arm64.msix' -and
             $result.applicationPackages[0].version -ceq '1.0.0.0') 'Package projection lost safe metadata.'
         Assert (($mock.state.calls -join ',') -ceq 'GET applications/9P1153MP6R32,GET applications/9P1153MP6R32/submissions/60') 'Inspection made unexpected requests.'
-        Assert ((ConvertTo-Json $result -Depth 5) -notmatch 'fixture-|pricing|listings|fileUploadUrl') 'Inspection leaked metadata.'
+        Assert ((ConvertTo-Json $result -Depth 5) -notmatch 'fixture-|marketSpecificPricings|sales|listings|fileUploadUrl') 'Inspection leaked metadata.'
     }
     Test 'inspection rejects mismatched pointers, identities and response IDs without writes' {
         $mock = New-Mock
@@ -332,6 +332,26 @@ try {
         $mock.state.draft.targetPublishMode = 'fixture-secret'
         foreach ($field in @('fileName', 'fileStatus', 'version', 'architecture')) {
             $mock.state.draft.applicationPackages[0].$field = 'https://host/?sig=fixture-SAS'
+        }
+        Test 'read-only pricing summary admits only known price enums or bounded numeric tiers' {
+            foreach ($priceId in @('Free', 'NotAvailable', 'Base', 'Tier0', 'Tier1012', 'Tier9999999999')) {
+                $mock = New-Mock; $mock.state.app.pendingApplicationSubmission = @{ id = '60' }
+                $mock.state.draft.pricing.priceId = $priceId
+                $result = Get-StoreDraftInspection $identity '60' $mock.request
+                Assert ($result.pricingSummary.priceId -ceq $priceId) 'Known price ID was lost.'
+                Assert ($mock.state.calls.Count -eq 2 -and @($mock.state.calls | Where-Object { -not $_.StartsWith('GET ') }).Count -eq 0) 'Pricing inspection mutated Store.'
+            }
+            foreach ($priceId in @('', 'fixture-secret', 'https://host/?sig=fixture-SAS', 'Tier12345678901', 'tier0', 'Base fixture-token')) {
+                $mock = New-Mock; $mock.state.app.pendingApplicationSubmission = @{ id = '60' }
+                $mock.state.draft.pricing.priceId = $priceId
+                $result = Get-StoreDraftInspection $identity '60' $mock.request
+                Assert ($result.pricingSummary.priceId -ceq 'UnknownOrSuppressed') 'Unsafe price ID escaped.'
+                Assert ((ConvertTo-Json $result -Depth 5) -notmatch 'fixture-|marketSpecificPricings|sales|https:') 'Pricing summary leaked values.'
+            }
+            $mock.state.draft.pricing = $null
+            Assert ((Get-StoreDraftInspection $identity '60' $mock.request).pricingSummary.priceId -ceq 'UnknownOrSuppressed') 'Missing pricing was not suppressed.'
+            $mock.state.draft.PSObject.Properties.Remove('pricing')
+            Assert ((Get-StoreDraftInspection $identity '60' $mock.request).pricingSummary.priceId -ceq 'UnknownOrSuppressed') 'Absent pricing was not suppressed.'
         }
         $mock.state.draft.statusDetails.errors = @(@{ code = 'InvalidRequest'; message = 'fixture-secret' },
             @{ code = 'fixture-token' })

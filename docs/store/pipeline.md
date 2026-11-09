@@ -136,6 +136,11 @@ to the inspection run and checkout SHA. It contains no metadata or upload URLs.
 Logs contain only the submission ID, allowlisted status/publication mode,
 up to 20 package rows (known RedrainCast filenames, file status, version and
 architecture), and allowlisted validation error codes. Unknown fields are
+suppressed. A read-only `pricingSummary.priceId` admits only `Free`,
+`NotAvailable`, `Base` or bounded numeric `Tier` IDs; no per-market prices or
+sales data are emitted. `Base` is an API sentinel, not proof the app is free:
+the official CLI rejects its round-trip, and omitting pricing can silently reset
+the product to free. Inspection never changes or infers a price. Other fields are
 suppressed; no listings, service messages, upload URLs or full responses are
 logged. This cannot recreate an earlier failed PUT response or prove that
 the draft is valid. Existing-draft refusal and all publication gates remain.

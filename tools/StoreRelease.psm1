@@ -616,9 +616,19 @@ function Get-StoreDraftInspection {
         'PreProcessingFailed', 'Certification', 'CertificationFailed', 'Release', 'ReleaseFailed',
         'PendingPublication', 'Publishing', 'PublishFailed', 'Published')) { $draft.status } else { 'UnknownOrSuppressed' }
     $mode = if ($draft.targetPublishMode -cin @('Immediate', 'Manual', 'SpecificDate')) { $draft.targetPublishMode } else { 'UnknownOrSuppressed' }
+    $priceId = ''
+    $pricing = $draft.PSObject.Properties['pricing']
+    if ($null -ne $pricing -and $null -ne $pricing.Value) {
+        $property = $pricing.Value.PSObject.Properties['priceId']
+        if ($null -ne $property) { $priceId = [string]$property.Value }
+    }
+    $safePriceId = if ($priceId -cin @('Free', 'NotAvailable', 'Base') -or $priceId -cmatch '^Tier[0-9]{1,10}$') {
+        $priceId
+    } else { 'UnknownOrSuppressed' }
     return [pscustomobject]@{
         submissionId = $SubmissionId; status = $status; targetPublishMode = $mode
         ownership = 'Unknown'; applicationPackages = $packages; validationErrorCodes = $errors
+        pricingSummary = [pscustomobject]@{ priceId = $safePriceId }
     }
 }
 
