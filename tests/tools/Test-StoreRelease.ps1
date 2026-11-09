@@ -29,7 +29,7 @@ function New-FixturePackage {
     param([string]$Path, [string]$Arch, [string]$Version = '1.2.3.0',
         [string]$Name = $identity.PackageName, [string]$Publisher = $identity.Publisher,
         [switch]$MissingWorker, [switch]$Duplicate, [switch]$Pdb,
-        [string[]]$Languages = @('en-US'))
+        [string[]]$Languages = @('en-US'), [string[]]$ExtraFiles = @())
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path }
@@ -47,7 +47,8 @@ function New-FixturePackage {
     try {
         $files = @('AppxManifest.xml', 'AppxBlockMap.xml', '[Content_Types].xml', 'resources.pri',
             'RedrainCast.App.pri', 'RedrainCast.App.exe', 'RedrainCast.App.dll', 'coreclr.dll',
-            'capture-worker/RedrainCast.CaptureWorker.dll', 'capture-worker/coreclr.dll', 'PRIVACY.md', 'THIRD_PARTY_NOTICES.txt')
+            'capture-worker/RedrainCast.CaptureWorker.dll', 'capture-worker/coreclr.dll',
+            'FFmpeg.AutoGen.dll', 'capture-worker/FFmpeg.AutoGen.dll', 'PRIVACY.md', 'THIRD_PARTY_NOTICES.txt') + $ExtraFiles
         if (-not $MissingWorker) { $files += 'capture-worker/RedrainCast.CaptureWorker.exe' }
         if ($Duplicate) { $files += 'AppxManifest.xml' }
         if ($Pdb) { $files += 'debug.pdb' }
@@ -75,7 +76,7 @@ function New-Mock {
             publisherName = $identity.Publisher; lastPublishedApplicationSubmission = @{ id = '50' }; pendingApplicationSubmission = $null }
         draft = [pscustomobject]@{ id = '60'; status = 'PendingCommit'; statusDetails = @{ errors = @(); warnings = @() }
             fileUploadUrl = 'https://fixture.blob.core.windows.net/ingestion/fixture?sig=fixture-SAS'
-            targetPublishMode = 'Immediate'; targetPublishDate = '1601-01-01T00:00:00Z'
+            targetPublishMode = 'Manual'; targetPublishDate = '1601-01-01T00:00:00Z'
             listings = $listings; pricing = @{ priceId = 'Tier0'; marketSpecificPricings = @{ US = 'Tier0' }; sales = @() }
             packageDeliveryOptions = @{ packageRollout = @{ isPackageRollout = $false; packageRolloutPercentage = 0 }; isMandatoryUpdate = $false }
             allowTargetFutureDeviceFamilies = @{ Desktop = $true; Mobile = $false }; unknownFutureMetadata = $deep
@@ -240,6 +241,16 @@ try {
         New-FixturePackage $file arm64 -Pdb
         Reject { Read-StorePackage $file arm64 $identity }
     }
+    Test 'shipping AutoGen bindings are allowed but FFmpeg executables and lookalike DLLs remain forbidden' {
+        $file = Join-Path $fixtures 'binding-check.msix'
+        New-FixturePackage $file arm64
+        $null = Read-StorePackage $file arm64 $identity
+        foreach ($forbidden in @('ffmpeg.exe', 'capture-worker/ffprobe.exe', 'FFmpeg.Other.dll',
+            'other/FFmpeg.AutoGen.dll', 'CaptureProbe.dll', 'RecordExport.exe')) {
+            New-FixturePackage $file arm64 -ExtraFiles @($forbidden)
+            Reject { Read-StorePackage $file arm64 $identity } 'forbidden standalone helpers'
+        }
+    }
     Test 'partial, duplicate and mismatched architecture artifacts are rejected' {
         $partial = Join-Path $fixtures 'partial'; New-Item -ItemType Directory -Path $partial | Out-Null
         Reject { New-StorePackageArchive $partial $identity }
@@ -306,7 +317,7 @@ try {
             Assert ((ConvertTo-StoreCanonicalJson $before.$field) -ceq (ConvertTo-StoreCanonicalJson $positive.state.draft.$field)) "Metadata changed: $field."
         }
         Assert (@($positive.state.draft.listings.PSObject.Properties).Count -eq 22) 'Listings were lost.'
-        Assert ($positive.state.draft.targetPublishMode -ceq 'Manual') 'Publication hold missing.'
+        Assert ($positive.state.draft.targetPublishMode -ceq 'Immediate' -and $receipt.targetPublishMode -ceq 'Immediate') 'Automatic publication mode missing.'
         Assert ($positive.state.draft.applicationPackages[0].fileStatus -ceq 'PendingDelete') 'Old package was not marked for replacement.'
         Assert ($positive.state.uploadCount -eq 1 -and $positive.state.commitCount -eq 0) 'Upload stage committed or uploaded more than once.'
         Assert (@($positive.state.calls | Where-Object { $_.StartsWith('DELETE ') }).Count -eq 0) 'Deletion request exists.'
@@ -340,6 +351,14 @@ try {
         Reject { Submit-StoreDraft $identity $bad $archive.packages '123' ('a' * 40) $positive.request } 'packages'
         Assert ($positive.state.commitCount -eq 0) 'Invalid receipt committed.'
     }
+    Test 'receipt rejects manual or scheduled publication before Store access' {
+        $calls = $positive.state.calls.Count
+        foreach ($mode in @('Manual', 'SpecificDate')) {
+            $bad = Copy-Json $receipt; $bad.targetPublishMode = $mode
+            Reject { Submit-StoreDraft $identity $bad $archive.packages '123' ('a' * 40) $positive.request } 'Receipt identity'
+        }
+        Assert ($positive.state.calls.Count -eq $calls -and $positive.state.commitCount -eq 0) 'Changed receipt publication mode reached Store.'
+    }
     Test 'pending ID and last published ID changes reject commit' {
         $positive.state.app.pendingApplicationSubmission.id = '61'
         Reject { Submit-StoreDraft $identity $receipt $archive.packages '123' ('a' * 40) $positive.request } 'no longer matches'
@@ -357,7 +376,7 @@ try {
         $positive.state.draft.pricing = Copy-Json $before.pricing
         Assert ($positive.state.commitCount -eq 0) 'Human-edited metadata committed.'
     }
-    Test 'package names, old package metadata and immediate publish mode changes reject commit' {
+    Test 'package names, old package metadata and publication mode changes reject commit' {
         $saved = Copy-Json $positive.state.draft
         $positive.state.draft.applicationPackages[1].fileName = 'different.msix'
         Reject { Submit-StoreDraft $identity $receipt $archive.packages '123' ('a' * 40) $positive.request }
@@ -368,8 +387,10 @@ try {
         $positive.state.draft.applicationPackages[1].minimumSystemRam = 'Memory2GB'
         Reject { Submit-StoreDraft $identity $receipt $archive.packages '123' ('a' * 40) $positive.request } 'package metadata changed'
         $positive.state.draft = Copy-Json $saved
-        $positive.state.draft.targetPublishMode = 'Immediate'
-        Reject { Submit-StoreDraft $identity $receipt $archive.packages '123' ('a' * 40) $positive.request }
+        foreach ($mode in @('Manual', 'SpecificDate')) {
+            $positive.state.draft.targetPublishMode = $mode
+            Reject { Submit-StoreDraft $identity $receipt $archive.packages '123' ('a' * 40) $positive.request } 'metadata changed'
+        }
         $positive.state.draft = Copy-Json $saved
     }
     Test 'normal PendingUpload to Uploaded state transition preserves package binding' {
@@ -386,10 +407,10 @@ try {
         Reject { Submit-StoreDraft $identity $receipt $archive.packages '123' ('a' * 40) $positive.request } 'commit failure'
         $positive.state.failCommit = $false
     }
-    Test 'exact owned receipt commits once with manual publication hold' {
+    Test 'exact owned receipt commits once with automatic publication after certification' {
         $status = Submit-StoreDraft $identity $receipt $archive.packages '123' ('a' * 40) $positive.request
         Assert ($status -ceq 'CommitStarted' -and $positive.state.commitCount -eq 1) 'Exact draft did not commit.'
-        Assert ($positive.state.draft.targetPublishMode -ceq 'Manual') 'Commit removed manual hold.'
+        Assert ($positive.state.draft.targetPublishMode -ceq 'Immediate') 'Commit changed automatic publication mode.'
         Assert (@($positive.state.calls | Where-Object { $_.StartsWith('DELETE ') }).Count -eq 0) 'Unexpected deletion.'
     }
     Test 'failed and unknown processing states are not reported as success' {
@@ -515,10 +536,10 @@ try {
         Reject { Submit-StoreDraft $identity $bad $listingArchive.packages '123' ('b' * 40) $listingMock.request } 'content binding'
         Assert ($listingMock.state.calls.Count -eq $calls) 'Malformed listing receipt reached Store.'
     }
-    Test 'exact listing receipt commits once with manual publication hold' {
+    Test 'exact listing receipt commits once with automatic publication after certification' {
         $status = Submit-StoreDraft $identity $listingReceipt $listingArchive.packages '123' ('b' * 40) $listingMock.request
         Assert ($status -ceq 'CommitStarted' -and $listingMock.state.commitCount -eq 1 -and
-            $listingMock.state.draft.targetPublishMode -ceq 'Manual') 'Listing draft did not commit with manual hold.'
+            $listingMock.state.draft.targetPublishMode -ceq 'Immediate') 'Listing draft did not commit with automatic publication.'
     }
     Test 'listing uploads retain first-publication and human-draft refusal' {
         foreach ($blocked in @('unpublished', 'pending')) {

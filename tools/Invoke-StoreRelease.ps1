@@ -65,7 +65,7 @@ try {
     }
     $archive = New-StorePackageArchive $WorkDirectory $identity $listingUpdate
     # -WhatIf downloads/validates release MSIX files (and submission receipts) only; it never calls Store/Azure.
-    if (-not $PSCmdlet.ShouldProcess('9P1153MP6R32 (Manual publication hold)', $Stage)) { return }
+    if (-not $PSCmdlet.ShouldProcess('9P1153MP6R32 (automatic publication after certification)', $Stage)) { return }
     $headers = @{ Authorization = 'Bearer ' + (Get-StoreToken) }
     $request = {
         param($method, $path, $body, $inFile)
@@ -83,7 +83,7 @@ try {
         Write-Host "API-owned draft $($receipt.submissionId) uploaded. Certification has NOT been requested."
     } else {
         $status = Submit-StoreDraft $identity $receipt $archive.packages $BuildRunId $build.head_sha $request
-        Write-Host "Commit accepted; observed processing state: $status. Publication remains Manual; finish in Partner Center."
+        Write-Host "Commit accepted; observed processing state: $status. Publication is automatic after successful certification; monitor Partner Center."
     }
 } finally {
     # Do not leave downloaded binaries in later artifact steps. Only the sanitized receipt may survive.
