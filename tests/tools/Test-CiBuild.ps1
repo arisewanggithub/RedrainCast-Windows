@@ -285,6 +285,7 @@ try {
             ':\r?\n(?<body>.*?)(?=^  [a-z][a-z-]*:\r?\n|\z)')).Groups['body'].Value
         Assert ($body -match '(?m)^    runs-on: \[self-hosted, Windows, X64, arise-local\]\s*$') "$job must use the dedicated self-hosted Windows runners."
     }
+    Assert ([regex]::Matches($workflow, '(?m)^          DOTNET_INSTALL_DIR: \$\{\{ runner\.tool_cache \}\}\\dotnet\s*$').Count -eq 4) 'Windows jobs must install .NET under the runner-writable tool cache.'
     foreach ($job in @('guards', 'test', 'package')) {
         $body = [regex]::Match($workflow, ('(?ms)^  ' + [regex]::Escape($job) +
             ':\r?\n(?<body>.*?)(?=^  [a-z][a-z-]*:\r?\n|\z)')).Groups['body'].Value

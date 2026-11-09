@@ -34,8 +34,10 @@ repository's dedicated self-hosted Windows runners (`self-hosted`, `Windows`,
 `X64`, `arise-local`); the runners must stay online and idle when a job is
 queued. Fork pull requests are excluded from these runners. Because the runner
 profiles persist between jobs, Store operations are serialized and CLI
-credentials/configuration are cleared in `finally`; never upload runner
-profiles, CLI logs, raw responses, or the private payload.
+credentials/configuration are cleared in `finally`. .NET 10 setup uses each
+runner's tool cache as a writable install directory instead of the default
+machine-wide `Program Files` location. Never upload runner profiles, CLI logs,
+raw responses, or the private payload.
 CLI scratch files are redirected into the workflow's repository work directory.
 The official v0.4.4 `reconfigure --reset` is **interactive**:
 [`CLIConfigurator.ResetAsync`](https://github.com/microsoft/msstore-cli/blob/v0.4.4/MSStore.CLI/Services/CLIConfigurator.cs)
