@@ -54,16 +54,18 @@ Tests only (not app dependencies): xUnit.net and its Visual Studio runner
 
 Hardware video dependencies in this preview:
 
-- FFmpeg 7.1.1, System233 ffmpeg-7.1.1-r2 ARM64/x64 shared LGPL builds.
-  SHA256-pinned archives are prepared by tools/PrepareNative.ps1.
+- FFmpeg 7.1.3, RedrainCast-Native minimal ARM64/x64 shared decoder builds
+  (LGPL-2.1-or-later). SHA256-pinned release archives are prepared by
+  tools/PrepareNative.ps1. The release includes the matching upstream source,
+  exact build materials, configurations, provenance and checksums:
+  https://github.com/arisewanggithub/RedrainCast-Native/releases/tag/redraincast-ffmpeg-7.1.3-r2
   Video uses hardware D3D11VA only; software video pixel formats are refused.
   AAC/Opus audio decoding and PCM sample conversion use the native audio
   components, including dynamically linked swresample.
   Dynamic DLLs remain replaceable with ABI-compatible user-built versions.
-  Exact upstream license, copyright, dependency SPDX and build metadata are
-  shipped in native/win-{architecture}. Corresponding sources/build provenance:
-  https://github.com/FFmpeg/FFmpeg/tree/n7.1.1
-  https://github.com/System233/ffmpeg-msvc-prebuilt/tree/ffmpeg-7.1.1-r2
+  Upstream license, credits, generated build configuration and provenance are
+  shipped in native/win-{architecture}. Corresponding upstream source:
+  https://github.com/FFmpeg/FFmpeg/tree/n7.1.3
   https://ffmpeg.org/legal.html
 - FFmpeg.AutoGen 7.1.1 (LGPL-3.0). Its complete package LICENSE.txt is
   included under licenses/ffmpeg.autogen/7.1.1 in published distributions.

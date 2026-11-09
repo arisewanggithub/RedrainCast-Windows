@@ -4,13 +4,16 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$hash = if ($Architecture -eq 'arm64') { 'FDA0F9C4BB02839B95CBFA6F85B8120DAF0C3C2B17146C5C38024261973E6F58' } else { 'B58D10B69B0AD578585C43FEE48833D199DDAD4A7DEBC8CF9CE839F0A61C569B' }
+$artifact = 'redraincast-ffmpeg-windows-decoders'
+$version = '7.1.3-r2'
+$tag = "redraincast-ffmpeg-$version"
+$hash = if ($Architecture -eq 'arm64') { '817530BB40B5C8E7DDDE830FDF70279BA3B9E1093853741422597194BAAAFF6C' } else { '408D878CCA7A9C839CB4F588D406F69D4FA5C51DEECDA295EEAE21246E62272B' }
 New-Item -ItemType Directory -Path $CacheDirectory -Force | Out-Null
-$archive = Join-Path $CacheDirectory "ffmpeg-7.1.1-$Architecture-lgpl.zip"
+$archive = Join-Path $CacheDirectory "$artifact-$Architecture-$version.zip"
 if (-not (Test-Path -LiteralPath $archive)) {
     $partial = Join-Path $CacheDirectory ([guid]::NewGuid().ToString('N') + '.partial')
     try {
-        & curl.exe -fL "https://github.com/System233/ffmpeg-msvc-prebuilt/releases/download/ffmpeg-7.1.1-r2/ffmpeg-7.1.1-r2_$Architecture-windows-shared-lgpl.zip" -o $partial
+        & curl.exe -fL "https://github.com/arisewanggithub/RedrainCast-Native/releases/download/$tag/$artifact-$Architecture-$version.zip" -o $partial
         if ($LASTEXITCODE -ne 0) { throw 'Native dependency download failed.' }
         if ((Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash -ne $hash) { throw 'Native archive SHA256 mismatch.' }
         Move-Item -LiteralPath $partial -Destination $archive
@@ -29,13 +32,11 @@ New-Item -ItemType Directory -Path $extract | Out-Null
 try {
     [IO.Compression.ZipFile]::ExtractToDirectory($archive, $extract)
     New-Item -ItemType Directory -Path $native -Force | Out-Null
-    foreach ($dll in @('avcodec-61.dll', 'avutil-59.dll', 'swresample-5.dll')) {
-        Copy-Item -LiteralPath (Join-Path $extract "bin\$dll") -Destination $native
+    foreach ($file in @('avcodec-61.dll', 'avutil-59.dll', 'swresample-5.dll',
+        'FFmpeg-LICENSE.txt', 'FFmpeg-CREDITS.txt', 'config.h', 'config_components.h')) {
+        Copy-Item -LiteralPath (Join-Path $extract $file) -Destination $native
     }
-    Copy-Item -LiteralPath (Join-Path $extract 'LICENSE.txt') -Destination (Join-Path $native 'FFmpeg-LICENSE.txt')
-    Copy-Item -LiteralPath (Join-Path $extract 'share\ffmpeg\copyright') -Destination (Join-Path $native 'FFmpeg-copyright.txt')
-    Copy-Item -LiteralPath (Join-Path $extract 'CONTROL') -Destination (Join-Path $native 'FFmpeg-build-dependencies.txt')
-    Copy-Item -LiteralPath (Join-Path $extract 'share\ffmpeg\vcpkg.spdx.json') -Destination (Join-Path $native 'FFmpeg-dependencies.spdx.json')
+    Copy-Item -LiteralPath (Join-Path $extract 'manifest.json') -Destination (Join-Path $native 'FFmpeg-build-manifest.json')
 } finally {
     $owned = (Resolve-Path -LiteralPath $extract).Path
     if ((Split-Path -Parent $owned) -ne (Resolve-Path -LiteralPath $CacheDirectory).Path -or
