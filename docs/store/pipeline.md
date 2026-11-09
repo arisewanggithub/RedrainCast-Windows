@@ -130,6 +130,9 @@ It never creates, updates, uploads, deletes or commits a draft and creates no
 receipt. Ownership remains **Unknown**: a successful GET is not proof of API
 ownership, and inspection does not authorize later upload or certification.
 
+The successful run retains a small private `store-inspection` artifact with
+the exact ID, prior published pointer and metadata/package fingerprints bound
+to the inspection run and checkout SHA. It contains no metadata or upload URLs.
 Logs contain only the submission ID, allowlisted status/publication mode,
 up to 20 package rows (known RedrainCast filenames, file status, version and
 architecture), and allowlisted validation error codes. Unknown fields are
@@ -144,6 +147,29 @@ allowlisted error entries; free-form messages and unknown codes are suppressed.
 No retry or draft cleanup is automatic. This distinguishes a Store metadata
 PUT from an Azure archive PUT without exposing credentials, SAS or metadata.
 Workflow run titles include the selected stage to distinguish read-only runs.
+
+### `resume-draft` (explicit package-only recovery; never automatic adoption)
+
+Use only after independently establishing why this exact draft should be
+recovered. Specify the exact `inspect_submission_id`, successful main
+`inspect_run_id`, reviewed successful main `build_run_id`, and product
+confirmation. The trusted inspection artifact must match its run and commit.
+Recovery GETs the current application and exact draft, requiring unchanged
+pending/prior-published pointers, `PendingCommit`, `Immediate`, and every
+inspected metadata/package fingerprint (including file states). Any drift
+requires a fresh inspection and deliberate review; no human changes are adopted.
+
+Recovery then performs the same package replacement and ZIP upload as a new
+draft, on that exact ID. It never POSTs a new draft, deletes a draft, changes
+listings, retries automatically or starts certification. A successful recovery
+produces the normal `store-draft-receipt`; use its run ID with `submit-draft`,
+which retains all existing build, pointer, metadata and publication checks.
+Normal upload still refuses **any** existing pending draft.
+
+New uploads and explicit recovery persist a separate safe
+`store-draft-provenance` artifact **before** the metadata PUT, even if a later
+transport step fails. This records IDs and fingerprints only, not a successful
+upload receipt and not permission to submit. Reinspect before another recovery.
 
 ### `preflight` (default; read-only and valid before first publication)
 
