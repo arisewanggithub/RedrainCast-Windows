@@ -78,7 +78,7 @@ function ConvertTo-StoreCanonicalJson {
     param($Value)
     if ($null -eq $Value) { return 'null' }
     if ($Value -is [Collections.IDictionary] -or $Value -is [pscustomobject]) {
-        $keys = @(if ($Value -is [Collections.IDictionary]) { $Value.Keys } else { $Value.PSObject.Properties.Name })
+        $keys = @(if ($Value -is [Collections.IDictionary]) { $Value.Keys } else { $Value.PSObject.Properties | ForEach-Object { $_.Name } })
         $keys = [string[]]$keys
         [Array]::Sort($keys, [StringComparer]::Ordinal)
         $pairs = foreach ($key in $keys) {

@@ -294,6 +294,8 @@ try {
     }
     Test 'canonical fingerprints retain nested metadata' {
         Assert ((ConvertTo-StoreCanonicalJson @{ b = 2; a = 1 }) -ceq '{"a":1,"b":2}') 'Canonical JSON changed.'
+        Assert ((ConvertTo-StoreCanonicalJson ('{}' | ConvertFrom-Json)) -ceq '{}') 'Empty service objects must fingerprint under strict mode.'
+        Assert ((ConvertTo-StoreCanonicalJson ('{"nested":{}}' | ConvertFrom-Json)) -ceq '{"nested":{}}') 'Nested empty service objects must fingerprint.'
         $m = New-Mock; $hash = Get-StoreMetadataFingerprint $m.state.submission
         $m.state.submission.unknownFixtureField.nested[1] = 'changed'
         Assert ((Get-StoreMetadataFingerprint $m.state.submission) -cne $hash) 'Nested metadata was ignored.'
