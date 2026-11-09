@@ -232,9 +232,10 @@ public sealed class RecoveryTests
                 Assert.Equal(bytes, packet.Payload);
             };
         var states = new List<string>();
-        var cast = new SenderSession().RunAsync(new(IPAddress.Loopback, server.Port, "Test", false),
+        // Keep time-sensitive source/writer continuations off the test runner's shared scheduler.
+        var cast = TrackThread.Run(() => new SenderSession().RunAsync(new(IPAddress.Loopback, server.Port, "Test", false),
             new(MaxSize: source.Width, MaxFps: fps, EnableAudio: audio, ShowPlaybackStatistics: statistics), source,
-            state => { lock (states) states.Add(state); }, stop.Token, sound);
+            state => { lock (states) states.Add(state); }, stop.Token, sound));
         try
         {
             while (Volatile.Read(ref factory.RecoveredVideo) < 1)

@@ -1010,6 +1010,10 @@ and x64 starts alongside the tests. Private release preparation still waits for
 all test projects and the separate CI/Store guard job to pass.
 All test cases, concurrent scenarios inside tests, assertions and timeout
 bounds remain unchanged; no test filter or skip is applied.
+The video-recovery isolation fixture runs its synthetic sender on a dedicated
+serial context so shared test-runner scheduling does not stall the healthy audio
+source and writer. Production queue-pressure limits and recovery assertions
+remain unchanged.
 
 ### Production and regression boundaries
 
