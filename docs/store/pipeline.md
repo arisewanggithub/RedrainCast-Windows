@@ -105,14 +105,17 @@ blocking explicit-price-approval gate, not a reason to use browser automation.
    WinUI project with the isolated two-architecture `--inputDirectory`.
    This does not rebuild the packages. Official project detection may restore
    the WinUI project's dependencies; the workflow supplies .NET 10 for this.
-   If the subsequent preservation check detects a difference, the workflow
-   emits a bounded allowlisted structural summary: changed property paths,
-   change classes, SHA-256 hashes, and pointer/status booleans only. It never
-   logs values, listing text, signed URLs, or raw CLI output. The check still
-   fails closed before setting publication mode or requesting certification.
-   Official `submission update --payload` then retires all old packages and
-   saves `Immediate` publication. Re-read and verify preserved metadata/listings
-   and exactly the new pair; save a schema-3 receipt. No certification.
+   The workflow compares the CLI-created draft with the CLI-visible published
+   metadata snapshot held only in process memory. If metadata differs, it
+   restores that exact snapshot through official `submission update --payload`,
+   retaining the new submission identity, package state, and publication
+   fields; it then re-reads and requires the complete metadata fingerprint to
+   match. An unverified restore stops before certification. Diagnostics contain
+   only bounded allowlisted property paths, change classes, SHA-256 hashes, and
+   pointer/status booleans—never values, listing text, signed URLs, or raw CLI
+   output. A final official update retires all old packages and saves
+   `Immediate` publication. Re-read and verify preserved metadata/listings and
+   exactly the new pair; save a schema-3 receipt. No certification.
    Any populated server package version/architecture must match the validated
    MSIX. Unknown ingestion metadata is allowed only while `PendingUpload`;
    `Uploaded` packages require both fields before a receipt/certification.

@@ -44,6 +44,7 @@ function New-Mock {
         submission = [pscustomobject]@{
             id = '50'; status = 'Published'; fileUploadUrl = 'https://fixture.invalid/?sig=fixture-SAS'
             targetPublishMode = 'Manual'; targetPublishDate = '1601-01-01T00:00:00Z'
+            friendlyName = 'Retain friendly name'
             pricing = @{ priceId = 'Free'; marketSpecificPricings = @{ US = 'Base' }; sales = @() }
             listings = @{ 'en-us' = @{ baseListing = @{ title = 'Retain title'; images = @(@{ fileName = 'persisted.png'; fileStatus = 'Uploaded' }) }
                 platformOverrides = @{ Windows81 = @{ description = 'retain override' } } } }
@@ -54,7 +55,7 @@ function New-Mock {
             )
         }
         calls = New-Object 'Collections.Generic.List[string]'
-        changedMetadata = $false; failPublish = $false; changedPointer = $false
+        changedMetadata = $false; failPublish = $false; failUpdate = $false; changedPointer = $false
         commits = 0; deletes = 0; uploads = 0; updates = 0
     }
     $cli = {
@@ -79,12 +80,18 @@ function New-Mock {
                 })
                 $priceIndex = [Array]::IndexOf($Arguments, '--priceId')
                 if ($priceIndex -ge 0) { $state.submission.pricing.priceId = $Arguments[$priceIndex + 1] }
-                if ($state.changedMetadata) { $state.submission.listings.'en-us'.baseListing.title = 'Unexpected change' }
+                if ($state.changedMetadata) {
+                    $state.submission.friendlyName = $null
+                    $state.submission.pricing.priceId = 'NotAvailable'
+                    $state.submission.listings.'en-us'.baseListing.title = 'Unexpected change'
+                    $state.submission | Add-Member -MemberType NoteProperty -Name cliAddedField -Value @{ internal = 'must be removed' }
+                }
                 if ($state.changedPointer) { $state.app.lastPublishedApplicationSubmission.id = '51' }
                 return
             }
             'submission update' {
                 & $assert ($Arguments[3] -ceq '--payload') 'Large private metadata must use --payload.'
+                if ($state.failUpdate) { throw 'Simulated submission update failure.' }
                 $state.submission = Get-Content -LiteralPath $Arguments[4] -Raw | ConvertFrom-Json
                 $state.updates++
                 return & $copy $state.submission
@@ -390,20 +397,26 @@ try {
         Reject { Upload $m 'Base' } 'approval'
         Assert ($m.state.uploads -eq 0) 'Invalid override reached Store.'
     }
-    Test 'CLI metadata changes or published pointer changes block follow-up update and receipt' {
-        foreach ($field in @('changedMetadata', 'changedPointer')) {
-            $m = New-Mock; $m.state.$field = $true
-            Reject { Upload $m } 'Safe structural diff'
-            Assert ($m.state.updates -eq 0 -and $m.state.commits -eq 0) 'Unexpected follow-up mutation.'
-        }
+    Test 'published pointer changes block follow-up update and receipt' {
+        $m = New-Mock; $m.state.changedPointer = $true
+        Reject { Upload $m } 'Safe structural diff'
+        Assert ($m.state.updates -eq 0 -and $m.state.commits -eq 0) 'Unexpected follow-up mutation.'
     }
-    Test 'failed CLI preservation check identifies only safe metadata paths and hashes' {
+    Test 'CLI metadata changes are restored from the private published snapshot' {
         $m = New-Mock; $m.state.changedMetadata = $true
-        $message = $null
-        try { Upload $m | Out-Null } catch { $message = $_.Exception.Message }
-        Assert ($message -match '"propertyPath":"listings"' -and $message -match '"beforeSha256":"[a-f0-9]{64}"') 'Safe structural diagnostics were not included.'
-        Assert ($message -notmatch 'Unexpected change|Retain title|fixture-SAS|retain notes') 'Structural diagnostics leaked metadata.'
-        Assert ($m.state.updates -eq 0 -and $m.state.commits -eq 0) 'Failed preservation check mutated or submitted the draft.'
+        $baselineHash = Get-StoreMetadataFingerprint $m.state.submission
+        $receipt = Upload $m
+        Assert ((Get-StoreMetadataFingerprint $m.state.submission) -ceq $baselineHash) 'Published metadata was not restored exactly.'
+        Assert ($m.state.submission.friendlyName -ceq 'Retain friendly name' -and
+            $m.state.submission.pricing.priceId -ceq 'Free' -and
+            $m.state.submission.listings.'en-us'.baseListing.title -ceq 'Retain title') 'Business metadata was not preserved.'
+        Assert ($null -eq $m.state.submission.PSObject.Properties['cliAddedField']) 'An unrecognized CLI-added metadata field was retained.'
+        Assert ($m.state.updates -eq 2 -and $m.state.commits -eq 0 -and $receipt.targetPublishMode -ceq 'Immediate') 'Metadata restore or final draft save did not follow the expected path.'
+    }
+    Test 'metadata restoration failure never requests certification' {
+        $m = New-Mock; $m.state.changedMetadata = $true; $m.state.failUpdate = $true
+        Reject { Upload $m } 'Simulated submission update failure'
+        Assert ($m.state.commits -eq 0 -and $m.state.updates -eq 0) 'Failed restoration continued toward certification.'
     }
     Test 'failed upload is never automatically retried or deleted' {
         $m = New-Mock; $m.state.failPublish = $true
