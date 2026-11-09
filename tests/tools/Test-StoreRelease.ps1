@@ -606,6 +606,23 @@ try {
             Assert ((Get-FileHash $original).Hash -ceq (Get-FileHash $staged).Hash) 'Package bytes changed.'
         }
     }
+    Test 'restore-only publish adapter preserves CLI WinUI detection without shipping umbrella dependencies' {
+        $app = Join-Path $root 'src\RedrainCast.App'
+        $adapter = New-StorePublishProject $app (Join-Path $work 'publish-project')
+        [xml]$source = Get-Content -LiteralPath (Join-Path $app 'RedrainCast.App.csproj') -Raw
+        [xml]$project = Get-Content -LiteralPath (Join-Path $adapter 'StorePublish.csproj') -Raw
+        $reference = $project.SelectSingleNode('/Project/ItemGroup/PackageReference')
+        Assert ($reference.Include -ceq 'Microsoft.WindowsAppSDK') 'Pinned CLI will not recognize the WinUI publisher.'
+        Assert ($reference.Version -ceq $source.SelectSingleNode('/Project/ItemGroup/PackageReference[@Include="Microsoft.WindowsAppSDK.WinUI"]').Version) 'Adapter SDK version differs from the app.'
+        Assert ($reference.ExcludeAssets -ceq 'all' -and $reference.PrivateAssets -ceq 'all') 'Restore-only dependency assets are not excluded.'
+        Assert ($project.Project.PropertyGroup.TargetFramework -ceq $source.Project.PropertyGroup[0].TargetFramework) 'Adapter framework differs from the app.'
+        Assert ((Get-FileHash (Join-Path $adapter 'Package.appxmanifest')).Hash -ceq
+            (Get-FileHash (Join-Path $app 'Package.appxmanifest')).Hash) 'Adapter changed the manifest.'
+        Assert ($null -eq $source.SelectSingleNode('/Project/ItemGroup/PackageReference[@Include="Microsoft.WindowsAppSDK"]')) 'Shipping app must not reference the umbrella SDK.'
+        Reject { New-StorePublishProject $app $adapter } 'must be new'
+        $invoke = Get-Content -LiteralPath (Join-Path $root 'tools\Invoke-StoreRelease.ps1') -Raw
+        Assert ($invoke -match 'New-StorePublishProject' -and $invoke -match '\$publishProject `') 'Live uploads must use the adapter rather than classify the shipping project.'
+    }
     Test 'workflow pins official CLI and has no custom transport or legacy recovery stage' {
         $workflow = Get-Content -LiteralPath (Join-Path $root '.github\workflows\store-release.yml') -Raw
         Assert ([regex]::Matches($workflow, '(?m)^    runs-on: \[self-hosted, Windows, X64, arise-local\]\s*$').Count -eq 2) 'Store jobs must use the dedicated self-hosted Windows runners.'

@@ -116,8 +116,10 @@ try {
             Write-Host 'Only the explicitly inspected unchanged pending draft was discarded. No replacement was uploaded.'
         }
         { $_ -cin @('upload-draft', 'release-latest') } {
+            $publishProject = New-StorePublishProject (Join-Path (Split-Path -Parent $PSScriptRoot) 'src\RedrainCast.App') `
+                (Join-Path $WorkDirectory 'publish-project')
             $receipt = New-StoreCliDraft $identity $packages $BuildRunId $build.head_sha `
-                (Join-Path (Split-Path -Parent $PSScriptRoot) 'src\RedrainCast.App') `
+                $publishProject `
                 (Join-Path $WorkDirectory 'private-submission.json') $ApprovedBasePriceId $cli
             $receipt | Add-Member -NotePropertyName sourceSha -NotePropertyValue $env:GITHUB_SHA
             $receipt | Add-Member -NotePropertyName workflowRunId -NotePropertyValue $env:GITHUB_RUN_ID

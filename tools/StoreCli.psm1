@@ -586,6 +586,38 @@ function Assert-StoreUploadedPackages {
     }
 }
 
+function New-StorePublishProject {
+    param([string]$ProjectPath, [string]$Directory)
+    [xml]$project = Get-Content -LiteralPath (Join-Path $ProjectPath 'RedrainCast.App.csproj') -Raw
+    $winui = $project.SelectSingleNode('/Project/ItemGroup/PackageReference[@Include="Microsoft.WindowsAppSDK.WinUI"]')
+    $framework = $project.SelectSingleNode('/Project/PropertyGroup/TargetFramework')
+    if ($null -eq $winui -or [string]::IsNullOrWhiteSpace($winui.GetAttribute('Version')) -or $null -eq $framework) {
+        throw 'Store publishing requires the app WinUI package version and target framework.'
+    }
+    $manifest = Join-Path $ProjectPath 'Package.appxmanifest'
+    if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { throw 'Store publishing requires the app package manifest.' }
+    if (Test-Path -LiteralPath $Directory) { throw 'Store publish project directory must be new; existing files are preserved.' }
+    $version = [Security.SecurityElement]::Escape($winui.GetAttribute('Version'))
+    $target = [Security.SecurityElement]::Escape($framework.InnerText)
+    # CLI v0.4.4 detects WinUI only through the umbrella package in restored assets.
+    # This restore-only adapter is never built or included in the shipping packages.
+    $content = @"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$target</TargetFramework>
+    <EnableDefaultItems>false</EnableDefaultItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="$version" ExcludeAssets="all" PrivateAssets="all" />
+  </ItemGroup>
+</Project>
+"@
+    New-Item -ItemType Directory -Path $Directory | Out-Null
+    [IO.File]::WriteAllText((Join-Path $Directory 'StorePublish.csproj'), $content, (New-Object Text.UTF8Encoding($false)))
+    Copy-Item -LiteralPath $manifest -Destination (Join-Path $Directory 'Package.appxmanifest')
+    return (Get-Item -LiteralPath $Directory).FullName
+}
+
 function New-StoreCliDraft {
     param($Identity, $PackageSet, [string]$BuildRunId, [string]$BuildHeadSha,
         [string]$ProjectPath, [string]$PayloadPath, [string]$ApprovedBasePriceId, [scriptblock]$Cli)
@@ -712,7 +744,7 @@ function Submit-StoreCliDraft {
     }
 }
 
-Export-ModuleMember -Function Assert-StoreRun, Assert-StoreReleaseTrigger, Get-StoreLatestBuild, Get-StoreRun, Receive-StoreArtifact,
+Export-ModuleMember -Function Assert-StoreRun, Assert-StoreReleaseTrigger, Get-StoreLatestBuild, Get-StoreRun, Receive-StoreArtifact, New-StorePublishProject,
     ConvertTo-StoreCanonicalJson, Get-StoreHash, Get-StoreMetadataFingerprint, Get-StoreSubmissionFingerprint, Get-StoreMetadataDiffSummary, Invoke-StoreCli,
     Initialize-StoreCli, Clear-StoreCliCredentials, Assert-StoreApplication, Get-StoreState, Get-StoreSafeStatus, Get-StoreInspection,
     Remove-StoreInspectedDraft, Get-StorePriceClassification, Get-StorePricingEvidence, Get-StorePackageEvidence, Assert-StorePricing, Read-StorePackage, Get-StorePackageSet,
