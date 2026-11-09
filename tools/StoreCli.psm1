@@ -111,6 +111,75 @@ function Get-StoreMetadataFingerprint {
     return Get-StoreHash (ConvertTo-StoreCanonicalJson $metadata)
 }
 
+function Get-StoreMetadataDiffSummary {
+    param($Before, $After, [int]$MaximumChanges = 20)
+    if ($MaximumChanges -lt 1 -or $MaximumChanges -gt 20) { throw 'Metadata diff limit must be between 1 and 20.' }
+    $allowlisted = @(
+        'allowmicrosoftdecideappavailabilitytofuturedevicefamilies', 'allowtargetfuturedevicefamilies',
+        'applicationcategory', 'automaticbackupenabled', 'caninstallonremovablemedia', 'enterpriselicensing',
+        'friendlyname', 'gamingoptions', 'hardwarepreferences', 'hasexternalinappproducts',
+        'isgamedvrenabled', 'listings', 'meetaccessibilityguidelines', 'notesforcertification',
+        'packagedeliveryoptions', 'pricing', 'trailers', 'visibility'
+    )
+    $beforeProperties = @{}
+    $afterProperties = @{}
+    foreach ($property in $Before.PSObject.Properties) {
+        $name = $property.Name.ToLowerInvariant()
+        if ($name -cin $allowlisted) { $beforeProperties[$name] = $property.Value }
+    }
+    foreach ($property in $After.PSObject.Properties) {
+        $name = $property.Name.ToLowerInvariant()
+        if ($name -cin $allowlisted) { $afterProperties[$name] = $property.Value }
+    }
+    $changed = @()
+    foreach ($name in $allowlisted) {
+        $hasBefore = $beforeProperties.ContainsKey($name)
+        $hasAfter = $afterProperties.ContainsKey($name)
+        if (-not $hasBefore -and -not $hasAfter) { continue }
+        if ($hasBefore -and $hasAfter -and
+            (ConvertTo-StoreCanonicalJson $beforeProperties[$name]) -ceq (ConvertTo-StoreCanonicalJson $afterProperties[$name])) {
+            continue
+        }
+        $changeClass = if (-not $hasBefore) { 'added' }
+            elseif (-not $hasAfter) { 'removed' }
+            elseif ($null -eq $beforeProperties[$name]) { 'null-to-value' }
+            elseif ($null -eq $afterProperties[$name]) { 'value-to-null' }
+            elseif ($beforeProperties[$name] -is [Collections.IEnumerable] -and $beforeProperties[$name] -isnot [string] -and
+                $afterProperties[$name] -is [Collections.IEnumerable] -and $afterProperties[$name] -isnot [string] -and
+                @($beforeProperties[$name]).Count -ne @($afterProperties[$name]).Count) { 'collection-size-changed' }
+            else { 'value-changed' }
+        $beforeHash = if ($hasBefore) { Get-StoreHash (ConvertTo-StoreCanonicalJson $beforeProperties[$name]) } else { $null }
+        $afterHash = if ($hasAfter) { Get-StoreHash (ConvertTo-StoreCanonicalJson $afterProperties[$name]) } else { $null }
+        $changed += [pscustomobject]@{
+            propertyPath = $name; changeClass = $changeClass
+            beforeSha256 = $beforeHash; afterSha256 = $afterHash
+        }
+    }
+    $beforeAll = @{}
+    $afterAll = @{}
+    foreach ($property in $Before.PSObject.Properties) {
+        if ($property.Name -cin @('id', 'status', 'statusDetails', 'fileUploadUrl', 'applicationPackages', 'targetPublishMode', 'targetPublishDate')) { continue }
+        $beforeAll[$property.Name.ToLowerInvariant()] = $property.Value
+    }
+    foreach ($property in $After.PSObject.Properties) {
+        if ($property.Name -cin @('id', 'status', 'statusDetails', 'fileUploadUrl', 'applicationPackages', 'targetPublishMode', 'targetPublishDate')) { continue }
+        $afterAll[$property.Name.ToLowerInvariant()] = $property.Value
+    }
+    $unclassifiedChanges = 0
+    foreach ($name in @($beforeAll.Keys + $afterAll.Keys | Sort-Object -Unique)) {
+        if ($name -cin $allowlisted) { continue }
+        if (-not $beforeAll.ContainsKey($name) -or -not $afterAll.ContainsKey($name) -or
+            (ConvertTo-StoreCanonicalJson $beforeAll[$name]) -cne (ConvertTo-StoreCanonicalJson $afterAll[$name])) {
+            $unclassifiedChanges++
+        }
+    }
+    return [pscustomobject]@{
+        changedPropertyCount = $changed.Count
+        unclassifiedPropertyChangeCount = $unclassifiedChanges
+        changes = @($changed | Select-Object -First $MaximumChanges)
+    }
+}
+
 function Invoke-StoreCli {
     param([string[]]$Arguments, [switch]$Json)
     # CLI logs can contain credentials, SAS URLs and metadata. Never forward either stream.
@@ -416,9 +485,19 @@ function New-StoreCliDraft {
     $null = & $Cli $args $false
     $uploaded = Get-StoreState $Identity $Cli
     $draft = $uploaded.submission
-    if ($null -eq $uploaded.application.pendingApplicationSubmission -or $draft.status -cne 'PendingCommit' -or
-        $uploaded.application.lastPublishedApplicationSubmission.id -cne $state.application.lastPublishedApplicationSubmission.id -or
-        (Get-StoreMetadataFingerprint $draft) -cne $metadataHash) { throw 'CLI changed preserved metadata or submission pointers. No certification was started.' }
+    $pending = $uploaded.application.pendingApplicationSubmission
+    $pendingPointerChanged = $null -eq $pending -or [string]$pending.id -cne [string]$draft.id
+    $publishedPointerChanged = [string]$uploaded.application.lastPublishedApplicationSubmission.id -cne [string]$state.application.lastPublishedApplicationSubmission.id
+    $metadataChanged = (Get-StoreMetadataFingerprint $draft) -cne $metadataHash
+    if ($pendingPointerChanged -or $draft.status -cne 'PendingCommit' -or $publishedPointerChanged -or $metadataChanged) {
+        $diagnostic = [pscustomobject]@{
+            pendingPointerChanged = $pendingPointerChanged
+            publishedPointerChanged = $publishedPointerChanged
+            pendingStatus = Get-StoreSafeStatus $draft
+            metadata = Get-StoreMetadataDiffSummary $state.submission $draft
+        } | ConvertTo-Json -Compress -Depth 6
+        throw "CLI draft verification failed; no certification was started. Safe structural diff (no field values): $diagnostic"
+    }
     # v0.4.4 matches old packages by extension, not architecture. Explicitly retire every old package.
     foreach ($package in $draft.applicationPackages) {
         if ($package.fileName -cnotin @($PackageSet.packages.fileName)) { $package.fileStatus = 'PendingDelete' }
@@ -479,7 +558,7 @@ function Submit-StoreCliDraft {
 }
 
 Export-ModuleMember -Function Assert-StoreRun, Assert-StoreReleaseTrigger, Get-StoreLatestBuild, Get-StoreRun, Receive-StoreArtifact,
-    ConvertTo-StoreCanonicalJson, Get-StoreHash, Get-StoreMetadataFingerprint, Invoke-StoreCli,
+    ConvertTo-StoreCanonicalJson, Get-StoreHash, Get-StoreMetadataFingerprint, Get-StoreMetadataDiffSummary, Invoke-StoreCli,
     Initialize-StoreCli, Clear-StoreCliCredentials, Assert-StoreApplication, Get-StoreState, Get-StoreSafeStatus, Get-StoreInspection,
     Remove-StoreInspectedDraft, Get-StorePriceClassification, Assert-StorePricing, Read-StorePackage, Get-StorePackageSet,
     Assert-StoreUploadedPackages, New-StoreCliDraft, Submit-StoreCliDraft

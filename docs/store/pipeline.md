@@ -105,6 +105,11 @@ blocking explicit-price-approval gate, not a reason to use browser automation.
    WinUI project with the isolated two-architecture `--inputDirectory`.
    This does not rebuild the packages. Official project detection may restore
    the WinUI project's dependencies; the workflow supplies .NET 10 for this.
+   If the subsequent preservation check detects a difference, the workflow
+   emits a bounded allowlisted structural summary: changed property paths,
+   change classes, SHA-256 hashes, and pointer/status booleans only. It never
+   logs values, listing text, signed URLs, or raw CLI output. The check still
+   fails closed before setting publication mode or requesting certification.
    Official `submission update --payload` then retires all old packages and
    saves `Immediate` publication. Re-read and verify preserved metadata/listings
    and exactly the new pair; save a schema-3 receipt. No certification.
@@ -177,6 +182,18 @@ The v0.4.4 contracts were verified directly against its tagged implementation
 
 These are source-verified command contracts. Read-only authentication has been
 verified; that is not proof of package ingestion or certification acceptance.
+The pinned v0.4.4 `submission get` accepts only a product ID plus optional
+module/language selectors; internally it selects the pending submission when
+one exists, otherwise the last-published submission. `apps get` exposes the
+published and pending submission IDs, not their complete metadata. Therefore,
+with a pending draft present, the official CLI has no read-only option to fetch
+both full submissions for a retrospective comparison. The safe structural
+summary is captured at the upload boundary, where the pipeline still holds the
+pre-upload published snapshot and the newly returned draft. Do not infer the
+cause of an older mismatch from an inspection fingerprint alone. These limits
+are confirmed in the pinned [`submission get` implementation](https://github.com/microsoft/msstore-cli/blob/v0.4.4/MSStore.CLI/Commands/Submission/GetCommand.cs),
+the [`GetAnySubmissionAsync` selector](https://github.com/microsoft/msstore-cli/blob/v0.4.4/MSStore.CLI/Helpers/IStorePackagedAPIExtensions.cs#L25-L49),
+and the [`DevCenterApplication` model](https://github.com/microsoft/msstore-cli/blob/v0.4.4/MSStore.API/Packaged/Models/DevCenterApplication.cs).
 
 - Loose-MSIX publishing takes one file. Use the existing WinUI project publisher,
   which finds both validated MSIX files exactly one directory below the isolated
