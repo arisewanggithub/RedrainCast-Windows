@@ -19,7 +19,7 @@ if ((Test-Path -LiteralPath $OutputDirectory) -and @(Get-ChildItem -LiteralPath 
     throw 'Publish requires a new or empty output directory; existing work is preserved.'
 }
 $nativeFiles = @('avcodec-61.dll', 'avutil-59.dll', 'swresample-5.dll',
-    'FFmpeg-LICENSE.txt', 'FFmpeg-copyright.txt', 'FFmpeg-build-dependencies.txt', 'FFmpeg-dependencies.spdx.json')
+    'FFmpeg-LICENSE.txt', 'FFmpeg-CREDITS.txt', 'config.h', 'config_components.h', 'FFmpeg-build-manifest.json')
 foreach ($file in $nativeFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $root "native\$rid\$file"))) {
         throw "Missing pinned media dependency: $file. Run tools\PrepareNative.ps1 -Architecture $Architecture first."

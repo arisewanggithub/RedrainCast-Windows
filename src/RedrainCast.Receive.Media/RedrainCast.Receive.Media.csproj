@@ -11,7 +11,7 @@
     <PackageReference Include="Vortice.D3DCompiler" Version="3.8.3"/>
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3"/>
     <PackageReference Include="FFmpeg.AutoGen" Version="7.1.1"/>
-    <Content Include="..\..\native\$(NativeRuntime)\avcodec-61.dll;..\..\native\$(NativeRuntime)\avutil-59.dll;..\..\native\$(NativeRuntime)\swresample-5.dll;..\..\native\$(NativeRuntime)\FFmpeg-LICENSE.txt;..\..\native\$(NativeRuntime)\FFmpeg-copyright.txt;..\..\native\$(NativeRuntime)\FFmpeg-build-dependencies.txt;..\..\native\$(NativeRuntime)\FFmpeg-dependencies.spdx.json"
+    <Content Include="..\..\native\$(NativeRuntime)\avcodec-61.dll;..\..\native\$(NativeRuntime)\avutil-59.dll;..\..\native\$(NativeRuntime)\swresample-5.dll;..\..\native\$(NativeRuntime)\FFmpeg-LICENSE.txt;..\..\native\$(NativeRuntime)\FFmpeg-CREDITS.txt;..\..\native\$(NativeRuntime)\config.h;..\..\native\$(NativeRuntime)\config_components.h;..\..\native\$(NativeRuntime)\FFmpeg-build-manifest.json"
              Link="native\$(NativeRuntime)\%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"/>
   </ItemGroup>
