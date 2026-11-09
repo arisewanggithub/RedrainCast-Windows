@@ -76,8 +76,11 @@ base price, trial, or market-specific pricing, which remain guarded.
 Ordinary uploads preserve a usable existing price without `--priceId`. `Base`,
 missing pricing, or a missing/blank base price **stop before any upload**.
 `preflight`, `inspect-draft` and `status` report only a safe price classification,
-never market data. `status` remains read-only even when pricing cannot round-trip.
-`Base` is not evidence that the product is free.
+never market data. `inspect-draft` and read-only `status` also project saved
+package filenames, versions, architectures, and upload states; missing ingestion
+fields remain null rather than being inferred from CLI success. `status` remains
+read-only even when pricing cannot round-trip. `Base` is not evidence that the
+product is free.
 
 The optional `approved_base_price_id` input is an **explicit pricing-change
 authorization** (`Free`, `NotAvailable`, or a real `Tier` number). Only supply it

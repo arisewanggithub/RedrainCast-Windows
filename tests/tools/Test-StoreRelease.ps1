@@ -491,6 +491,10 @@ try {
         Assert ($inspection.pricingFields.Count -eq 4 -and $inspection.pricingFields[0].classification -ceq 'Free') 'Safe pricing field evidence missing.'
         Assert ((ConvertTo-Json $inspection -Depth 10) -notmatch 'fixture-SAS|Retain title|fixture.invalid') 'Unsafe package metadata escaped.'
     }
+    Test 'read-only status logs the safe package evidence projection' {
+        $invoke = Get-Content -LiteralPath (Join-Path $root 'tools\Invoke-StoreRelease.ps1') -Raw
+        Assert ($invoke -match "Current package evidence: .*Get-StorePackageEvidence") 'Status does not expose safe saved package version and architecture evidence.'
+    }
     Test 'failed upload is never automatically retried or deleted' {
         $m = New-Mock; $m.state.failPublish = $true
         Reject { Upload $m } 'Simulated'

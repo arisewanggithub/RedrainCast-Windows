@@ -142,6 +142,7 @@ try {
             $null = & $cli @('submission', 'status', $ConfirmStore) $false
             Write-Host "Current submission state: $(Get-StoreSafeStatus $state.submission). Raw service messages suppressed."
             Write-Host "Current submission pricing: $(Get-StorePriceClassification $state.submission). This is not a market-price export."
+            Write-Host ('Current package evidence: ' + (ConvertTo-Json -InputObject @(Get-StorePackageEvidence $state.submission) -Compress -Depth 5))
         }
     }
 } finally {
