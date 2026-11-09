@@ -29,9 +29,13 @@ The environment needs these four secrets:
   tenant ID or Store product ID. It is required for noninteractive CLI configuration.
 
 All four secrets are configured; read-only workflow **42567665907** verified
-authentication and noninteractive cleanup. Run only on a fresh
-GitHub-hosted Windows runner. CLI credentials/configuration are cleared in `finally`; never
-upload runner profiles, CLI logs, raw responses, or the private payload.
+authentication and noninteractive cleanup. Windows build and Store jobs use the
+repository's dedicated self-hosted Windows runners (`self-hosted`, `Windows`,
+`X64`, `arise-local`); the runners must stay online and idle when a job is
+queued. Fork pull requests are excluded from these runners. Because the runner
+profiles persist between jobs, Store operations are serialized and CLI
+credentials/configuration are cleared in `finally`; never upload runner
+profiles, CLI logs, raw responses, or the private payload.
 CLI scratch files are redirected into the workflow's repository work directory.
 The official v0.4.4 `reconfigure --reset` is **interactive**:
 [`CLIConfigurator.ResetAsync`](https://github.com/microsoft/msstore-cli/blob/v0.4.4/MSStore.CLI/Services/CLIConfigurator.cs)
