@@ -40,6 +40,31 @@ public sealed partial class MainWindow
             throw new InvalidOperationException($"Owned-window keyboard input failed: {Marshal.GetLastPInvokeError()}.");
     }
 
+    internal async Task RunPackageStartupSelfTestAsync(string reportFile, DiagnosticLog? journal)
+    {
+        string? failure = null;
+        try
+        {
+            if (!isolated || source is not null || receiver is null || roles.Role != CastRole.Idle || video.IsAttached)
+                throw new InvalidOperationException("Package startup requires an isolated, idle loopback receiver.");
+            for (var attempt = 0; attempt < 30 && (WindowRoot.XamlRoot is null || WindowRoot.ActualHeight <= 0); attempt++)
+                await Task.Delay(100);
+            if (WindowRoot.XamlRoot is null || !double.IsFinite(WindowRoot.ActualWidth) ||
+                !double.IsFinite(WindowRoot.ActualHeight) || WindowRoot.ActualWidth <= 0 || WindowRoot.ActualHeight <= 0)
+                throw new InvalidOperationException("Package XAML root did not load with a finite positive layout.");
+            if (string.IsNullOrWhiteSpace(L("AppDescription")))
+                throw new InvalidOperationException("Package application resources did not resolve.");
+        }
+        catch (Exception error) { failure = error.ToString(); }
+        Environment.ExitCode = failure is null ? 0 : 1;
+        journal?.Write($"Package startup self-test completed: passed={failure is null}; failure={failure}");
+        File.WriteAllText(reportFile, JsonData.Text(JsonData.Object(
+            ("passed", failure is null), ("failure", failure), ("pid", Environment.ProcessId),
+            ("version", AppVersion.Current().Label), ("packageStartupOnly", true),
+            ("captureStarted", false), ("encoderStarted", false), ("audioStarted", false),
+            ("settingsWritten", false), ("inputInjected", false)), indented: true));
+    }
+
     internal async Task RunLayoutSelfTestAsync(string reportFile, DiagnosticLog? journal)
     {
         var measurements = new List<JsonNode>();

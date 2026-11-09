@@ -89,7 +89,7 @@ try {
         $manifest.Load((Resolve-Path -LiteralPath $ManifestPath).Path)
         $manifestLanguages = @($manifest.SelectNodes("/*[local-name()='Package']/*[local-name()='Resources']/*[local-name()='Resource']") |
             ForEach-Object { $_.GetAttribute('Language') } | Sort-Object)
-        if (($manifestLanguages -join '|') -cne (($languages | Sort-Object) -join '|')) {
+        if (($manifestLanguages -join '|') -ine (($languages | Sort-Object) -join '|')) {
             throw 'Manifest languages do not exactly match the compiled 22-language set.'
         }
         if (-not $PackagePri) { throw 'Manifest localization requires the package-root resources.pri, independently of the application PRI.' }
@@ -116,11 +116,33 @@ try {
         if ($maps.Count -ne 1 -or $maps[0].GetAttribute('primary') -ne 'true' -or $maps[0].GetAttribute('name') -cne $packageName) {
             throw 'Package PRI primary resource map does not match the manifest package identity.'
         }
-        $resources = @($maps[0].SelectNodes('.//NamedResource'))
-        if ($resources.Count -ne 1 -or $resources[0].GetAttribute('uri') -cne $resourceUri) {
-            throw 'Package PRI must contain the Shell description URI under Resources/AppDescription.'
+        foreach ($xaml in @('App.xbf', 'MainWindow.xbf')) {
+            if ($null -eq $maps[0].SelectSingleNode(".//NamedResource[@uri='ms-resource://$packageName/Files/$xaml']/Candidate")) {
+                throw "Package-root PRI is missing compiled WinUI markup: $xaml"
+            }
         }
-        $candidates = @($resources[0].SelectNodes('Candidate'))
+        if ($null -eq $maps[0].SelectSingleNode(".//ResourceMapSubtree[@name='Microsoft.UI.Xaml']/NamedResource") -and
+            $null -eq $maps[0].SelectSingleNode(".//ResourceMapSubtree[@name='Microsoft.UI.Xaml']//NamedResource")) {
+            throw 'Package-root PRI is missing self-contained WinUI framework resources.'
+        }
+        foreach ($key in $keys) {
+            $rootResource = $maps[0].SelectSingleNode(".//NamedResource[@uri='ms-resource://$packageName/Resources/$key']")
+            if ($null -eq $rootResource) { throw "Package-root PRI is missing translated UI resources: $key" }
+            $rootCandidates = @($rootResource.SelectNodes('Candidate'))
+            if ($rootCandidates.Count -ne $languages.Count) { throw "Package-root PRI is missing translated UI resources: $key" }
+            $rootSeen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+            foreach ($candidate in $rootCandidates) {
+                $qualifier = $candidate.SelectSingleNode("QualifierSet/Qualifier[@name='Language']")
+                if ($null -eq $qualifier) { throw "Package-root resource has no language: $key" }
+                $language = $languages | Where-Object { $_ -ieq $qualifier.GetAttribute('value') } | Select-Object -First 1
+                if (-not $language -or -not $rootSeen.Add($language) -or $candidate.GetAttribute('type') -ne 'String' -or
+                    $candidate.SelectSingleNode('Value').InnerText -cne $catalogs[$language][$key]) {
+                    throw "Package-root UI resource differs from source: $key"
+                }
+            }
+        }
+        $description = $maps[0].SelectSingleNode(".//NamedResource[@uri='$resourceUri']")
+        $candidates = @($description.SelectNodes('Candidate'))
         if ($candidates.Count -ne $languages.Count) { throw 'Package description must have all 22 language candidates.' }
         $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
         foreach ($candidate in $candidates) {

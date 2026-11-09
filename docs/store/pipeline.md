@@ -23,13 +23,25 @@ The initial submission was prepared separately through Partner Center.
 
 The pipeline consumes the existing Windows build's **self-contained MSIX**
 packages for ARM64 and x64. Both the app and its separate capture worker retain
-their existing self-contained runtimes. It does not change `Publish.ps1`,
-project files, native dependencies or build profiles.
+their existing self-contained runtimes. `Package.ps1` orchestrates and validates
+the pinned official `Microsoft.Windows.SDK.BuildTools.MSIX` MSBuild targets,
+which generate the manifest, complete root PRI and MSIX; it does not assemble
+packages using handwritten MakePri/MakeAppx commands. Validation checks compiled
+WinUI/framework resources, every supported language/key and shell resource
+lookup, plus byte-identity of the published app/helper payload in the package.
+PR and release packaging also run a bounded 90-second x64 extracted-payload
+startup smoke check using `--package-startup-self-test`, requiring exit zero and
+`passed=true` in its JSON report. It checks an isolated window, a finite positive
+XAML root, resources and loopback receiver initialization without input injection,
+capture or settings changes. The hosted x64 runner cannot execute ARM64. This
+does not validate input/layout acceptance, install a package, exercise Store
+identity, alter certificate trust, or replace installed-device testing.
 
 The normal local packaging script uses these same settings: self-contained
 publishing is enabled, trimming is disabled, and single-file publishing is not
 enabled. MSIX contains the executable, worker, runtime files, resources and
-notices as one installable package.
+notices in one package. Direct installation additionally requires a trusted
+signature; an unsigned submission package is not directly installable.
 
 Self-contained deployment is valid for both local and Store distribution.
 Trimming is an optional optimization for compatible apps, not a Store
@@ -37,10 +49,21 @@ requirement. A single-file executable is primarily a portable/direct-distributio
 option; it is not needed for this Store route. The separate experimental
 trimmed/single-file attempt is not used by the normal release pipeline.
 
-Windows distribution remains **Microsoft Store only**. Private CI prereleases
-in `arisewanggithub/RedrainCast-Windows` are intermediate submission inputs,
-not public downloads. Actions retains only the small sanitized Store receipt,
+Successful main CI builds also publish official **non-prerelease `vX.Y.Z`**
+GitHub releases in `arisewanggithub/RedrainCast-Windows`, with ARM64/x64 MSIX
+downloads only (no portable ZIP). Repository visibility still controls access.
+The [release version and signing contract](../../README.md#official-msix-releases-and-actions-storage)
+documents deterministic run/attempt versions and optional persistent signing.
+Unsigned MSIX downloads are submission inputs, **not directly installable**;
+signed direct downloads require certificate trust. Store distribution is
+independently signed by Microsoft. Actions retains only the small sanitized Store receipt,
 not Windows build binaries. Never upload Windows binaries to `RedrainCast-Releases`.
+Optional signing credentials reach only trusted main release packaging.
+The same final signed MSIX bytes are uploaded to GitHub and packaged for Store
+submission; the Store applies its own distribution signature. Testing these
+same-identity packages can interact with an existing Store installation and its
+data: installation, replacement and certificate trust always require deliberate
+owner action, never an automatic pipeline step.
 
 ## Owner prerequisites (not automatically configured)
 
@@ -119,16 +142,18 @@ The script checks the source repository and head repository, workflow path,
 event (`push` or `workflow_dispatch`), branch, conclusion, completion, SHA and
 positive run attempt. `tools\CiBuild.ps1` is dot-sourced as a library, then
 `Receive-CiBuild` receives that exact run ID, attempt and SHA. It verifies the
-signed-in source repository is private and downloads the canonical private CI
-prerelease `ci-build-<run-id>-<run-attempt>`, requiring a complete release,
-matching manifest provenance, asset checksums and safe extraction. Each
-architecture ZIP preserves its `win-arm64`/`msix-arm64` or
-`win-x64`/`msix-x64` layout under the corresponding local architecture folder.
-A missing historical archive or validation failure stops processing with an
+signed-in source repository is private and derives the official `vX.Y.Z`
+release tag from the trusted run number and attempt. It requires a complete
+non-prerelease, matching run/attempt/SHA/version manifest provenance and exact
+MSIX/checksum asset set. Each MSIX's embedded package identity and architecture
+must match `StoreIdentity.json`; its version must equal the release version
+with revision zero. The same validated MSIX bytes are copied into the local
+architecture folder without extraction or rebuilding.
+A missing historical release or validation failure stops processing with an
 instruction to rebuild the reviewed main commit and use the resulting
 successful Windows run. There is **no fallback to legacy Actions build
 artifacts**, another run, another attempt or a latest release.
-It requires exactly one MSIX per architecture build archive, validates manifest identity,
+It requires exactly one MSIX per architecture release download, validates manifest identity,
 publisher, architecture, matching versions with zero revision, matching
 non-architecture manifest metadata, PRI/runtime/worker/notice presence and
 absence of debug symbols/forbidden helpers. The trusted build's existing
@@ -239,7 +264,7 @@ run of `.github/workflows/store-release.yml` in this same repository. It
 downloads only its receipt artifact, not an arbitrary URL or local receipt,
 then re-validates the referenced Windows build, receives its exact private CI
 archive and verifies both MSIX hashes against the receipt. The receipt remains
-an Actions artifact; it is not read from the CI prerelease.
+an Actions artifact; it is not read from the GitHub release.
 For a listing-enabled receipt, its listing commit and upload run must match
 that trusted upload workflow run; malformed or incomplete image bindings fail.
 

@@ -49,7 +49,7 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Prepare private CI draft
+      - name: Prepare official versioned release draft
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -75,6 +75,10 @@ jobs:
       - name: Package unsigned MSIX
         shell: pwsh
         run: .\tools\Package.ps1 -Architecture ${{ matrix.architecture }} -PublishedDirectory .\artifacts\win-${{ matrix.architecture }} -OutputDirectory .\artifacts\msix-${{ matrix.architecture }}
+      - name: Smoke-test extracted x64 package payload
+        if: matrix.architecture == 'x64'
+        shell: pwsh
+        run: .\tools\Test-PackageLaunch.ps1 -StagingDirectory .\artifacts\msix-x64\staging -ReportPath .\artifacts\msix-x64\launch-validation.json
   release-package:
     needs: prepare-release
     runs-on: windows-latest
@@ -95,11 +99,24 @@ jobs:
         run: .\tools\PrepareNative.ps1 -Architecture ${{ matrix.architecture }} -CacheDirectory "$env:LOCALAPPDATA\RedrainCast-build-cache"
       - name: Publish
         shell: pwsh
-        run: .\tools\Publish.ps1 -Architecture ${{ matrix.architecture }}
-      - name: Package unsigned MSIX
+        run: |
+          . .\tools\CiBuild.ps1
+          $version = Get-CiBuildVersion $env:GITHUB_RUN_NUMBER ([int]$env:GITHUB_RUN_ATTEMPT)
+          .\tools\Publish.ps1 -Architecture ${{ matrix.architecture }} -Version $version
+      - name: Package MSIX with optional publisher signing
         shell: pwsh
-        run: .\tools\Package.ps1 -Architecture ${{ matrix.architecture }} -PublishedDirectory .\artifacts\win-${{ matrix.architecture }} -OutputDirectory .\artifacts\msix-${{ matrix.architecture }}
-      - name: Upload private CI package
+        env:
+          MSIX_SIGNING_PFX_BASE64: ${{ secrets.MSIX_SIGNING_PFX_BASE64 }}
+          MSIX_SIGNING_PASSWORD: ${{ secrets.MSIX_SIGNING_PASSWORD }}
+        run: |
+          . .\tools\CiBuild.ps1
+          $version = Get-CiBuildVersion $env:GITHUB_RUN_NUMBER ([int]$env:GITHUB_RUN_ATTEMPT)
+          .\tools\Package.ps1 -Architecture ${{ matrix.architecture }} -Version "$version.0" -PublishedDirectory .\artifacts\win-${{ matrix.architecture }} -OutputDirectory .\artifacts\msix-${{ matrix.architecture }}
+      - name: Smoke-test extracted x64 package payload
+        if: matrix.architecture == 'x64'
+        shell: pwsh
+        run: .\tools\Test-PackageLaunch.ps1 -StagingDirectory .\artifacts\msix-x64\staging -ReportPath .\artifacts\msix-x64\launch-validation.json
+      - name: Upload release MSIX
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -112,7 +129,7 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Verify both architectures and publish private CI prerelease
+      - name: Verify both architectures and publish official release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
