@@ -4,6 +4,7 @@
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.22621.0</SupportedOSPlatformVersion>
     <UseWinUI>true</UseWinUI>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <DefaultLanguage>en-US</DefaultLanguage>
     <WindowsPackageType Condition="'$(BuildStorePackage)' != 'true'">None</WindowsPackageType>
     <WindowsPackageType Condition="'$(BuildStorePackage)' == 'true'">MSIX</WindowsPackageType>
@@ -42,7 +43,6 @@
     <ProjectReference Include="..\RedrainCast.Core\RedrainCast.Core.csproj"/>
     <ProjectReference Include="..\RedrainCast.Receive.Media\RedrainCast.Receive.Media.csproj"/>
     <ProjectReference Include="..\RedrainCast.Send.Media\RedrainCast.Send.Media.csproj"/>
-    <ProjectReference Include="..\RedrainCast.CaptureWorker\RedrainCast.CaptureWorker.csproj" ReferenceOutputAssembly="false"/>
   </ItemGroup>
   <ItemGroup Condition="'$(BuildStorePackage)' == 'true'">
     <AppxManifest Include="$(PackageManifestPath)"/>
@@ -70,16 +70,6 @@
       </_PackagedBrandAsset>
       <AppxPackagePayload Include="@(_ValidatedPackageFile);@(_PackagedBrandAsset)"/>
     </ItemGroup>
-  </Target>
-  <Target Name="CopyCaptureWorkerForDevelopment" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
-    <MSBuild Projects="..\RedrainCast.CaptureWorker\RedrainCast.CaptureWorker.csproj" Targets="GetCaptureWorkerFiles"
-             Properties="Configuration=$(Configuration);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier)">
-      <Output TaskParameter="TargetOutputs" ItemName="_CaptureWorkerFiles"/>
-    </MSBuild>
-    <Error Condition="'@(_CaptureWorkerFiles)' == ''" Text="The capture worker build returned no runtime files."/>
-    <Copy SourceFiles="@(_CaptureWorkerFiles)"
-          DestinationFiles="@(_CaptureWorkerFiles->'$(TargetDir)capture-worker\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true"/>
   </Target>
   <Target Name="ValidateArchitecture" BeforeTargets="PrepareForBuild">
     <Error Condition="'$(RuntimeIdentifier)' != 'win-arm64' And '$(RuntimeIdentifier)' != 'win-x64'" Text="Only win-arm64 and win-x64 are supported."/>

@@ -94,7 +94,7 @@ if (@(Get-ChildItem -LiteralPath $stage -Recurse -File -Filter '*.pdb').Count -n
 }
 foreach ($required in @('RedrainCast.App.exe', 'RedrainCast.App.dll', 'RedrainCast.App.pri', 'resources.pri',
     'Assets\Cast44.png', 'Assets\Cast50.png', 'Assets\Cast150.png', 'Assets\RedrainCast.ico',
-    'capture-worker\RedrainCast.CaptureWorker.exe', 'THIRD_PARTY_NOTICES.txt',
+    'THIRD_PARTY_NOTICES.txt',
     'licenses\ScrcpyReceive-Windows-LICENSE.txt', 'licenses\tone-map-provenance.json',
     "native\win-$Architecture\avcodec-61.dll", "native\win-$Architecture\avutil-59.dll",
     "native\win-$Architecture\swresample-5.dll", "native\win-$Architecture\FFmpeg-LICENSE.txt")) {

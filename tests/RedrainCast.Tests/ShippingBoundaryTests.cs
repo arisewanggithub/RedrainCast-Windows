@@ -11,7 +11,18 @@ public sealed class ShippingBoundaryTests
     public void StartupRetainsProductionWorkerAndReusableTestsButNoDisposableDispatch()
     {
         var source = Fixture("App.xaml.cs.txt");
-        Assert.Contains("\"--capture-worker\"", source);
+        var entryPoint = Fixture("Program.cs.txt");
+        Assert.Contains("\"--capture-worker\"", entryPoint);
+        Assert.Contains("CaptureWorker.RunAsync", entryPoint);
+        Assert.Contains("ComWrappersSupport.InitializeComWrappers();", entryPoint);
+        Assert.Contains("Application.Start(", entryPoint);
+        Assert.Contains("new RedrainCast.App.App();", entryPoint);
+        Assert.DoesNotContain("\"--capture-worker\"", source);
+        Assert.Contains("DISABLE_XAML_GENERATED_MAIN", Fixture("App.csproj"));
+        Assert.DoesNotContain("CaptureWorker.csproj", Fixture("App.csproj"));
+        var worker = Fixture("WorkerVideoSource.cs.txt");
+        Assert.Contains("Path.GetFullPath(appExecutable)", worker);
+        Assert.DoesNotContain("RedrainCast.CaptureWorker.exe", worker);
         foreach (var feature in new[] { "RecordingLaunch", "recordingIndex", "cadenceIndex", "ffmpegIndex" })
             Assert.DoesNotContain(feature, source);
         foreach (var flag in new[] { "--layout-self-test", "--playback-stats-self-test",

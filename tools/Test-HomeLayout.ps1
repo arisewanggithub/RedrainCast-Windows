@@ -62,7 +62,9 @@ try {
     $minimized = [HomeLayoutGate]::IsIconic($form.Handle)
     $ac = [Windows.Forms.SystemInformation]::PowerStatus.PowerLineStatus -eq 'Online'
     $apps = @(Get-Process | Where-Object { $_.ProcessName -eq 'RedrainCast.App' -or $_.ProcessName -eq 'RedrainCast.CaptureWorker' })
-    $workers = @($apps | Where-Object ProcessName -eq 'RedrainCast.CaptureWorker').Count
+    $workerProcesses = @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'RedrainCast.App.exe'" -ErrorAction Stop |
+        Where-Object { $_.CommandLine -match '(?:^|\s)--capture-worker(?:\s|$)' })
+    $workers = @($apps | Where-Object ProcessName -eq 'RedrainCast.CaptureWorker').Count + $workerProcesses.Count
     $activeConnections = @(Get-NetTCPConnection -State Established -ErrorAction Stop |
         Where-Object { $apps.Id -contains $_.OwningProcess }).Count
     $gate = @{

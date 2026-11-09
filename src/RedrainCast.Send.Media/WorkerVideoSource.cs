@@ -49,8 +49,7 @@ public sealed class WorkerVideoSource : ProcessVideoSource, IHdrVideoSource
         this.diagnostic = diagnostic;
     }
 
-    private static string ExecutablePath(string appExecutable) => Path.Combine(
-        Path.GetDirectoryName(Path.GetFullPath(appExecutable))!, "capture-worker", "RedrainCast.CaptureWorker.exe");
+    private static string ExecutablePath(string appExecutable) => Path.GetFullPath(appExecutable);
 
     protected override IEnumerable<string> Arguments() =>
     [

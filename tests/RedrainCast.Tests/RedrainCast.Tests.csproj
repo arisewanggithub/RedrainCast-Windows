@@ -17,6 +17,7 @@
     <None Include="..\..\tools\Assert-ShippingBoundary.ps1" Link="fixtures\Assert-ShippingBoundary.ps1" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.App\RedrainCast.App.csproj" Link="fixtures\App.csproj" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.App\App.xaml.cs" Link="fixtures\App.xaml.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.App\Program.cs" Link="fixtures\Program.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.App\ColorSelfTest.cs" Link="fixtures\ColorSelfTest.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.App\HdrSelfTest.cs" Link="fixtures\HdrSelfTest.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.App\HdrLoopbackSelfTest.cs" Link="fixtures\HdrLoopbackSelfTest.cs.txt" CopyToOutputDirectory="PreserveNewest"/>

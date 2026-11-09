@@ -1,7 +1,6 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/RedrainCast.App/RedrainCast.App.csproj" />
-    <Project Path="src/RedrainCast.CaptureWorker/RedrainCast.CaptureWorker.csproj" />
     <Project Path="src/RedrainCast.Core/RedrainCast.Core.csproj" />
     <Project Path="src/RedrainCast.Protocol/RedrainCast.Protocol.csproj" />
     <Project Path="src/RedrainCast.Receive.Core/RedrainCast.Receive.Core.csproj" />
