@@ -29,6 +29,7 @@
     <None Include="..\..\tools\Package.ps1" Link="fixtures\Package.ps1" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\tools\Validate-Localization.ps1" Link="fixtures\Validate-Localization.ps1" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\tools\Test-PackageLaunch.ps1" Link="fixtures\Test-PackageLaunch.ps1" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\tools\Test-PackageIdentityLaunch.ps1" Link="fixtures\Test-PackageIdentityLaunch.ps1" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.App\LayoutSelfTest.cs" Link="fixtures\LayoutSelfTest.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Update="fixtures\playback-statistics-display-contract.json" CopyToOutputDirectory="PreserveNewest"/>
     <Compile Include="..\..\src\RedrainCast.App\PeerStabilityProgress.cs" Link="PeerStabilityProgress.cs"/>

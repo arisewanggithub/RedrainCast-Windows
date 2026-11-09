@@ -5,6 +5,29 @@ namespace RedrainCast.Tests;
 public sealed class PackageLocalizationTests
 {
     [Fact]
+    public void PackageIdentitySmokeUsesUniqueRegistrationAndVerifiesProcessIdentity()
+    {
+        var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "Test-PackageIdentityLaunch.ps1"));
+        Assert.Contains("'RedrainCast.Test.' + [Guid]::NewGuid()", source);
+        Assert.Contains("<uap10:AllowExternalContent>true</uap10:AllowExternalContent>", source);
+        Assert.Contains("Add-AppxPackage -Register $manifestPath -ExternalLocation $staging", source);
+        Assert.Contains("GetPackageFullName", source);
+        Assert.Contains("$observedIdentity -cne $package.PackageFullName", source);
+        Assert.Contains("$result.pid -ne $processId", source);
+        Assert.Contains("--package-startup-self-test", source);
+        Assert.Contains("finally {", source);
+        Assert.Contains("if ($registrationAttempted)", source);
+        Assert.Contains("if ($directoryCreated)", source);
+        Assert.Contains("Where-Object { $_.Name -ceq $name }", source);
+        Assert.Contains("Remove-AppxPackage -Package $item.PackageFullName", source);
+        Assert.Contains("Stop-Process -Id $process.Id", source);
+        Assert.DoesNotContain("Import-PfxCertificate", source);
+        Assert.DoesNotContain("-AllUsers", source);
+        Assert.DoesNotContain("-ForceApplicationShutdown", source);
+        Assert.DoesNotContain("Start-Sleep", source);
+    }
+
+    [Fact]
     public void ExecutableManifestIsVersionedBeforeWindowsAppSdkCapturesIt()
     {
         var document = System.Xml.Linq.XDocument.Load(

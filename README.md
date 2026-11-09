@@ -1243,6 +1243,16 @@ not imply a smaller total first installation when the framework is absent.
 CI extracted-package smoke tests explicitly install the SDK-produced matching
 framework dependency if missing; local smoke tests require it to be installed
 unless `Test-PackageLaunch.ps1 -InstallFrameworkDependency` is requested.
+The shared executable's bootstrapper initializes the framework only when running
+unpackaged. With package identity it is a no-op: MSIX dependencies already supply
+the framework, and bootstrapping again is unsupported.
+Extracted startup cannot validate that packaged path. On a development-test
+machine that permits development registration, run
+`tools\Test-PackageIdentityLaunch.ps1 -StagingDirectory <staging> -ReportPath <new-report>`.
+It registers a unique temporary external-content identity, verifies the launched
+process's package identity, runs the isolated startup test and removes only that
+temporary registration. It never replaces the installed production app, changes
+development policy, or installs a signing certificate.
 The pinned native preparation script downloads the FFmpeg 7.1.3 decoder/audio
 runtime in a user-local cache, along with its LGPL license, credits, configuration
 and build provenance. No native compiler or network-transport library is needed.
