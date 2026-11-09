@@ -101,14 +101,44 @@ function Get-StoreHash {
     finally { $sha.Dispose() }
 }
 
+function Get-StorePricingFingerprintValue {
+    param($Pricing)
+    if ($null -eq $Pricing) { return $null }
+    $value = [ordered]@{}
+    if ($Pricing -is [Collections.IDictionary]) {
+        foreach ($name in $Pricing.Keys) {
+            $key = [string]$name
+            if ($key -ieq 'isAdvancedPricingModel') { continue }
+            $value[$key] = $Pricing[$name]
+        }
+    } else {
+        foreach ($property in $Pricing.PSObject.Properties) {
+            if ($property.Name -ieq 'isAdvancedPricingModel') { continue }
+            $value[$property.Name] = $property.Value
+        }
+    }
+    return $value
+}
+
 function Get-StoreMetadataFingerprint {
     param($Submission)
     $metadata = [ordered]@{}
     foreach ($property in $Submission.PSObject.Properties) {
         if ($property.Name -in @('id', 'status', 'statusDetails', 'fileUploadUrl', 'applicationPackages', 'targetPublishMode', 'targetPublishDate', 'friendlyName')) { continue }
-        $metadata[$property.Name.ToLowerInvariant()] = $property.Value
+        $value = if ($property.Name -ieq 'pricing') { Get-StorePricingFingerprintValue $property.Value } else { $property.Value }
+        $metadata[$property.Name.ToLowerInvariant()] = $value
     }
     return Get-StoreHash (ConvertTo-StoreCanonicalJson $metadata)
+}
+
+function Get-StoreSubmissionFingerprint {
+    param($Submission)
+    $value = [ordered]@{}
+    foreach ($property in $Submission.PSObject.Properties) {
+        $propertyValue = if ($property.Name -ieq 'pricing') { Get-StorePricingFingerprintValue $property.Value } else { $property.Value }
+        $value[$property.Name.ToLowerInvariant()] = $propertyValue
+    }
+    return Get-StoreHash (ConvertTo-StoreCanonicalJson $value)
 }
 
 function Get-StoreMetadataDiffSummary {
@@ -125,11 +155,15 @@ function Get-StoreMetadataDiffSummary {
     $afterProperties = @{}
     foreach ($property in $Before.PSObject.Properties) {
         $name = $property.Name.ToLowerInvariant()
-        if ($name -cin $allowlisted) { $beforeProperties[$name] = $property.Value }
+        if ($name -cin $allowlisted) {
+            $beforeProperties[$name] = if ($name -ceq 'pricing') { Get-StorePricingFingerprintValue $property.Value } else { $property.Value }
+        }
     }
     foreach ($property in $After.PSObject.Properties) {
         $name = $property.Name.ToLowerInvariant()
-        if ($name -cin $allowlisted) { $afterProperties[$name] = $property.Value }
+        if ($name -cin $allowlisted) {
+            $afterProperties[$name] = if ($name -ceq 'pricing') { Get-StorePricingFingerprintValue $property.Value } else { $property.Value }
+        }
     }
     $changed = @()
     foreach ($name in $allowlisted) {
@@ -174,7 +208,7 @@ function Get-StoreMetadataDiffSummary {
         }
     }
     $pricingChanges = @()
-    foreach ($name in @('priceId', 'trialPeriod', 'marketSpecificPricings', 'isAdvancedPricingModel')) {
+    foreach ($name in @('priceId', 'trialPeriod', 'marketSpecificPricings')) {
         $beforeValue = Get-StoreObjectField (Get-StoreObjectField $Before 'pricing') $name
         $afterValue = Get-StoreObjectField (Get-StoreObjectField $After 'pricing') $name
         if ((ConvertTo-StoreCanonicalJson $beforeValue) -ceq (ConvertTo-StoreCanonicalJson $afterValue)) { continue }
@@ -376,7 +410,7 @@ function Get-StorePricingEvidence {
         $classification = if ($null -eq $value) { 'null' }
             elseif ($name -ceq 'priceId') { Get-StorePriceClassification $Submission }
             elseif ($name -ceq 'trialPeriod' -and [string]$value -cin @('NoFreeTrial', 'OneDay', 'TrialNeverExpires', 'SevenDays', 'FifteenDays', 'ThirtyDays')) { [string]$value }
-            elseif ($name -ceq 'isAdvancedPricingModel' -and $value -is [bool]) { [string]$value }
+            elseif ($name -ceq 'isAdvancedPricingModel' -and $value -is [bool]) { 'non-authoritative API flag' }
             else { 'value (hashed)' }
         [pscustomobject]@{
             propertyPath = "pricing.$name"; classification = $classification
@@ -634,7 +668,7 @@ function New-StoreCliDraft {
         sourceBuildRunId = $BuildRunId; buildHeadSha = $BuildHeadSha
         priorLastPublishedId = [string]$state.application.lastPublishedApplicationSubmission.id
         packages = $PackageSet.packages; metadataFingerprint = $metadataHash
-        submissionFingerprint = Get-StoreHash (ConvertTo-StoreCanonicalJson $saved)
+        submissionFingerprint = Get-StoreSubmissionFingerprint $saved
         targetPublishMode = 'Immediate'
     }
 }
@@ -655,7 +689,7 @@ function Submit-StoreCliDraft {
         $state.application.lastPublishedApplicationSubmission.id -cne $Receipt.priorLastPublishedId -or
         $draft.status -cne 'PendingCommit' -or $draft.targetPublishMode -cne 'Immediate' -or
         (Get-StoreMetadataFingerprint $draft) -cne $Receipt.metadataFingerprint -or
-        (Get-StoreHash (ConvertTo-StoreCanonicalJson $draft)) -cne $Receipt.submissionFingerprint) {
+        (Get-StoreSubmissionFingerprint $draft) -cne $Receipt.submissionFingerprint) {
         throw 'Draft changed since upload. No certification was started.'
     }
     Assert-StoreUploadedPackages $draft $PackageSet.packages
@@ -667,11 +701,14 @@ function Submit-StoreCliDraft {
             'PendingPublication', 'Publishing', 'PublishStarted', 'Published', 'InStore', 'Release')) {
         throw 'Certification acceptance and Immediate publication were not verified. Inspect status; never automatically retry.'
     }
-    return Get-StoreSafeStatus $accepted
+    return [pscustomobject]@{
+        status = Get-StoreSafeStatus $accepted
+        packages = @(Get-StorePackageEvidence $accepted)
+    }
 }
 
 Export-ModuleMember -Function Assert-StoreRun, Assert-StoreReleaseTrigger, Get-StoreLatestBuild, Get-StoreRun, Receive-StoreArtifact,
-    ConvertTo-StoreCanonicalJson, Get-StoreHash, Get-StoreMetadataFingerprint, Get-StoreMetadataDiffSummary, Invoke-StoreCli,
+    ConvertTo-StoreCanonicalJson, Get-StoreHash, Get-StoreMetadataFingerprint, Get-StoreSubmissionFingerprint, Get-StoreMetadataDiffSummary, Invoke-StoreCli,
     Initialize-StoreCli, Clear-StoreCliCredentials, Assert-StoreApplication, Get-StoreState, Get-StoreSafeStatus, Get-StoreInspection,
     Remove-StoreInspectedDraft, Get-StorePriceClassification, Get-StorePricingEvidence, Assert-StorePricing, Read-StorePackage, Get-StorePackageSet,
     Assert-StoreUploadedPackages, New-StoreCliDraft, Submit-StoreCliDraft

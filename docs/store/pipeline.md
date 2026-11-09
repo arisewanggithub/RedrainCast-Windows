@@ -66,11 +66,21 @@ submission API. Removing/emptying `priceId` can instead silently make the app
 free; omitting the pricing object is rejected. This is a plausible explanation
 for earlier `InvalidParameterValue` failures, not proof of their actual cause.
 
+The pinned CLI's [`PublishCommandPricingUnitTests`](https://github.com/microsoft/msstore-cli/blob/v0.4.4/MSStore.CLI.UnitTests/PublishCommandPricingUnitTests.cs)
+explicitly states that `isAdvancedPricingModel` only describes the tier range
+shown by the dashboard and that the API reports it inconsistently for the same
+product. It is therefore excluded from business-metadata fingerprints and
+pricing-change diagnostics; it never overrides or substitutes for the actual
+base price, trial, or market-specific pricing, which remain guarded.
+
 Ordinary uploads preserve a usable existing price without `--priceId`. `Base`,
 missing pricing, or a missing/blank base price **stop before any upload**.
 `preflight`, `inspect-draft` and `status` report only a safe price classification,
-never market data. `status` remains read-only even when pricing cannot round-trip.
-`Base` is not evidence that the product is free.
+never market data. `inspect-draft` and read-only `status` also project saved
+package filenames, versions, architectures, and upload states; missing ingestion
+fields remain null rather than being inferred from CLI success. `status` remains
+read-only even when pricing cannot round-trip. `Base` is not evidence that the
+product is free.
 
 The optional `approved_base_price_id` input is an **explicit pricing-change
 authorization** (`Free`, `NotAvailable`, or a real `Tier` number). Only supply it
@@ -130,7 +140,10 @@ blocking explicit-price-approval gate, not a reason to use browser automation.
    and verify exact draft/published pointers and full CLI-visible fingerprint.
    Call official `submission publish`, then `submission status`.
    **Certification is requested and publication is automatic when it passes.**
-6. **`status`**: official read-only status request, suppressing raw service messages.
+6. **`status`**: official read-only status request, suppressing raw service messages
+   and projecting only saved package filenames, versions, architectures, and
+   upload states. Missing ingestion fields stay null and are never inferred from
+   CLI success.
 7. **`release-latest`**: manual end-to-end operation, also selected by the automatic
    trigger. Takes no build or draft run input. Resolve GitHub's current latest
    published non-prerelease official release and its manifest; require successful
@@ -140,8 +153,10 @@ blocking explicit-price-approval gate, not a reason to use browser automation.
    Upload once, persist the exact draft receipt, and immediately run the same
    receipt-bound certification checks in this trusted run. Verify the same
    submission ID, an accepted certification/publication state and persisted
-   `Immediate` mode, then retain `store-certification-receipt`. Certification
-   failures are not success. No certification is skipped and no retry is made.
+   `Immediate` mode, then retain `store-certification-receipt`, including the
+   safe package metadata returned by the Store after certification starts.
+   Certification failures are not success. No certification is skipped and
+   no retry is made.
    Existing drafts are always preserved; duplicate/older published package
    versions are rejected before upload. A failed submit retains its sanitized
    upload receipt for inspection, not automatic recovery.
