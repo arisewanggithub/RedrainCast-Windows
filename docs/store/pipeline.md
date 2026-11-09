@@ -147,7 +147,7 @@ allowlisted error entries; free-form messages and unknown codes are suppressed.
 For recognized JSON validation errors, fixed API schema labels and fixed reason
 categories mentioned by the response can be logged; arbitrary paths, indices,
 parameter values and message text remain suppressed.
-Nested legacy `details`/`innerError` envelopes are traversed at most five levels
+Nested legacy `detail`/`details`/`innerError` envelopes are traversed at most five levels
 and 100 nodes; output remains limited to the same fixed labels and categories.
 No retry or draft cleanup is automatic. This distinguishes a Store metadata
 PUT from an Azure archive PUT without exposing credentials, SAS or metadata.
