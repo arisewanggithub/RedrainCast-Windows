@@ -1,140 +1,128 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [Parameter(Mandatory = $true)][ValidateSet('preflight', 'inspect-draft', 'resume-draft', 'upload-draft', 'upload-listings-draft', 'submit-draft')][string]$Stage,
+    [Parameter(Mandatory = $true)][ValidateSet('preflight', 'inspect-draft', 'discard-draft', 'upload-draft', 'submit-draft', 'status')][string]$Stage,
     [string]$InspectSubmissionId,
     [string]$InspectRunId,
     [string]$BuildRunId,
     [string]$DraftRunId,
     [Parameter(Mandatory = $true)][string]$ConfirmStore,
-    [string]$ConfirmListingsCommit,
+    [string]$ApprovedBasePriceId,
     [string]$WorkDirectory = '.\artifacts\store-release'
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
-Import-Module (Join-Path $PSScriptRoot 'StoreRelease.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'StoreCli.psm1') -Force
 if ($env:GITHUB_REPOSITORY -cne 'arisewanggithub/RedrainCast-Windows' -or
     $env:GITHUB_REF -cne 'refs/heads/main' -or $env:GITHUB_EVENT_NAME -cne 'workflow_dispatch') {
     throw 'Live Store operations are restricted to manual main dispatches in the private source repository.'
 }
 if ($ConfirmStore -cne '9P1153MP6R32') { throw 'Exact Store ID confirmation is required.' }
-if ($Stage -ceq 'upload-listings-draft') {
-    Assert-StoreListingApproval $ConfirmListingsCommit $env:GITHUB_SHA $env:GITHUB_RUN_ID
-} elseif ($ConfirmListingsCommit) { throw 'Listing commit confirmation is only valid for upload-listings-draft.' }
+if ($ApprovedBasePriceId -and $Stage -cne 'upload-draft') { throw 'Base-price approval is only accepted for upload-draft.' }
+if ($Stage -cnotin @('inspect-draft', 'discard-draft') -and ($InspectSubmissionId -or $InspectRunId)) {
+    throw 'Inspection inputs are only accepted for inspect-draft or discard-draft.'
+}
+if ($Stage -ceq 'inspect-draft' -and $InspectRunId) { throw 'inspect-draft does not accept a prior inspection run.' }
+if ($Stage -cin @('inspect-draft', 'discard-draft') -and $InspectSubmissionId -cnotmatch '^[1-9][0-9]*$') {
+    throw 'An exact pending submission ID is required.'
+}
+if ($Stage -ceq 'discard-draft' -and $InspectRunId -cnotmatch '^[1-9][0-9]*$') {
+    throw 'Discard requires a successful inspected draft run.'
+}
+if ($Stage -cnotin @('upload-draft', 'submit-draft') -and ($BuildRunId -or $DraftRunId)) {
+    throw 'This stage does not accept build or draft run inputs.'
+}
+if ($Stage -cne 'submit-draft' -and $DraftRunId) { throw 'Draft receipt run is only accepted for submit-draft.' }
+if (Test-Path -LiteralPath $WorkDirectory) { throw 'Work directory must be new; existing files are preserved.' }
 $identity = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'StoreIdentity.json') -Raw | ConvertFrom-Json
 if ($identity.StoreId -cne $ConfirmStore) { throw 'Store identity does not match the confirmation.' }
-if ($Stage -cnotin @('inspect-draft', 'resume-draft') -and $InspectSubmissionId) { throw 'Inspection ID is only valid for inspect-draft or resume-draft.' }
-if ($Stage -cne 'resume-draft' -and $InspectRunId) { throw 'Inspection run is only valid for resume-draft.' }
-if ($Stage -ceq 'resume-draft' -and ($InspectRunId -cnotmatch '^[1-9][0-9]*$' -or $InspectSubmissionId -cnotmatch '^[1-9][0-9]{0,19}$')) {
-    throw 'Recovery requires an explicit successful inspection run and exact submission ID.'
-}
-if ($Stage -cin @('preflight', 'inspect-draft')) {
-    if ($BuildRunId -or $DraftRunId) { throw 'Read-only stage does not accept build or draft run inputs.' }
-    if ($Stage -ceq 'inspect-draft' -and $InspectSubmissionId -cnotmatch '^[1-9][0-9]{0,19}$') {
-        throw 'Inspection requires an exact numeric submission ID.'
-    }
-    if (-not $PSCmdlet.ShouldProcess($ConfirmStore, 'Read-only Store authentication and readiness check')) { return }
-    $headers = @{ Authorization = 'Bearer ' + (Get-StoreToken) }
-    $request = {
-        param($method, $path, $body, $inFile)
-        if ($method -cne 'GET' -or $null -ne $body -or $inFile) { throw 'Read-only stages only permit Store GET requests.' }
-        Invoke-StoreHttp GET "https://manage.devcenter.microsoft.com/v1.0/my/$path" $headers
-    }.GetNewClosure()
-    if ($Stage -ceq 'inspect-draft') {
-        if (Test-Path -LiteralPath $WorkDirectory) { throw 'Work directory must be new; existing files are preserved.' }
-        $snapshot = $null
-        $inspection = Get-StoreDraftInspection $identity $InspectSubmissionId $request ([ref]$snapshot)
-        $snapshot | Add-Member -NotePropertyName inspectionRunId -NotePropertyValue $env:GITHUB_RUN_ID
-        $snapshot | Add-Member -NotePropertyName sourceSha -NotePropertyValue $env:GITHUB_SHA
-        New-Item -ItemType Directory -Path $WorkDirectory | Out-Null
-        [IO.File]::WriteAllText((Join-Path $WorkDirectory 'store-inspection.json'),
-            (ConvertTo-Json -InputObject $snapshot -Depth 5), (New-Object Text.UTF8Encoding($false)))
-        Write-Host (ConvertTo-Json -InputObject $inspection -Depth 5 -Compress)
-        return
-    }
-    $readiness = Get-StoreReadiness $identity $request
-    Write-Host "Store authentication and product identity verified. First publication complete: $($readiness.firstPublicationComplete). Pending draft exists: $($readiness.pendingDraftExists). Automated update allowed: $($readiness.automatedUpdateAllowed)."
-    return
-}
-if (Test-Path -LiteralPath $WorkDirectory) { throw 'Work directory must be new; existing files are preserved.' }
 New-Item -ItemType Directory -Path $WorkDirectory -WhatIf:$false | Out-Null
-try {
-    if ($Stage -ceq 'resume-draft') {
-        $inspectRun = Get-StoreRun $InspectRunId '.github/workflows/store-release.yml'
-        $inspectFolder = Join-Path $WorkDirectory 'inspection'
-        Receive-StoreArtifact $InspectRunId 'store-inspection' $inspectFolder
-        $snapshots = @(Get-ChildItem -LiteralPath $inspectFolder -Recurse -File)
-        if ($snapshots.Count -ne 1 -or $snapshots[0].Name -cne 'store-inspection.json' -or $snapshots[0].Length -gt 16KB) {
-            throw 'Expected exactly one small trusted inspection snapshot.'
-        }
-        $snapshot = Get-Content -LiteralPath $snapshots[0].FullName -Raw | ConvertFrom-Json
-        if ($snapshot.inspectionRunId -cne $InspectRunId -or $snapshot.sourceSha -cne $inspectRun.head_sha) {
-            throw 'Inspection snapshot does not match the trusted workflow run and commit.'
-        }
+$WorkDirectory = (Get-Item -LiteralPath $WorkDirectory).FullName
+$cli = {
+    param([string[]]$Arguments, [bool]$Json)
+    Invoke-StoreCli -Arguments $Arguments -Json:$Json
+}
+function Read-TrustedStoreArtifact {
+    param([string]$RunId, [string]$Name)
+    $run = Get-StoreRun $RunId '.github/workflows/store-release.yml'
+    $folder = Join-Path $WorkDirectory $Name
+    Receive-StoreArtifact $RunId $Name $folder
+    $files = @(Get-ChildItem -LiteralPath $folder -Recurse -File)
+    if ($files.Count -ne 1 -or $files[0].Name -cne "$Name.json" -or $files[0].Length -gt 64KB) {
+        throw 'Expected exactly one small trusted Store artifact.'
     }
-    if ($Stage -ceq 'submit-draft') {
-        $draftRun = Get-StoreRun $DraftRunId '.github/workflows/store-release.yml'
-        $receiptFolder = Join-Path $WorkDirectory 'receipt'
-        Receive-StoreArtifact $DraftRunId 'store-draft-receipt' $receiptFolder
-        $receipts = @(Get-ChildItem -LiteralPath $receiptFolder -Recurse -File)
-        if ($receipts.Count -ne 1 -or $receipts[0].Name -cne 'store-draft-receipt.json' -or $receipts[0].Length -gt 64KB) {
-            throw 'Expected exactly one small trusted upload receipt.'
-        }
-        $receipt = Get-Content -LiteralPath $receipts[0].FullName -Raw | ConvertFrom-Json
-        if ($receipt.schemaVersion -eq 2 -and
-            ($receipt.listingUpdate.sourceSha -cne $draftRun.head_sha -or $receipt.listingUpdate.uploadRunId -cne $DraftRunId)) {
-            throw 'Listing receipt does not match the trusted upload workflow commit and run.'
-        }
-        if ($BuildRunId -and $BuildRunId -cne $receipt.sourceBuildRunId) { throw 'Build input differs from the receipt.' }
-        $BuildRunId = [string]$receipt.sourceBuildRunId
-    } elseif ($DraftRunId) { throw 'Draft run input is only valid for submit-draft.' }
+    $value = Get-Content -LiteralPath $files[0].FullName -Raw | ConvertFrom-Json
+    if ($value.sourceSha -cne $run.head_sha -or $value.workflowRunId -cne $RunId) {
+        throw 'Store artifact is not bound to the trusted main workflow run and commit.'
+    }
+    return $value
+}
+if ($Stage -ceq 'discard-draft') {
+    $inspection = Read-TrustedStoreArtifact $InspectRunId 'store-inspection'
+}
+if ($Stage -ceq 'submit-draft') {
+    $receipt = Read-TrustedStoreArtifact $DraftRunId 'store-draft-receipt'
+    if ($BuildRunId -and $BuildRunId -cne $receipt.sourceBuildRunId) { throw 'Build input differs from receipt.' }
+    $BuildRunId = [string]$receipt.sourceBuildRunId
+}
+if ($Stage -cin @('upload-draft', 'submit-draft')) {
     $build = Get-StoreRun $BuildRunId '.github/workflows/windows.yml'
     . (Join-Path $PSScriptRoot 'CiBuild.ps1')
-    try {
-        $null = Receive-CiBuild -RunId $BuildRunId -RunAttempt $build.run_attempt -ExpectedSha $build.head_sha -RunNumber ([string]$build.run_number) -DestinationDirectory $WorkDirectory
-    } catch {
-        throw "Required validated official MSIX release for run $BuildRunId attempt $($build.run_attempt) could not be received. Rebuild the reviewed main commit and use its successful Windows run; there is no Actions build-artifact fallback."
-    }
-    $listingUpdate = $null
-    if ($Stage -ceq 'upload-listings-draft') {
-        $listingUpdate = Read-StoreListings (Split-Path -Parent $PSScriptRoot) $env:GITHUB_SHA $env:GITHUB_RUN_ID
-    }
-    $archive = New-StorePackageArchive $WorkDirectory $identity $listingUpdate
-    # -WhatIf downloads/validates release MSIX files (and submission receipts) only; it never calls Store/Azure.
-    if (-not $PSCmdlet.ShouldProcess('9P1153MP6R32 (automatic publication after certification)', $Stage)) { return }
-    $headers = @{ Authorization = 'Bearer ' + (Get-StoreToken) }
-    $request = {
-        param($method, $path, $body, $inFile)
-        if ($inFile) {
-            Invoke-StoreHttp $method $path @{ 'x-ms-blob-type' = 'BlockBlob'; 'x-ms-version' = '2019-12-12' } $null $inFile 'application/zip'
-        } else {
-            $json = if ($null -ne $body) { [Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $body -Depth 100 -Compress -WarningAction Stop)) } else { $null }
-            Invoke-StoreHttp $method "https://manage.devcenter.microsoft.com/v1.0/my/$path" $headers $json
+    $null = Receive-CiBuild -RunId $BuildRunId -RunAttempt $build.run_attempt -ExpectedSha $build.head_sha `
+        -RunNumber ([string]$build.run_number) -DestinationDirectory $WorkDirectory
+    $packages = Get-StorePackageSet $WorkDirectory $identity $BuildRunId
+}
+# -WhatIf validates the official release/receipt offline; no CLI authentication or Store calls.
+if (-not $PSCmdlet.ShouldProcess($ConfirmStore, "$Stage (certification publishes automatically when approved)")) { return }
+$previousTemp = $env:TEMP
+$previousTmp = $env:TMP
+$cliScratch = Join-Path $WorkDirectory 'cli-scratch'
+New-Item -ItemType Directory -Path $cliScratch | Out-Null
+$env:TEMP = $cliScratch
+$env:TMP = $cliScratch
+try {
+    Initialize-StoreCli
+    switch ($Stage) {
+        'preflight' {
+            $state = Get-StoreState $identity $cli
+            Assert-StorePricing $state.submission ''
+            Write-Host "Product identity and pricing verified. Pending draft exists: $($null -ne $state.application.pendingApplicationSubmission)."
         }
-    }.GetNewClosure()
-    $recordProvenance = {
-        param($snapshot)
-        $snapshot | Add-Member -NotePropertyName sourceBuildRunId -NotePropertyValue $BuildRunId
-        $snapshot | Add-Member -NotePropertyName uploadRunId -NotePropertyValue $env:GITHUB_RUN_ID
-        [IO.File]::WriteAllText((Join-Path $WorkDirectory 'store-draft-provenance.json'),
-            (ConvertTo-Json -InputObject $snapshot -Depth 5), (New-Object Text.UTF8Encoding($false)))
-    }.GetNewClosure()
-    if ($Stage -cin @('upload-draft', 'upload-listings-draft', 'resume-draft')) {
-        if ($Stage -ceq 'resume-draft') {
-            $receipt = Resume-StoreDraft $identity $archive $BuildRunId $build.head_sha $snapshot $InspectSubmissionId $request $recordProvenance
-        } else {
-            $receipt = New-StoreDraft $identity $archive $BuildRunId $build.head_sha $request $recordProvenance
+        'inspect-draft' {
+            $state = Get-StoreState $identity $cli
+            $inspection = Get-StoreInspection $state $InspectSubmissionId $env:GITHUB_RUN_ID $env:GITHUB_SHA
+            $inspection | Add-Member -NotePropertyName workflowRunId -NotePropertyValue $env:GITHUB_RUN_ID
+            $inspection | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $WorkDirectory 'store-inspection.json') -Encoding UTF8
+            $price = [string]$state.submission.pricing.priceId
+            $priceClass = if ($price -ieq 'Base') { 'Base (not round-trippable; not evidence of Free)' }
+                elseif ($price -ceq 'Free') { 'Free' } elseif ($price -match '^Tier[0-9]+$') { 'Paid tier' } else { 'Other or missing' }
+            Write-Host "PendingCommit draft fingerprint saved. Pricing classification: $priceClass. No metadata or signed URLs logged."
         }
-        $receiptPath = Join-Path $WorkDirectory 'store-draft-receipt.json'
-        [IO.File]::WriteAllText($receiptPath, (ConvertTo-Json -InputObject $receipt -Depth 100), (New-Object Text.UTF8Encoding($false)))
-        Write-Host "Draft $($receipt.submissionId) uploaded and receipt verified. Certification has NOT been requested."
-    } else {
-        $status = Submit-StoreDraft $identity $receipt $archive.packages $BuildRunId $build.head_sha $request
-        Write-Host "Commit accepted; observed processing state: $status. Publication is automatic after successful certification; monitor Partner Center."
+        'discard-draft' {
+            Remove-StoreInspectedDraft $identity $inspection $InspectSubmissionId $cli
+            Write-Host 'Only the explicitly inspected unchanged pending draft was discarded. No replacement was uploaded.'
+        }
+        'upload-draft' {
+            $receipt = New-StoreCliDraft $identity $packages $BuildRunId $build.head_sha `
+                (Join-Path (Split-Path -Parent $PSScriptRoot) 'src\RedrainCast.App') `
+                (Join-Path $WorkDirectory 'private-submission.json') $ApprovedBasePriceId $cli
+            $receipt | Add-Member -NotePropertyName sourceSha -NotePropertyValue $env:GITHUB_SHA
+            $receipt | Add-Member -NotePropertyName workflowRunId -NotePropertyValue $env:GITHUB_RUN_ID
+            $receipt | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $WorkDirectory 'store-draft-receipt.json') -Encoding UTF8
+            Write-Host "Validated packages uploaded to draft $($receipt.submissionId). No certification requested. Saved publication mode: Immediate."
+        }
+        'submit-draft' {
+            $status = Submit-StoreCliDraft $identity $receipt $packages $BuildRunId $build.head_sha $cli
+            Write-Host "Official CLI certification request accepted. Current state: $status. Publication is automatic after certification passes."
+        }
+        'status' {
+            $state = Get-StoreState $identity $cli
+            $null = & $cli @('submission', 'status', $ConfirmStore) $false
+            Write-Host "Current submission state: $(Get-StoreSafeStatus $state.submission). Raw service messages suppressed."
+        }
     }
 } finally {
-    # Do not leave downloaded binaries in later artifact steps. Only the sanitized receipt may survive.
-    foreach ($name in @('arm64', 'x64', 'receipt', 'inspection', 'store-packages.zip')) {
-        $path = Join-Path $WorkDirectory $name
-        if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force -WhatIf:$false }
-    }
+    # Hosted runner only: remove persisted CLI credentials even after a failure.
+    try { $null = Invoke-StoreCli @('reconfigure', '--reset') } catch { Write-Warning 'CLI credential reset failed; dispose of this hosted runner.' }
+    $env:TEMP = $previousTemp
+    $env:TMP = $previousTmp
 }

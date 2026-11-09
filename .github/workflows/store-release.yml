@@ -4,16 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: Read-only preflight/inspection, draft upload, listing upload, or certification request
+        description: Official CLI operation (discard deletes only an explicitly inspected unchanged draft)
         required: true
         default: preflight
         type: choice
-        options: [preflight, inspect-draft, resume-draft, upload-draft, upload-listings-draft, submit-draft]
+        options: [preflight, inspect-draft, discard-draft, upload-draft, submit-draft, status]
       inspect_submission_id:
-        description: Exact existing pending submission ID (inspect-draft or explicit resume-draft)
+        description: Exact pending submission ID (inspection or explicitly authorized discard only)
         type: string
       inspect_run_id:
-        description: Successful main inspect-draft run with unchanged snapshot (resume-draft only)
+        description: Successful main inspection run with unchanged snapshot (discard-draft only)
         type: string
       build_run_id:
         description: Successful main Windows build run ID (required for upload; derived from receipt for submit)
@@ -25,8 +25,8 @@ on:
         description: Type 9P1153MP6R32 to authorize this Store operation
         required: true
         type: string
-      confirm_listings_commit:
-        description: Exact main commit SHA whose 22 translations and 44 screenshots you reviewed (listing upload only)
+      approved_base_price_id:
+        description: OPTIONAL explicit base-price CHANGE authorization (Free/NotAvailable/Tier number); never infer Free from Base
         type: string
 permissions:
   contents: read
@@ -50,6 +50,14 @@ jobs:
     environment: microsoft-store
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Install pinned official Microsoft Store CLI
+        uses: microsoft/microsoft-store-apppublisher@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0 # v1.4
+        with:
+          version: v0.4.4
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        if: inputs.stage == 'upload-draft'
+        with:
+          dotnet-version: 10.0.x
       - name: Perform explicitly selected Store operation
         shell: powershell
         env:
@@ -60,18 +68,19 @@ jobs:
           STORE_BUILD_RUN_ID: ${{ inputs.build_run_id }}
           STORE_DRAFT_RUN_ID: ${{ inputs.draft_run_id }}
           STORE_CONFIRMATION: ${{ inputs.confirm_store }}
-          STORE_LISTINGS_COMMIT: ${{ inputs.confirm_listings_commit }}
+          STORE_APPROVED_BASE_PRICE_ID: ${{ inputs.approved_base_price_id }}
           PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
           PARTNER_CENTER_CLIENT_ID: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
           PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+          PARTNER_CENTER_SELLER_ID: ${{ secrets.PARTNER_CENTER_SELLER_ID }}
         run: |
           .\tools\Invoke-StoreRelease.ps1 -Stage $env:STORE_STAGE `
             -InspectSubmissionId $env:STORE_INSPECT_SUBMISSION_ID `
             -InspectRunId $env:STORE_INSPECT_RUN_ID `
             -BuildRunId $env:STORE_BUILD_RUN_ID -DraftRunId $env:STORE_DRAFT_RUN_ID `
-            -ConfirmStore $env:STORE_CONFIRMATION -ConfirmListingsCommit $env:STORE_LISTINGS_COMMIT
+            -ConfirmStore $env:STORE_CONFIRMATION -ApprovedBasePriceId $env:STORE_APPROVED_BASE_PRICE_ID
       - name: Keep sanitized receipt in private Actions only
-        if: success() && (inputs.stage == 'upload-draft' || inputs.stage == 'upload-listings-draft' || inputs.stage == 'resume-draft')
+        if: success() && inputs.stage == 'upload-draft'
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: store-draft-receipt
@@ -85,12 +94,4 @@ jobs:
           name: store-inspection
           path: artifacts/store-release/store-inspection.json
           if-no-files-found: error
-          retention-days: 14
-      - name: Keep safe draft provenance even after transport failure
-        if: always() && (inputs.stage == 'upload-draft' || inputs.stage == 'upload-listings-draft' || inputs.stage == 'resume-draft')
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
-        with:
-          name: store-draft-provenance
-          path: artifacts/store-release/store-draft-provenance.json
-          if-no-files-found: ignore
           retention-days: 14

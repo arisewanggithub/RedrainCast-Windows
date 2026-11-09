@@ -28,7 +28,7 @@ self-contained, untrimmed ARM64/x64 0.1.20.0 packages were preserved; newer loca
 naming/JSON candidates were not uploaded. Public setup/test instructions were
 saved and verified in Additional Testing Information; internal acceptance
 diagnostics were not submitted. This does not establish certification approval,
-publication or physical-device acceptance. The separately guarded REST update
+publication or physical-device acceptance. The separately guarded official CLI update
 pipeline also uses automatic publication after successful certification, with
 separate owner-dispatched upload and certification stages.
 
@@ -65,11 +65,11 @@ keywords, product identity, requirements and privacy meaning.
 | Chinese (Traditional) | [zh-Hant.json](listings/zh-Hant.json) |
 
 These are reviewable content files, not a Partner Center import format. The
-[guarded REST pipeline](pipeline.md) has an explicit `upload-listings-draft`
-mode that maps supported fields and uploads the 44 screenshots after exact
-reviewed-commit confirmation. It applies only after the first manual
-publication and never adopts an existing pending draft. Optional empty fields
-preserve existing values; product URLs and Store branding artwork still
+[guarded official CLI pipeline](pipeline.md) is package-only and preserves existing
+listings. The former custom REST `upload-listings-draft` mode has been removed;
+these 44 screenshots require a separately reviewed official listing workflow.
+The package update pipeline applies only after the first manual
+publication and never adopts an existing pending draft. Product URLs and Store branding artwork still
 require Partner Center review. No live upload was performed while implementing
 the pipeline.
 
@@ -85,7 +85,7 @@ submission-review metadata are intentionally shared across locales.
 ### Initial-submission CSV import
 
 Partner Center's official **Export listings / Import listings** can populate
-the first submission; the REST update pipeline intentionally cannot. Use the
+the first submission; the package-only CLI update pipeline intentionally cannot. Use the
 CSV exported from this exact product/submission as the schema rather than
 inventing field IDs. The actual export uses the same 22 lowercase language
 keys as the packages, including neutral `ar`, `de`, `id`, `zh-hans` and
