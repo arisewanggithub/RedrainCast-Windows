@@ -26,9 +26,25 @@ The environment needs these four secrets:
 
 The migration's secret-name-only check found the first three, but **no seller ID**.
 The owner must add it; no credential values were retrieved. Run only on a fresh
-GitHub-hosted Windows runner. CLI configuration is reset in `finally`; never
+GitHub-hosted Windows runner. CLI credentials/configuration are cleared in `finally`; never
 upload runner profiles, CLI logs, raw responses, or the private payload.
 CLI scratch files are redirected into the workflow's repository work directory.
+The official v0.4.4 `reconfigure --reset` is **interactive**:
+[`CLIConfigurator.ResetAsync`](https://github.com/microsoft/msstore-cli/blob/v0.4.4/MSStore.CLI/Services/CLIConfigurator.cs)
+unconditionally requests confirmation, defaulting to no. It has no `--no-confirm`
+option. A redirected hosted-runner invocation fails before cleanup; merely
+catching that failure also leaves a failing native exit code.
+
+Instead, cleanup uses the exact official
+[`CredentialManagerWindows`](https://github.com/microsoft/msstore-cli/blob/v0.4.4/MSStore.CLI/Services/CredentialManager/Windows/CredentialManagerWindows.cs)
+target `MicrosoftStoreCli:user=<configured-client-GUID>` and Windows generic
+credential APIs to delete and verify absence without reading its secret.
+It then removes only the known `%LOCALAPPDATA%\Microsoft\MSStore.CLI\settings.json`
+and `Cache\msstore_msal_cache.txt` files. No directory enumeration or broad AppData
+deletion occurs; unrelated settings/telemetry files are untouched. Cleanup errors
+are fatal, not swallowed. Offline regression creates a random-GUID dummy Windows
+credential and isolated repository-local config files, verifies exact deletion,
+idempotence, unrelated-file preservation, and an unchanged successful native exit.
 Both CLI output streams are suppressed except parsed JSON held in memory.
 Only sanitized fingerprints/receipts are retained in private Actions artifacts.
 

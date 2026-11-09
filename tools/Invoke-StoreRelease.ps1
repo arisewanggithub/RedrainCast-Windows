@@ -121,8 +121,9 @@ try {
         }
     }
 } finally {
-    # Hosted runner only: remove persisted CLI credentials even after a failure.
-    try { $null = Invoke-StoreCli @('reconfigure', '--reset') } catch { Write-Warning 'CLI credential reset failed; dispose of this hosted runner.' }
-    $env:TEMP = $previousTemp
-    $env:TMP = $previousTmp
+    try { Clear-StoreCliCredentials }
+    finally {
+        $env:TEMP = $previousTemp
+        $env:TMP = $previousTmp
+    }
 }

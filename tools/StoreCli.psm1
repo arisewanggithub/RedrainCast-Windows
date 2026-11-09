@@ -112,6 +112,51 @@ function Initialize-StoreCli {
         '--clientSecret', $env:PARTNER_CENTER_CLIENT_SECRET)
 }
 
+function Clear-StoreCliCredentials {
+    param([string]$ClientId = $env:PARTNER_CENTER_CLIENT_ID,
+        [string]$LocalApplicationData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData))
+    $id = [guid]::Empty
+    if (-not [guid]::TryParse($ClientId, [ref]$id) -or $id -eq [guid]::Empty) {
+        throw 'Credential cleanup requires the exact configured client ID.'
+    }
+    if (-not ('StoreCliCredentialCleanup' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class StoreCliCredentialCleanup {
+    [DllImport("advapi32.dll", EntryPoint = "CredDeleteW", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool Delete(string target, uint type, uint flags);
+    [DllImport("advapi32.dll", EntryPoint = "CredReadW", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool Read(string target, uint type, uint flags, out IntPtr credential);
+    [DllImport("advapi32.dll")]
+    private static extern void CredFree(IntPtr credential);
+    public static void Clear(string clientId) {
+        string target = "MicrosoftStoreCli:user=" + clientId;
+        if (!Delete(target, 1, 0) && Marshal.GetLastWin32Error() != 1168)
+            throw new InvalidOperationException("The exact CLI credential could not be deleted.");
+        IntPtr credential;
+        if (Read(target, 1, 0, out credential)) {
+            CredFree(credential);
+            throw new InvalidOperationException("The CLI credential remains after deletion.");
+        }
+        if (Marshal.GetLastWin32Error() != 1168)
+            throw new InvalidOperationException("The CLI credential removal could not be verified.");
+    }
+}
+'@
+    }
+    # v0.4.4 ResetAsync always prompts. Match its Windows credential target without
+    # invoking an interactive command or enumerating unrelated credentials/files.
+    try { [StoreCliCredentialCleanup]::Clear($id.ToString()) }
+    catch { throw 'CLI credential cleanup failed; dispose of this hosted runner.' }
+    $folder = Join-Path $LocalApplicationData 'Microsoft\MSStore.CLI'
+    foreach ($relative in @('settings.json', 'Cache\msstore_msal_cache.txt')) {
+        $path = Join-Path $folder $relative
+        if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force -ErrorAction Stop }
+        if (Test-Path -LiteralPath $path) { throw 'CLI configuration cleanup could not be verified.' }
+    }
+}
+
 function Assert-StoreApplication {
     param($Application, $Identity)
     if ($Application.id -cne $script:Product -or $Identity.StoreId -cne $script:Product -or
@@ -367,6 +412,6 @@ function Submit-StoreCliDraft {
 
 Export-ModuleMember -Function Assert-StoreRun, Get-StoreRun, Receive-StoreArtifact,
     ConvertTo-StoreCanonicalJson, Get-StoreHash, Get-StoreMetadataFingerprint, Invoke-StoreCli,
-    Initialize-StoreCli, Assert-StoreApplication, Get-StoreState, Get-StoreSafeStatus, Get-StoreInspection,
+    Initialize-StoreCli, Clear-StoreCliCredentials, Assert-StoreApplication, Get-StoreState, Get-StoreSafeStatus, Get-StoreInspection,
     Remove-StoreInspectedDraft, Assert-StorePricing, Read-StorePackage, Get-StorePackageSet,
     Assert-StoreUploadedPackages, New-StoreCliDraft, Submit-StoreCliDraft
