@@ -84,8 +84,8 @@ jobs:
         run: .\tools\Package.ps1 -Architecture ${{ matrix.architecture }} -PublishedDirectory .\artifacts\win-${{ matrix.architecture }} -OutputDirectory .\artifacts\msix-${{ matrix.architecture }}
       - name: Smoke-test extracted x64 package payload
         if: matrix.architecture == 'x64'
-        shell: pwsh
-        run: .\tools\Test-PackageLaunch.ps1 -StagingDirectory .\artifacts\msix-x64\staging -ReportPath .\artifacts\msix-x64\launch-validation.json
+        shell: powershell
+        run: .\tools\Test-PackageLaunch.ps1 -StagingDirectory .\artifacts\msix-x64\staging -ReportPath .\artifacts\msix-x64\launch-validation.json -InstallFrameworkDependency
   release-package:
     needs: prepare-release
     runs-on: [self-hosted, Windows, X64, arise-local]
@@ -123,8 +123,8 @@ jobs:
           .\tools\Package.ps1 -Architecture ${{ matrix.architecture }} -Version "$version.0" -PublishedDirectory .\artifacts\win-${{ matrix.architecture }} -OutputDirectory .\artifacts\msix-${{ matrix.architecture }}
       - name: Smoke-test extracted x64 package payload
         if: matrix.architecture == 'x64'
-        shell: pwsh
-        run: .\tools\Test-PackageLaunch.ps1 -StagingDirectory .\artifacts\msix-x64\staging -ReportPath .\artifacts\msix-x64\launch-validation.json
+        shell: powershell
+        run: .\tools\Test-PackageLaunch.ps1 -StagingDirectory .\artifacts\msix-x64\staging -ReportPath .\artifacts\msix-x64\launch-validation.json -InstallFrameworkDependency
       - name: Upload release MSIX
         shell: pwsh
         env:

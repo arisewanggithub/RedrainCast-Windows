@@ -1119,7 +1119,8 @@ For x64, prepare `-Architecture x64` and build with `-p:Platform=x64 -r win-x64`
 
 ### Remote development deployment (existing build only)
 
-Deploy and launch an already-built, self-contained Windows output with one command:
+Deploy and launch an already-built Windows output with one command (the target
+must have the matching Windows App Runtime installed; .NET is bundled):
 
 ```powershell
 .\tools\Deploy-Remote.ps1 `
@@ -1230,10 +1231,18 @@ The capture worker is a separate process of that same executable, launched with
 the app's dependency graph and runtime configuration; no second apphost or
 worker-specific runtime configuration is published.
 The app references the Windows App SDK WinUI component and its required
-dependency closure rather than the umbrella SDK package. Self-contained
-publication retains the UI, windowing and localization runtime without the
-unused AI/ML, Search and Widgets components. Shipping checks reject those
-unused runtime DLLs. Managed trimming remains disabled.
+dependency closure rather than the umbrella SDK package. Windows App SDK is
+framework-dependent: Store installation resolves the Microsoft Windows App
+Runtime framework declared by the MSIX. Its shared payload is separate from
+the app and may include AI/ML, Search and Widgets components; shipping checks
+reject copies of those unused DLLs inside our app. .NET remains self-contained,
+and managed trimming remains disabled. Direct/extracted launches require the
+matching architecture's Windows App Runtime to be installed; sideloading must
+also resolve the manifest's framework dependencies. A smaller app package does
+not imply a smaller total first installation when the framework is absent.
+CI extracted-package smoke tests explicitly install the SDK-produced matching
+framework dependency if missing; local smoke tests require it to be installed
+unless `Test-PackageLaunch.ps1 -InstallFrameworkDependency` is requested.
 The pinned native preparation script downloads the FFmpeg 7.1.3 decoder/audio
 runtime in a user-local cache, along with its LGPL license, credits, configuration
 and build provenance. No native compiler or network-transport library is needed.
@@ -1254,7 +1263,8 @@ owner-dispatched upload and certification stages and automatic publication after
 successful certification. An explicit
 listing-enabled upload can include all 22 translations and 44 screenshots
 after confirmation of the exact reviewed commit. Package-only uploads preserve
-listings. Both modes retain the supported self-contained, untrimmed MSIX format;
+listings. Both modes retain the supported .NET-self-contained, untrimmed MSIX format
+with a shared Windows App Runtime dependency;
 single-file executables are not used for Store distribution.
 
 Store submission can use trimmed self-contained MSIX, but no trimmed RedrainCast
