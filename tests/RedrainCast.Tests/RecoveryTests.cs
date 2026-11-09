@@ -424,7 +424,9 @@ public sealed class RecoveryTests
         using var stop = new CancellationTokenSource();
         var factory = new FakeFactory(true) { FirstKeyProofDelayMilliseconds = 1100, StallMilliseconds = 0 };
         var states = new ConcurrentQueue<string>();
-        await using var server = new ReceiverServer("Delayed video key fake", factory, _ => { }, 0, IPAddress.Loopback);
+        var notices = new ConcurrentQueue<string>();
+        await using var server = new ReceiverServer("Delayed video key fake", factory,
+            notice => notices.Enqueue($"{notice.State}: {notice.Detail}"), 0, IPAddress.Loopback);
         server.Start(false);
         await using var source = new GeneratedSource
         {
@@ -436,8 +438,9 @@ public sealed class RecoveryTests
             Assert.True(sound.Original.TryGetValue(packet.PtsUs, out var bytes));
             Assert.Equal(bytes, packet.Payload);
         };
-        var cast = new SenderSession().RunAsync(new(IPAddress.Loopback, server.Port, "Test", false),
-            new(MaxSize: source.Width, EnableAudio: true), source, states.Enqueue, stop.Token, sound);
+        // Keep healthy source timing independent of the test runner while video proof is deliberately delayed.
+        var cast = TrackThread.Run(() => new SenderSession().RunAsync(new(IPAddress.Loopback, server.Port, "Test", false),
+            new(MaxSize: source.Width, EnableAudio: true), source, states.Enqueue, stop.Token, sound));
         try
         {
             while (Volatile.Read(ref factory.AudioPresented) == 0)
@@ -452,7 +455,8 @@ public sealed class RecoveryTests
                 await Task.Delay(10, timeout.Token);
             }
             Assert.Equal(1, factory.Opens);
-            Assert.Equal(0, Volatile.Read(ref factory.RecoveredAudio));
+            Assert.True(Volatile.Read(ref factory.RecoveredAudio) == 0,
+                "Healthy audio unexpectedly recovered during delayed video proof:\n" + string.Join("\n", notices.Concat(states)));
             Assert.DoesNotContain(states, s => s.StartsWith("Recovering track 2", StringComparison.Ordinal));
             var proof = Assert.Single(states, s => s.StartsWith("Recovery decoded KEY: generation=1,", StringComparison.Ordinal));
             var age = long.Parse(proof.Split("sourceAgeUs=")[1].Split(',')[0].Trim(), System.Globalization.CultureInfo.InvariantCulture);
