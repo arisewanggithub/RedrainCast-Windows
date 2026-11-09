@@ -439,18 +439,37 @@ function Get-StorePackageEvidence {
 }
 
 function Remove-StoreInspectedDraft {
-    param($Identity, $Inspection, [string]$SubmissionId, [scriptblock]$Cli)
+    param($Identity, $Inspection, [string]$SubmissionId, [scriptblock]$Cli, [string]$ExpectedPublishedId)
     $state = Get-StoreState $Identity $Cli
+    if ($ExpectedPublishedId -and [string]$state.application.lastPublishedApplicationSubmission.id -cne $ExpectedPublishedId) {
+        throw 'Published submission changed. Existing draft is preserved.'
+    }
     $current = Get-StoreInspection $state $SubmissionId '' ''
     if ($Inspection.schemaVersion -ne 3 -or $Inspection.applicationId -cne $script:Product -or
         $Inspection.submissionId -cne $SubmissionId -or $Inspection.fingerprint -cne $current.fingerprint) {
         throw 'Draft changed or inspection does not match. Existing draft is preserved.'
     }
-    # The dedicated owner-dispatched discard stage is the only allowed draft deletion.
+    # Callers must supply either an owner-approved inspection or verified workflow ownership.
     $null = & $Cli @('submission', 'delete', $script:Product, '--no-confirm') $false
     $app = & $Cli @('apps', 'get', $script:Product) $true
     Assert-StoreApplication $app $Identity
     if ($null -ne $app.pendingApplicationSubmission) { throw 'A pending draft remains after the CLI discard. Inspect before any further operation; no automatic retry.' }
+}
+
+function Assert-StoreDraftOwner {
+    param($Run, $Ownership, $State, [string]$RunId)
+    if ($RunId -cnotmatch '^[1-9][0-9]*$' -or [string]$Run.id -cne $RunId -or
+        $Run.repository.full_name -cne $script:Repository -or
+        $Run.head_repository.full_name -cne $script:Repository -or
+        $Run.head_branch -cne 'main' -or $Run.path -cne '.github/workflows/store-release.yml' -or
+        $Run.event -cnotin @('workflow_dispatch', 'workflow_run') -or
+        $Run.status -cne 'completed' -or $Run.conclusion -cnotin @('success', 'failure') -or
+        [string]$Run.head_sha -cnotmatch '^[a-f0-9]{40}$' -or
+        $Ownership.workflowRunId -cne $RunId -or $Ownership.sourceSha -cne $Run.head_sha -or
+        $Ownership.submissionId -cne [string]$State.submission.id -or
+        $Ownership.priorLastPublishedId -cne [string]$State.application.lastPublishedApplicationSubmission.id) {
+        throw 'Draft ownership is not bound to a trusted completed main Store run and live product. Existing draft is preserved.'
+    }
 }
 
 function Get-StorePriceClassification {
@@ -620,7 +639,8 @@ function New-StorePublishProject {
 
 function New-StoreCliDraft {
     param($Identity, $PackageSet, [string]$BuildRunId, [string]$BuildHeadSha,
-        [string]$ProjectPath, [string]$PayloadPath, [string]$ApprovedBasePriceId, [scriptblock]$Cli)
+        [string]$ProjectPath, [string]$PayloadPath, [string]$ApprovedBasePriceId, [scriptblock]$Cli,
+        [scriptblock]$SaveOwnership)
     $state = Get-StoreState $Identity $Cli
     if ($null -ne $state.application.pendingApplicationSubmission) { throw 'Existing draft is preserved. Inspect and explicitly discard it before upload; --noCommit is not non-destructive.' }
     if ($null -eq $state.application.lastPublishedApplicationSubmission) { throw 'First publication must be completed before automated updates.' }
@@ -644,6 +664,12 @@ function New-StoreCliDraft {
     $null = & $Cli $args $false
     $uploaded = Get-StoreState $Identity $Cli
     $draft = $uploaded.submission
+    if ($null -ne $SaveOwnership -and $null -ne $uploaded.application.pendingApplicationSubmission -and
+        $draft.status -ceq 'PendingCommit' -and
+        [string]$uploaded.application.lastPublishedApplicationSubmission.id -ceq [string]$state.application.lastPublishedApplicationSubmission.id) {
+        & $SaveOwnership (Get-StoreInspection $uploaded ([string]$draft.id) '' '') `
+            ([string]$state.application.lastPublishedApplicationSubmission.id)
+    }
     Write-Host ('CLI-created package evidence: ' + (ConvertTo-Json -InputObject @(Get-StorePackageEvidence $draft) -Compress -Depth 5))
     $pending = $uploaded.application.pendingApplicationSubmission
     $pendingPointerChanged = $null -eq $pending -or [string]$pending.id -cne [string]$draft.id
@@ -668,6 +694,12 @@ function New-StoreCliDraft {
         }
         $restored = Get-StoreState $Identity $Cli
         $draft = $restored.submission
+        if ($null -ne $SaveOwnership -and $draft.status -ceq 'PendingCommit' -and
+            [string]$draft.id -ceq [string]$uploaded.submission.id -and
+            [string]$restored.application.lastPublishedApplicationSubmission.id -ceq [string]$state.application.lastPublishedApplicationSubmission.id) {
+            & $SaveOwnership (Get-StoreInspection $restored ([string]$draft.id) '' '') `
+                ([string]$state.application.lastPublishedApplicationSubmission.id)
+        }
         $pending = $restored.application.pendingApplicationSubmission
         $pendingPointerChanged = $null -eq $pending -or [string]$pending.id -cne [string]$draft.id
         $publishedPointerChanged = [string]$restored.application.lastPublishedApplicationSubmission.id -cne [string]$state.application.lastPublishedApplicationSubmission.id
@@ -695,7 +727,14 @@ function New-StoreCliDraft {
     } finally {
         if (Test-Path -LiteralPath $PayloadPath) { Remove-Item -LiteralPath $PayloadPath -Force }
     }
-    $saved = (Get-StoreState $Identity $Cli).submission
+    $savedState = Get-StoreState $Identity $Cli
+    $saved = $savedState.submission
+    if ($null -ne $SaveOwnership -and $saved.status -ceq 'PendingCommit' -and
+        [string]$saved.id -ceq [string]$draft.id -and
+        [string]$savedState.application.lastPublishedApplicationSubmission.id -ceq [string]$state.application.lastPublishedApplicationSubmission.id) {
+        & $SaveOwnership (Get-StoreInspection $savedState ([string]$saved.id) '' '') `
+            ([string]$state.application.lastPublishedApplicationSubmission.id)
+    }
     Assert-StoreUploadedPackages $saved $PackageSet.packages
     if ($saved.id -cne $draft.id -or $saved.status -cne 'PendingCommit' -or $saved.targetPublishMode -cne 'Immediate' -or
         (Get-StoreMetadataFingerprint $saved) -cne $metadataHash) { throw 'Saved draft metadata changed. No certification was started.' }
@@ -744,7 +783,7 @@ function Submit-StoreCliDraft {
     }
 }
 
-Export-ModuleMember -Function Assert-StoreRun, Assert-StoreReleaseTrigger, Get-StoreLatestBuild, Get-StoreRun, Receive-StoreArtifact, New-StorePublishProject,
+Export-ModuleMember -Function Assert-StoreRun, Assert-StoreReleaseTrigger, Get-StoreLatestBuild, Get-StoreRun, Receive-StoreArtifact, New-StorePublishProject, Assert-StoreDraftOwner,
     ConvertTo-StoreCanonicalJson, Get-StoreHash, Get-StoreMetadataFingerprint, Get-StoreSubmissionFingerprint, Get-StoreMetadataDiffSummary, Invoke-StoreCli,
     Initialize-StoreCli, Clear-StoreCliCredentials, Assert-StoreApplication, Get-StoreState, Get-StoreSafeStatus, Get-StoreInspection,
     Remove-StoreInspectedDraft, Get-StorePriceClassification, Get-StorePricingEvidence, Get-StorePackageEvidence, Assert-StorePricing, Read-StorePackage, Get-StorePackageSet,

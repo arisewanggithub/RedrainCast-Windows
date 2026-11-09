@@ -389,6 +389,58 @@ try {
         Reject { Upload $m } 'Existing draft'
         Assert ($m.state.uploads -eq 0 -and $m.state.deletes -eq 0) 'Existing draft mutated.'
     }
+    Test 'automatic cleanup requires trusted run provenance and unchanged live draft ownership' {
+        $m = New-Mock; Set-Pending $m
+        $run = New-Run
+        $run.path = '.github/workflows/store-release.yml'; $run.event = 'workflow_run'
+        $ownership = Get-StoreInspection (Get-StoreState $identity $m.cli) '60' '123' ('a' * 40)
+        $ownership | Add-Member -NotePropertyName workflowRunId -NotePropertyValue '123'
+        $ownership | Add-Member -NotePropertyName priorLastPublishedId -NotePropertyValue '50'
+        Assert-StoreDraftOwner $run $ownership (Get-StoreState $identity $m.cli) '123'
+        foreach ($field in @('head_branch', 'path', 'event', 'status', 'head_sha', 'conclusion', 'id')) {
+            $bad = Copy-Json $run; $bad.$field = 'wrong'
+            Reject { Assert-StoreDraftOwner $bad $ownership (Get-StoreState $identity $m.cli) '123' } 'ownership'
+        }
+        foreach ($field in @('workflowRunId', 'sourceSha', 'submissionId', 'priorLastPublishedId')) {
+            $bad = Copy-Json $ownership; $bad.$field = 'wrong'
+            Reject { Assert-StoreDraftOwner $run $bad (Get-StoreState $identity $m.cli) '123' } 'ownership'
+        }
+        $run.conclusion = 'failure'
+        Assert-StoreDraftOwner $run $ownership (Get-StoreState $identity $m.cli) '123'
+        Reject { Remove-StoreInspectedDraft $identity $ownership '60' $m.cli '49' } 'Published submission changed'
+        Assert ($m.state.deletes -eq 0) 'Concurrent published-pointer change allowed deletion.'
+        $m.state.submission.notesForCertification = 'human edit'
+        Reject { Remove-StoreInspectedDraft $identity $ownership '60' $m.cli } 'changed'
+        Assert ($m.state.deletes -eq 0) 'Edited owned draft was deleted.'
+        $m.state.submission.status = 'CommitStarted'
+        Reject { Remove-StoreInspectedDraft $identity $ownership '60' $m.cli } 'PendingCommit'
+        Assert ($m.state.deletes -eq 0) 'Submitted owned draft was deleted.'
+    }
+    Test 'automation ownership is captured before failed package verification and after successful updates' {
+        $records = New-Object 'Collections.Generic.List[object]'
+        $copy = ${function:Copy-Json}
+        $save = {
+            param($inspection, $published)
+            $records.Add([pscustomobject]@{ inspection = & $copy $inspection; published = $published })
+        }.GetNewClosure()
+        $m = New-Mock
+        $receipt = New-StoreCliDraft $identity (New-Packages) '123' ('a' * 40) 'offline-project' $payload '' $m.cli $save
+        Assert ($records.Count -eq 2) 'Creation and final saved draft must both have ownership snapshots.'
+        Assert ($records[-1].inspection.submissionId -ceq $receipt.submissionId -and $records[-1].published -ceq '50') 'Ownership identity mismatch.'
+        Remove-StoreInspectedDraft $identity $records[-1].inspection $receipt.submissionId $m.cli
+        Assert ($m.state.deletes -eq 1) 'Unchanged owned draft was not deleted.'
+        $m = New-Mock
+        $records.Clear()
+        $packages = New-Packages
+        $packages.packages[0].fileName = 'missing.msix'
+        Reject { New-StoreCliDraft $identity $packages '123' ('a' * 40) 'offline-project' $payload '' $m.cli $save } 'exactly the two'
+        Assert ($records.Count -eq 1 -and $m.state.deletes -eq 0 -and $m.state.commits -eq 0) 'Failed upload must retain creation evidence without automatic deletion.'
+        $m = New-Mock
+        $records.Clear()
+        $m.state.changedPointer = $true
+        Reject { New-StoreCliDraft $identity (New-Packages) '123' ('a' * 40) 'offline-project' $payload '' $m.cli $save } 'Safe structural diff'
+        Assert ($records.Count -eq 0) 'Concurrent published-pointer changes must not establish ownership.'
+    }
     Test 'duplicate, older and unversioned releases never reach upload' {
         foreach ($version in @('1.2.3.0', '1.2.4.0', 'invalid')) {
             $m = New-Mock
@@ -632,6 +684,8 @@ try {
         Assert ($workflow -match 'version: v0.4.4' -and $workflow -match 'PARTNER_CENTER_SELLER_ID') 'CLI pin or seller ID missing.'
         Assert ($workflow -match 'workflow_run:' -and $workflow -match 'workflows: \[Windows build\]' -and
             $workflow -match "workflow_run.event == 'push'" -and $workflow -match 'release-latest') 'Automatic release provenance gate missing.'
+        Assert ($workflow -match 'always\(\) && steps.operation.outputs.draft-id' -and
+            $workflow -match 'name: store-draft-ownership-\$\{\{ steps.operation.outputs.draft-id \}\}') 'Failed runs must persist draft-specific ownership evidence.'
         Assert ($workflow -notmatch 'resume-draft|upload-listings-draft|confirm_listings_commit') 'Legacy stage still exposed.'
         $module = Get-Content -LiteralPath (Join-Path $root 'tools\StoreCli.psm1') -Raw
         Assert ($module -notmatch 'Invoke-RestMethod|Invoke-WebRequest|Put.?Blob|oauth2/token') 'Custom transport remains.'

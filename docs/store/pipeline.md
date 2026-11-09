@@ -5,7 +5,8 @@ The **Microsoft Store release** workflow uses Microsoft's
 setup action, pinned to **v1.4** (`cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0`),
 and [`msstore-cli` v0.4.4](https://github.com/microsoft/msstore-cli/releases/tag/v0.4.4)
 (`4fa163e6dbe971359e0a03a6ac30477978a1e330`). It no longer implements OAuth,
-submission REST transport, Azure uploads, commit transport, or retry/recovery.
+submission REST transport, Azure uploads, or commit transport. Guarded recovery
+only discards unchanged automation-owned pending drafts using the official CLI.
 See Microsoft's [CLI commands](https://learn.microsoft.com/windows/apps/publish/msstore-dev-cli/commands).
 
 ## Gates and credentials
@@ -112,7 +113,16 @@ blocking explicit-price-approval gate, not a reason to use browser automation.
    Actions build-artifact fallback. Validate both shipping MSIX identities,
    architectures, zero revision, resources, worker and payload exclusions.
    Copy (do not rebuild) the exact bytes into unique run-bound filenames.
-   Refuse **every** existing pending draft, including a prior automation draft.
+   Preserve unknown or edited drafts. Automatically discard only an unchanged
+   `PendingCommit` draft with a unique, unexpired draft-specific ownership artifact
+   from a completed trusted main Store workflow. Verify run/commit provenance,
+   product identity, the unchanged published submission pointer, and the full
+   draft fingerprint immediately before deletion. Missing/expired evidence,
+   human edits, concurrent pointer changes and submitted drafts block publication.
+   Ownership snapshots are saved after creation and verified updates, before
+   later validation can fail, and retained by Actions even on failure for 90 days.
+   Legacy drafts without ownership evidence still require an explicitly approved
+   inspection/discard; read-only inspection alone does not establish ownership.
    Invoke official `publish --appId 9P1153MP6R32 --noCommit` on the existing
    restore-only publishing project with the isolated two-architecture `--inputDirectory`.
    CLI v0.4.4 recognizes WinUI only when restored assets contain the umbrella
@@ -163,14 +173,15 @@ blocking explicit-price-approval gate, not a reason to use browser automation.
    safe package metadata returned by the Store after certification starts.
    Certification failures are not success. No certification is skipped and
    no retry is made.
-   Existing drafts are always preserved; duplicate/older published package
+   Unknown or edited drafts are preserved; duplicate/older published package
    versions are rejected before upload. A failed submit retains its sanitized
-   upload receipt for inspection, not automatic recovery.
+   receipt and ownership evidence; a later upload may clean up only an unchanged
+   automation-owned draft that is still `PendingCommit`.
 
 `-WhatIf` validates release/receipt inputs but never authenticates or calls Store.
 Offline tests mock CLI boundaries; they do not prove live Store ingestion.
 
-### Why upload does not accept an existing draft
+### Why upload never implicitly replaces an existing draft
 
 In v0.4.4, `publish --noCommit` still **deletes and recreates** an existing draft
 for an already-published product. `--noCommit` is not a preservation flag.
@@ -180,7 +191,8 @@ It has not received the tested release and has not been submitted for certificat
 The owner has authorized replacing only this exact unchanged failed-pipeline
 draft if necessary. Run `inspect-draft`, review its fingerprint and current
 state, then explicitly dispatch `discard-draft` with that inspection run ID.
-No automatic stage deletes it, and other human drafts must not be discarded
+It has no automation ownership artifact, so automatic cleanup does not delete it;
+other human drafts must not be discarded
 under this authorization. Then `release-latest` uploads and requests
 certification in one run. An inspection fingerprint proves
 unchanged CLI-visible state, not that a draft belongs to automation.
