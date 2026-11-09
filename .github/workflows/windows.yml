@@ -10,7 +10,7 @@ concurrency:
   group: windows-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  test:
+  guards:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -22,15 +22,26 @@ jobs:
         run: |
           .\tests\tools\Test-CiBuild.ps1
           .\tests\tools\Test-StoreRelease.ps1
-      - run: dotnet test .\tests\RedrainCast.Tests.slnx -c Release --logger trx -m:1 -- RunConfiguration.MaxCpuCount=1 xUnit.ParallelizeTestCollections=false
+  test:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [RedrainCast.Tests, RedrainCast.Receive.Tests, RedrainCast.Send.Tests]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet test .\tests\${{ matrix.project }}\${{ matrix.project }}.csproj -c Release --logger trx -- xUnit.ParallelizeTestCollections=false
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: failure()
         with:
-          name: test-results
+          name: test-results-${{ matrix.project }}
           path: tests/**/TestResults/*.trx
           retention-days: 1
   prepare-release:
-    needs: test
+    needs: [guards, test]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.repository == 'arisewanggithub/RedrainCast-Windows'
     runs-on: windows-latest
     permissions:
@@ -44,7 +55,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: .\tools\Publish-CiBuild.ps1 -Stage Prepare
   package:
-    needs: test
     if: github.event_name == 'pull_request'
     runs-on: windows-latest
     strategy:

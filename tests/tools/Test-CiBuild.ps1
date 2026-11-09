@@ -240,8 +240,16 @@ try {
     Assert ($workflow -match 'if: failure\(\)' -and $workflow -match 'retention-days: 1') 'Diagnostics need failure-only one-day retention.'
     Assert ($workflow -match "if: github.event_name == 'pull_request'") 'PR packages must remain read-only and separate from release writes.'
     Assert ($workflow -match 'Publish-CiBuild.ps1 -Stage Complete') 'Private releases require complete paired verification.'
-    Assert ($workflow -match 'RunConfiguration.MaxCpuCount=1' -and
-        $workflow -match 'xUnit.ParallelizeTestCollections=false') 'Shared CI runners must not oversubscribe wall-clock protocol deadline tests.'
+    $testJob = [regex]::Match($workflow, '(?ms)^  test:\r?\n(?<body>.*?)(?=^  [a-z][a-z-]*:\r?\n|\z)').Groups['body'].Value
+    Assert ($testJob -match 'project: \[RedrainCast.Tests, RedrainCast.Receive.Tests, RedrainCast.Send.Tests\]') 'Every test project must run on its own matrix runner.'
+    Assert ($testJob -match 'dotnet test \.\\tests\\\$\{\{ matrix.project \}\}\\\$\{\{ matrix.project \}\}\.csproj') 'Test matrix must execute each complete project.'
+    Assert ($testJob -match 'xUnit.ParallelizeTestCollections=false') 'Timing-sensitive collections must remain isolated within each runner.'
+    Assert ($testJob -notmatch 'RunConfiguration.MaxCpuCount=1| -m:1') 'Independent single-project runners do not need global build/test CPU limits.'
+    Assert ($testJob -match 'name: test-results-\$\{\{ matrix.project \}\}') 'Parallel test jobs require unique diagnostic artifact names.'
+    $packageJob = [regex]::Match($workflow, '(?ms)^  package:\r?\n(?<body>.*?)(?=^  [a-z][a-z-]*:\r?\n|\z)').Groups['body'].Value
+    Assert ($packageJob -and $packageJob -notmatch '(?m)^    needs:') 'Read-only PR packaging must run alongside tests.'
+    $prepareJob = [regex]::Match($workflow, '(?ms)^  prepare-release:\r?\n(?<body>.*?)(?=^  [a-z][a-z-]*:\r?\n|\z)').Groups['body'].Value
+    Assert ($prepareJob -match 'needs: \[guards, test\]') 'Private release writes must wait for all guards and test matrix jobs.'
     Assert ($workflow -notmatch 'dotnet test[^\r\n]*--filter') 'CI scheduling must not exclude application tests.'
     foreach ($job in @('prepare-release', 'release-package', 'complete-release')) {
         $block = [regex]::Match($workflow, ('(?ms)^  ' + [regex]::Escape($job) +
