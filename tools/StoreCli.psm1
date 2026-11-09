@@ -364,7 +364,24 @@ function Get-StoreInspection {
         fingerprint = Get-StoreHash (ConvertTo-StoreCanonicalJson $State.submission)
         status = Get-StoreSafeStatus $State.submission
         pricingClassification = Get-StorePriceClassification $State.submission
+        pricingFields = @(Get-StorePricingEvidence $State.submission)
         packages = @(Get-StorePackageEvidence $State.submission)
+    }
+}
+
+function Get-StorePricingEvidence {
+    param($Submission)
+    foreach ($name in @('priceId', 'trialPeriod', 'marketSpecificPricings', 'isAdvancedPricingModel')) {
+        $value = Get-StoreObjectField (Get-StoreObjectField $Submission 'pricing') $name
+        $classification = if ($null -eq $value) { 'null' }
+            elseif ($name -ceq 'priceId') { Get-StorePriceClassification $Submission }
+            elseif ($name -ceq 'trialPeriod' -and [string]$value -cin @('NoFreeTrial', 'OneDay', 'TrialNeverExpires', 'SevenDays', 'FifteenDays', 'ThirtyDays')) { [string]$value }
+            elseif ($name -ceq 'isAdvancedPricingModel' -and $value -is [bool]) { [string]$value }
+            else { 'value (hashed)' }
+        [pscustomobject]@{
+            propertyPath = "pricing.$name"; classification = $classification
+            sha256 = Get-StoreHash (ConvertTo-StoreCanonicalJson $value)
+        }
     }
 }
 
@@ -656,5 +673,5 @@ function Submit-StoreCliDraft {
 Export-ModuleMember -Function Assert-StoreRun, Assert-StoreReleaseTrigger, Get-StoreLatestBuild, Get-StoreRun, Receive-StoreArtifact,
     ConvertTo-StoreCanonicalJson, Get-StoreHash, Get-StoreMetadataFingerprint, Get-StoreMetadataDiffSummary, Invoke-StoreCli,
     Initialize-StoreCli, Clear-StoreCliCredentials, Assert-StoreApplication, Get-StoreState, Get-StoreSafeStatus, Get-StoreInspection,
-    Remove-StoreInspectedDraft, Get-StorePriceClassification, Assert-StorePricing, Read-StorePackage, Get-StorePackageSet,
+    Remove-StoreInspectedDraft, Get-StorePriceClassification, Get-StorePricingEvidence, Assert-StorePricing, Read-StorePackage, Get-StorePackageSet,
     Assert-StoreUploadedPackages, New-StoreCliDraft, Submit-StoreCliDraft

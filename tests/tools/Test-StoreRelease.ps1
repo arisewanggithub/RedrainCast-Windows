@@ -449,6 +449,7 @@ try {
         $inspection = Get-StoreInspection (Get-StoreState $identity $m.cli) '60' '456' ('b' * 40)
         Assert ($inspection.packages.Count -eq 2 -and $inspection.packages[0].version -ceq '1.2.2.0' -and
             $inspection.packages[0].architecture -ceq 'ARM64' -and $inspection.packages[0].fileStatus -ceq 'Uploaded') 'Package evidence missing.'
+        Assert ($inspection.pricingFields.Count -eq 4 -and $inspection.pricingFields[0].classification -ceq 'Free') 'Safe pricing field evidence missing.'
         Assert ((ConvertTo-Json $inspection -Depth 10) -notmatch 'fixture-SAS|Retain title|fixture.invalid') 'Unsafe package metadata escaped.'
     }
     Test 'failed upload is never automatically retried or deleted' {
