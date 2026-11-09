@@ -148,6 +148,41 @@ New-Item -ItemType Directory -Path $work | Out-Null
 $payload = Join-Path $work 'private-submission.json'
 try {
     Test 'trusted successful main run accepted' { Assert-StoreRun (New-Run) '123' '.github/workflows/windows.yml' }
+    Test 'noninteractive cleanup deletes only exact native credential and known files without poisoning native exit' {
+        $client = [guid]::NewGuid().ToString()
+        $target = "MicrosoftStoreCli:user=$client"
+        $profile = Join-Path $work 'isolated-localappdata'
+        $folder = Join-Path $profile 'Microsoft\MSStore.CLI'
+        New-Item -ItemType Directory -Path (Join-Path $folder 'Cache') -Force | Out-Null
+        $settings = Join-Path $folder 'settings.json'
+        $cache = Join-Path $folder 'Cache\msstore_msal_cache.txt'
+        $keep = Join-Path $folder 'unrelated.json'
+        Set-Content -LiteralPath $settings -Value '{"ClientId":"offline-fixture"}'
+        Set-Content -LiteralPath $cache -Value 'offline-fixture'
+        Set-Content -LiteralPath $keep -Value 'keep'
+        $priorExit = $global:LASTEXITCODE
+        try {
+            $null = & cmdkey "/generic:$target" '/user:offline-fixture' '/pass:offline-fixture-value' 2>$null
+            Assert ($LASTEXITCODE -eq 0) 'Could not create isolated native credential fixture.'
+            $listing = @(& cmdkey "/list:$target" 2>$null) -join "`n"
+            Assert ($listing -match 'offline-fixture') 'Native credential fixture was not persisted.'
+            $global:LASTEXITCODE = 0
+            Clear-StoreCliCredentials -ClientId $client -LocalApplicationData $profile
+            Assert ($LASTEXITCODE -eq 0) 'Cleanup poisoned the successful native exit code.'
+            Assert (-not (Test-Path $settings) -and -not (Test-Path $cache)) 'Known private CLI files survived cleanup.'
+            Assert (Test-Path $keep) 'Cleanup deleted an unrelated file.'
+            $listing = @(& cmdkey "/list:$target" 2>$null) -join "`n"
+            Assert ($listing -notmatch 'offline-fixture') 'Exact native credential survived cleanup.'
+            Clear-StoreCliCredentials -ClientId $client -LocalApplicationData $profile
+            Reject { Clear-StoreCliCredentials -ClientId 'invalid' -LocalApplicationData $profile } 'exact configured client'
+            $invoke = Get-Content -LiteralPath (Join-Path $root 'tools\Invoke-StoreRelease.ps1') -Raw
+            Assert ($invoke -match 'finally\s*\{\s*try \{ Clear-StoreCliCredentials \}' -and
+                $invoke -notmatch "Invoke-StoreCli @\('reconfigure', '--reset'\)") 'Workflow still invokes interactive reset.'
+        } finally {
+            $null = & cmdkey "/delete:$target" 2>$null
+            $global:LASTEXITCODE = $priorExit
+        }
+    }
     Test 'CLI boundary separates JSON, suppresses secret output and pins real Windows version' {
         $names = @('PARTNER_CENTER_TENANT_ID', 'PARTNER_CENTER_CLIENT_ID', 'PARTNER_CENTER_CLIENT_SECRET', 'PARTNER_CENTER_SELLER_ID')
         $saved = @{}; foreach ($name in $names) { $saved[$name] = [Environment]::GetEnvironmentVariable($name) }
