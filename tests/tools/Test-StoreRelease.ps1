@@ -418,9 +418,10 @@ try {
     }
     Test 'automation ownership is captured before failed package verification and after successful updates' {
         $records = New-Object 'Collections.Generic.List[object]'
+        $copy = ${function:Copy-Json}
         $save = {
             param($inspection, $published)
-            $records.Add([pscustomobject]@{ inspection = Copy-Json $inspection; published = $published })
+            $records.Add([pscustomobject]@{ inspection = & $copy $inspection; published = $published })
         }.GetNewClosure()
         $m = New-Mock
         $receipt = New-StoreCliDraft $identity (New-Packages) '123' ('a' * 40) 'offline-project' $payload '' $m.cli $save
