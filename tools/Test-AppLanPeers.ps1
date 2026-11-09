@@ -61,7 +61,7 @@ $remoteIdentity.ipv4 = @($remoteIdentity.ipv4 | Where-Object IPAddress -eq $Remo
     ConvertTo-Json -Depth 7 | Set-Content "$ReportDirectory\identities.json"
 $hashScript = @'
 $base=Split-Path -Parent $exe
-@(foreach($name in @('RedrainCast.App.exe','RedrainCast.App.dll','RedrainCast.Protocol.dll','capture-worker\RedrainCast.CaptureWorker.exe')){
+@(foreach($name in @('RedrainCast.App.exe','RedrainCast.App.dll','RedrainCast.Protocol.dll')){
  $file=Join-Path $base $name
  @{relative=$name;sha256=(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash}
 })

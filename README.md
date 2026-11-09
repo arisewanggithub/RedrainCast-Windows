@@ -604,12 +604,12 @@ display-color/device initialization and each hardware encoder setup stage.
 If no bootstrap entry appears after the child starts, the log does not establish
 an encoder failure: the child may be stalled before managed worker entry.
 
-Normal Send uses a dedicated console capture/encoding executable under
-`capture-worker`, with its own self-contained .NET runtime and no WinUI/App SDK
-startup. The entire published folder, including that subfolder, is required.
-This removes unnecessary UI-framework initialization from the worker process;
-the remote pre-worker-entry stall still needs a real-device confirmation before
-claiming its underlying cause is fixed. The existing native WGC/D3D11/Media Foundation path and BT.2390 mapping
+Normal Send starts a second process of `RedrainCast.App.exe` with
+`--capture-worker`. The app's custom entry point routes that mode directly to
+the capture worker before initializing WinUI, so both processes share the same
+apphost, dependency graph and runtime configuration without starting a second
+UI or packaging a dedicated worker executable. The entire published folder is
+required. The existing native WGC/D3D11/Media Foundation path and BT.2390 mapping
 are preserved; standalone FFmpeg capture is not part of the sender.
 Only compressed packets cross the pipe, with original absolute QPC timestamps.
 Audio still uses the normal sender's WASAPI path and shares that clock.
@@ -1095,8 +1095,9 @@ GPU budgets, runtime errors and aligned Statistics are unchanged.
 
 Publishing and packaging enforce a file/dependency denylist: no recording-export
 helper, standalone FFmpeg/test launcher, mux/new media ABI, FFmpeg.AutoGen 8.x or
-PDBs. The production decoder remains FFmpeg.AutoGen 7.1.1 with avcodec 61,
-avutil 59 and swresample 5; no extra licensing/runtime dependencies are introduced.
+PDBs. The production decoder remains bound through FFmpeg.AutoGen 7.1.1 to
+avcodec 61, avutil 59 and swresample 5. The packaged shared libraries are built
+from checksum-pinned FFmpeg 7.1.3; no extra runtime dependencies are introduced.
 
 `RCF1` remains the internal production worker format, not a network protocol change. Its
 16-byte big-endian header contains magic, width, height and codec-configuration
@@ -1224,12 +1225,13 @@ and dependency entries while retaining genuine upstream license notices.
 This naming cleanup does not change protocol identifiers or existing settings
 and diagnostic locations.
 
-The development build also builds and copies the self-contained capture worker.
-Its runtime configuration remains self-contained in both development and
-publication, avoiding a framework-dependent configuration mixed with previously
-copied local runtime files.
-The pinned native preparation script downloads the FFmpeg decoder/audio runtime
-in a user-local cache. No native compiler or network-transport library is needed.
+The application executable dispatches `--capture-worker` before starting WinUI.
+The capture worker is a separate process of that same executable, launched with
+the app's dependency graph and runtime configuration; no second apphost or
+worker-specific runtime configuration is published.
+The pinned native preparation script downloads the FFmpeg 7.1.3 decoder/audio
+runtime in a user-local cache, along with its LGPL license, credits, configuration
+and build provenance. No native compiler or network-transport library is needed.
 It does not install drivers or change system PATH.
 
 ```powershell

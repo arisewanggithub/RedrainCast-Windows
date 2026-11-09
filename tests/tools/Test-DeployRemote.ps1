@@ -647,9 +647,7 @@ try {
         New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force | Out-Null
         Set-Content -LiteralPath $path -Value 'non-executable offline fixture'
     }
-    foreach ($name in @('RedrainCast.App.runtimeconfig.json', 'capture-worker\RedrainCast.CaptureWorker.runtimeconfig.json')) {
-        Set-Content -LiteralPath (Join-Path $built $name) -Value '{"runtimeOptions":{"includedFrameworks":[{"name":"fixture"}]}}'
-    }
+    Set-Content -LiteralPath (Join-Path $built 'RedrainCast.App.runtimeconfig.json') -Value '{"runtimeOptions":{"includedFrameworks":[{"name":"fixture"}]}}'
     $key = Join-Path $ScratchRoot 'fixture-key'
     Set-Content -LiteralPath $key -Value 'offline fixture'
     $offlineWarnings = @()

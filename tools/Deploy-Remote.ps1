@@ -25,19 +25,13 @@ $required = @(
     'RedrainCast.Receive.Core.dll', 'RedrainCast.Receive.Media.dll',
     'coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll', 'System.Private.CoreLib.dll',
     'Microsoft.WindowsAppRuntime.dll',
-    'capture-worker\RedrainCast.CaptureWorker.exe', 'capture-worker\RedrainCast.CaptureWorker.dll',
-    'capture-worker\RedrainCast.CaptureWorker.deps.json', 'capture-worker\RedrainCast.CaptureWorker.runtimeconfig.json',
-    'capture-worker\coreclr.dll', 'capture-worker\hostfxr.dll', 'capture-worker\hostpolicy.dll',
-    'capture-worker\System.Private.CoreLib.dll',
     "native\$rid\avcodec-61.dll", "native\$rid\avutil-59.dll", "native\$rid\swresample-5.dll"
 )
 foreach ($name in $required) {
     if (-not (Test-Path -LiteralPath (Join-Path $BuiltDirectory $name) -PathType Leaf)) { throw "Built runtime file missing: $name" }
 }
-foreach ($name in @('RedrainCast.App.runtimeconfig.json', 'capture-worker\RedrainCast.CaptureWorker.runtimeconfig.json')) {
-    $runtime = Get-Content -LiteralPath (Join-Path $BuiltDirectory $name) -Raw | ConvertFrom-Json
-    if (-not $runtime.runtimeOptions.includedFrameworks) { throw "Runtime is not self-contained: $name" }
-}
+$runtime = Get-Content -LiteralPath (Join-Path $BuiltDirectory 'RedrainCast.App.runtimeconfig.json') -Raw | ConvertFrom-Json
+if (-not $runtime.runtimeOptions.includedFrameworks) { throw 'Runtime is not self-contained: RedrainCast.App.runtimeconfig.json' }
 $files = @(Get-ChildItem -LiteralPath $BuiltDirectory -Recurse -File)
 if (@(Get-ChildItem -LiteralPath $BuiltDirectory -Recurse -Attributes ReparsePoint).Count) {
     throw 'Build output contains reparse points; package only real runtime files.'
@@ -409,7 +403,8 @@ try {
         do {
             $children = @($snapshot | Where-Object { $_.ParentProcessId -in $parents })
             foreach ($child in $children) {
-                if ($child.Name -eq 'RedrainCast.CaptureWorker.exe' -and $child.SessionId -eq $ExpectedSessionId -and $child.ExecutablePath -and
+                if ($child.Name -eq 'RedrainCast.App.exe' -and $child.CommandLine -match '(?:^|\s)--capture-worker(?:\s|$)' -and
+                    $child.SessionId -eq $ExpectedSessionId -and $child.ExecutablePath -and
                     $child.ExecutablePath.StartsWith($base, [StringComparison]::OrdinalIgnoreCase) -and
                     -not $owned.ContainsKey([int]$child.ProcessId)) {
                     $workerOwner = Invoke-CimMethod -InputObject $child -MethodName GetOwnerSid -ErrorAction Stop

@@ -121,7 +121,7 @@ function Set-Pending($Mock) {
 function New-FixturePackage {
     param([string]$Path, [string]$Arch, [string]$Version = '1.2.3.0',
         [string]$Name = $identity.PackageName, [string]$Publisher = $identity.Publisher,
-        [switch]$MissingWorker, [switch]$Duplicate, [switch]$Pdb, [string]$Language = 'en-US',
+        [switch]$Duplicate, [switch]$Pdb, [string]$Language = 'en-US',
         [string[]]$ExtraFiles = @())
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -139,9 +139,8 @@ function New-FixturePackage {
     try {
         $files = @('AppxManifest.xml', 'AppxBlockMap.xml', '[Content_Types].xml', 'resources.pri',
             'RedrainCast.App.pri', 'RedrainCast.App.exe', 'RedrainCast.App.dll', 'coreclr.dll',
-            'capture-worker/RedrainCast.CaptureWorker.dll', 'capture-worker/coreclr.dll',
-            'FFmpeg.AutoGen.dll', 'capture-worker/FFmpeg.AutoGen.dll', 'PRIVACY.md', 'THIRD_PARTY_NOTICES.txt') + $ExtraFiles
-        if (-not $MissingWorker) { $files += 'capture-worker/RedrainCast.CaptureWorker.exe' }
+            'FFmpeg.AutoGen.dll',
+            'PRIVACY.md', 'THIRD_PARTY_NOTICES.txt') + $ExtraFiles
         if ($Duplicate) { $files += 'AppxManifest.xml' }
         if ($Pdb) { $files += 'debug.pdb' }
         foreach ($file in $files) {
@@ -571,17 +570,20 @@ try {
             Assert ($m.state.commits -eq 1) 'Commit was retried.'
         }
     }
-    Test 'MSIX identity, worker, duplicate, debug and standalone helper guards retained' {
+    Test 'MSIX identity, unified executable, duplicate, debug and standalone helper guards retained' {
         $path = Join-Path $work 'package.msix'
         New-FixturePackage $path 'arm64'
         $null = Read-StorePackage $path 'arm64' $identity
-        foreach ($kind in @('Name', 'Publisher', 'Version', 'Architecture', 'MissingWorker', 'Duplicate', 'Pdb', 'ExtraFiles')) {
+        foreach ($kind in @('Name', 'Publisher', 'Version', 'Architecture', 'SeparateWorkerExecutable',
+            'WorkerRuntimeDuplicate', 'Duplicate', 'Pdb', 'ExtraFiles')) {
             $args = @{ Path = $path; Arch = 'arm64' }
             switch ($kind) {
                 'Name' { $args.Name = 'wrong' }
                 'Publisher' { $args.Publisher = 'CN=wrong' }
                 'Version' { $args.Version = '1.2.3.4' }
                 'Architecture' { $args.Arch = 'x64' }
+                'SeparateWorkerExecutable' { $args.ExtraFiles = @('RedrainCast.CaptureWorker.exe') }
+                'WorkerRuntimeDuplicate' { $args.ExtraFiles = @('capture-worker/coreclr.dll') }
                 'ExtraFiles' { $args.ExtraFiles = @('ffmpeg.exe') }
                 default { $args[$kind] = $true }
             }

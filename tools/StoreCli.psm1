@@ -486,13 +486,18 @@ function Read-StorePackage {
         $names = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
         foreach ($required in @('AppxManifest.xml', 'AppxBlockMap.xml', '[Content_Types].xml',
             'resources.pri', 'RedrainCast.App.pri', 'RedrainCast.App.exe', 'RedrainCast.App.dll', 'coreclr.dll',
-            'capture-worker/RedrainCast.CaptureWorker.exe', 'capture-worker/RedrainCast.CaptureWorker.dll',
-            'capture-worker/coreclr.dll', 'PRIVACY.md', 'THIRD_PARTY_NOTICES.txt')) {
+            'PRIVACY.md', 'THIRD_PARTY_NOTICES.txt')) {
             if (@($names | Where-Object { $_ -ceq $required }).Count -ne 1) { throw 'MSIX is missing a required shipping file or has duplicate entries.' }
+        }
+        if (@($names | Where-Object { $_ -match '(?i)^capture-worker/' }).Count) {
+            throw 'MSIX contains a duplicate capture worker runtime directory.'
+        }
+        if (@($names | Where-Object { $_ -match '(?i)^RedrainCast\.CaptureWorker\.(exe|dll|deps\.json|runtimeconfig\.json)$' }).Count) {
+            throw 'MSIX contains a separate capture worker executable or runtime entry files.'
         }
         if (@($names | Where-Object {
             $_ -match '(?i)\.pdb$|(^|/)(CaptureProbe|ffmpeg|ffprobe|RecordExport)([^/]*)(\.exe|\.dll)$' -and
-            $_ -cnotin @('FFmpeg.AutoGen.dll', 'capture-worker/FFmpeg.AutoGen.dll')
+            $_ -cne 'FFmpeg.AutoGen.dll'
         }).Count) { throw 'MSIX contains debug symbols or forbidden standalone helpers.' }
         $reader = New-Object IO.StreamReader($archive.GetEntry('AppxManifest.xml').Open())
         try { $xmlText = $reader.ReadToEnd() } finally { $reader.Dispose() }
@@ -710,5 +715,5 @@ function Submit-StoreCliDraft {
 Export-ModuleMember -Function Assert-StoreRun, Assert-StoreReleaseTrigger, Get-StoreLatestBuild, Get-StoreRun, Receive-StoreArtifact,
     ConvertTo-StoreCanonicalJson, Get-StoreHash, Get-StoreMetadataFingerprint, Get-StoreSubmissionFingerprint, Get-StoreMetadataDiffSummary, Invoke-StoreCli,
     Initialize-StoreCli, Clear-StoreCliCredentials, Assert-StoreApplication, Get-StoreState, Get-StoreSafeStatus, Get-StoreInspection,
-    Remove-StoreInspectedDraft, Get-StorePriceClassification, Get-StorePricingEvidence, Assert-StorePricing, Read-StorePackage, Get-StorePackageSet,
+    Remove-StoreInspectedDraft, Get-StorePriceClassification, Get-StorePricingEvidence, Get-StorePackageEvidence, Assert-StorePricing, Read-StorePackage, Get-StorePackageSet,
     Assert-StoreUploadedPackages, New-StoreCliDraft, Submit-StoreCliDraft

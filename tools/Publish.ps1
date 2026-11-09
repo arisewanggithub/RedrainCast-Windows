@@ -38,10 +38,6 @@ if ($NoRestore) { $restoreArguments = @('--no-restore') }
     -r $rid "-p:Platform=$platform" --self-contained true "-p:Version=$Version" `
     -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o $OutputDirectory
 if ($LASTEXITCODE -ne 0) { throw 'Self-contained RedrainCast publish failed.' }
-& dotnet publish (Join-Path $root 'src\RedrainCast.CaptureWorker\RedrainCast.CaptureWorker.csproj') @restoreArguments -c Release `
-    -r $rid "-p:Platform=$platform" --self-contained true "-p:Version=$Version" `
-    -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o (Join-Path $OutputDirectory 'capture-worker')
-if ($LASTEXITCODE -ne 0) { throw 'Self-contained capture worker publish failed.' }
 foreach ($file in @('RedrainCast.App.exe', 'RedrainCast.App.pri', 'coreclr.dll', 'Microsoft.UI.Xaml.dll')) {
     if (-not (Test-Path -LiteralPath (Join-Path $OutputDirectory $file))) { throw "Missing runtime/resource: $file" }
 }

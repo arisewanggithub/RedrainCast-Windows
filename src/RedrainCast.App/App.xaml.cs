@@ -13,14 +13,6 @@ public partial class App : Application
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         var arguments = Environment.GetCommandLineArgs();
-        var workerIndex = Array.IndexOf(arguments, "--capture-worker");
-        if (workerIndex >= 0)
-        {
-            Console.Error.WriteLine($"Capture worker bootstrap: pid={Environment.ProcessId}; entering capture worker.");
-            await RedrainCast.Send.Media.CaptureWorker.RunAsync(arguments[(workerIndex + 1)..]);
-            Exit();
-            return;
-        }
         string[] supportedFlags = ["--self-test", "--sharing-settings-self-test", "--layout-self-test", "--package-startup-self-test", "--playback-stats-self-test",
             "--media-self-test", "--occlusion-self-test", "--color-self-test", "--encoder-self-test", "--hdr-self-test",
             "--peer-self-test", "--peer-timeline", "--peer-static-source", "--peer-duration-seconds",

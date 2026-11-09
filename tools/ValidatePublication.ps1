@@ -19,9 +19,7 @@ if ($ExpectedVersion -and $appVersion -ne [version]$ExpectedVersion) {
     throw "Published application version $appVersion differs from requested $ExpectedVersion."
 }
 foreach ($file in @('RedrainCast.App.dll', 'RedrainCast.Send.Core.dll', 'RedrainCast.Receive.Core.dll',
-    'RedrainCast.Core.dll', 'RedrainCast.Protocol.dll', 'RedrainCast.Send.Media.dll', 'RedrainCast.Receive.Media.dll',
-    'capture-worker\RedrainCast.CaptureWorker.dll', 'capture-worker\RedrainCast.Send.Core.dll',
-    'capture-worker\RedrainCast.Send.Media.dll', 'capture-worker\RedrainCast.Protocol.dll')) {
+    'RedrainCast.Core.dll', 'RedrainCast.Protocol.dll', 'RedrainCast.Send.Media.dll', 'RedrainCast.Receive.Media.dll')) {
     $path = Join-Path $published $file
     $assemblyVersion = [Reflection.AssemblyName]::GetAssemblyName($path).Version
     $fileInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($path)
@@ -67,7 +65,7 @@ public static class RedrainCastPublicationManifest {
 }
 '@
 }
-foreach ($file in @('RedrainCast.App.exe', 'capture-worker\RedrainCast.CaptureWorker.exe')) {
+foreach ($file in @('RedrainCast.App.exe')) {
     $path = Join-Path $published $file
     [xml]$manifest = [RedrainCastPublicationManifest]::Read($path)
     $identity = $manifest.SelectSingleNode("/*[local-name()='assembly']/*[local-name()='assemblyIdentity']")
@@ -94,7 +92,6 @@ foreach ($file in $nativeFiles) {
     }
 }
 foreach ($file in @('RedrainCast.App.exe', 'coreclr.dll', 'Microsoft.UI.Xaml.dll',
-    'capture-worker\RedrainCast.CaptureWorker.exe', 'capture-worker\coreclr.dll',
     "native\win-$Architecture\avcodec-61.dll",
     "native\win-$Architecture\avutil-59.dll", "native\win-$Architecture\swresample-5.dll")) {
     $path = Join-Path $published $file
@@ -111,14 +108,18 @@ foreach ($file in @('RedrainCast.App.exe', 'coreclr.dll', 'Microsoft.UI.Xaml.dll
     } finally { $reader.Dispose() }
 }
 foreach ($file in @('RedrainCast.App.pri', 'PRIVACY.md', 'THIRD_PARTY_NOTICES.txt',
-    'capture-worker\RedrainCast.CaptureWorker.dll', 'capture-worker\RedrainCast.CaptureWorker.deps.json',
-    'capture-worker\RedrainCast.CaptureWorker.runtimeconfig.json',
     'licenses\ScrcpyReceive-Windows-LICENSE.txt', 'licenses\tone-map-provenance.json',
     "native\win-$Architecture\FFmpeg-LICENSE.txt")) {
     if (-not (Test-Path -LiteralPath (Join-Path $published $file))) { throw "Missing resource or notice: $file" }
 }
-if (Test-Path -LiteralPath (Join-Path $published 'capture-worker\Microsoft.UI.Xaml.dll')) {
-    throw 'The dedicated capture worker must not depend on WinUI.'
+foreach ($file in @('RedrainCast.CaptureWorker.exe', 'RedrainCast.CaptureWorker.dll',
+    'RedrainCast.CaptureWorker.deps.json', 'RedrainCast.CaptureWorker.runtimeconfig.json')) {
+    if (Test-Path -LiteralPath (Join-Path $published $file)) {
+        throw "Publication must use the unified application executable, not a separate worker: $file"
+    }
+}
+if (Test-Path -LiteralPath (Join-Path $published 'capture-worker')) {
+    throw 'The capture worker must share the application runtime from the package root.'
 }
 if (@(Get-ChildItem -LiteralPath $published -Recurse -File -Filter '*.pdb').Count -ne 0) {
     throw 'Publication must not contain PDB files.'
