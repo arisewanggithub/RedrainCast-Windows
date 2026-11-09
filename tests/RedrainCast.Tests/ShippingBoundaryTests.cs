@@ -68,12 +68,28 @@ public sealed class ShippingBoundaryTests
     [InlineData("ScrcpySend.Core.dll")]
     [InlineData("capture-worker\\ScrcpySend.Media.dll")]
     [InlineData("ScrcpyReceive.Core.deps.json")]
+    [InlineData("onnxruntime.dll")]
+    [InlineData("DirectML.dll")]
+    [InlineData("Microsoft.Windows.AI.MachineLearning.dll")]
+    [InlineData("Microsoft.Asg.SemanticIndex.AiFabric.Compatibility.dll")]
+    [InlineData("Microsoft.Windows.Search.dll")]
+    [InlineData("Microsoft.Windows.Widgets.dll")]
     public void ShippingGuardRejectsContaminatedDirectory(string relativePath) =>
         CheckGuard(relativePath, accepted: false);
 
     [Fact]
     public void ShippingGuardAcceptsCleanDirectoryWithoutFlightMarker() =>
         CheckGuard("avcodec-61.dll", accepted: true);
+
+    [Fact]
+    public void AppReferencesWinUIInsteadOfTheUmbrellaWindowsAppSdk()
+    {
+        var project = System.Xml.Linq.XDocument.Parse(Fixture("App.csproj"));
+        var packages = project.Descendants("PackageReference")
+            .Select(reference => (string?)reference.Attribute("Include")).ToArray();
+        Assert.Contains("Microsoft.WindowsAppSDK.WinUI", packages);
+        Assert.DoesNotContain("Microsoft.WindowsAppSDK", packages);
+    }
 
     [Fact]
     public void ShippingGuardRetainsGenuineLegacyLicenseNotice() =>
