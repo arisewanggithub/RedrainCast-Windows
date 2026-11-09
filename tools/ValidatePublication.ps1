@@ -91,7 +91,14 @@ foreach ($file in $nativeFiles) {
         throw "Published native dependency differs from the pinned input: $file"
     }
 }
-foreach ($file in @('RedrainCast.App.exe', 'coreclr.dll', 'Microsoft.UI.Xaml.dll',
+if (Test-Path -LiteralPath (Join-Path $published 'Microsoft.UI.Xaml.dll')) {
+    throw 'Windows App SDK must come from the shared framework, not the application payload.'
+}
+$runtime = Get-Content -LiteralPath (Join-Path $published 'RedrainCast.App.runtimeconfig.json') -Raw | ConvertFrom-Json
+if (@($runtime.runtimeOptions.includedFrameworks | Where-Object { $_.name -ceq 'Microsoft.NETCore.App' }).Count -ne 1) {
+    throw 'Publication must retain a self-contained .NET runtime.'
+}
+foreach ($file in @('RedrainCast.App.exe', 'coreclr.dll', 'Microsoft.WindowsAppRuntime.Bootstrap.dll',
     "native\win-$Architecture\avcodec-61.dll",
     "native\win-$Architecture\avutil-59.dll", "native\win-$Architecture\swresample-5.dll")) {
     $path = Join-Path $published $file

@@ -1,12 +1,33 @@
 param(
     [Parameter(Mandatory = $true)][string]$StagingDirectory,
-    [Parameter(Mandatory = $true)][string]$ReportPath
+    [Parameter(Mandatory = $true)][string]$ReportPath,
+    [switch]$InstallFrameworkDependency
 )
 $ErrorActionPreference = 'Stop'
 $staging = (Resolve-Path -LiteralPath $StagingDirectory).Path
 $executable = Join-Path $staging 'RedrainCast.App.exe'
 foreach ($required in @($executable, (Join-Path $staging 'resources.pri'), (Join-Path $staging 'AppxManifest.xml'))) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Missing extracted package input: $required" }
+}
+[xml]$manifest = Get-Content -LiteralPath (Join-Path $staging 'AppxManifest.xml') -Raw
+$framework = $manifest.Package.Dependencies.PackageDependency | Where-Object { $_.Name -ceq 'Microsoft.WindowsAppRuntime.2' }
+if ($null -ne $framework) {
+    $architecture = [string]$manifest.Package.Identity.ProcessorArchitecture
+    $installed = @(Get-AppxPackage -Name $framework.Name | Where-Object {
+        [string]$_.Architecture -ieq $architecture -and [version]$_.Version -ge [version]$framework.MinVersion -and
+        $_.Publisher -ceq $framework.Publisher
+    })
+    if ($installed.Count -eq 0 -and $InstallFrameworkDependency) {
+        $dependencies = @(Get-ChildItem -LiteralPath (Join-Path (Split-Path -Parent $staging) 'packages') -Recurse -File -Filter 'Microsoft.WindowsAppRuntime.2.msix' |
+            Where-Object { $_.Directory.Name -ieq $architecture })
+        if ($dependencies.Count -ne 1) { throw 'Exactly one matching SDK framework package is required for smoke-test setup.' }
+        Add-AppxPackage -Path $dependencies[0].FullName -ErrorAction Stop
+        $installed = @(Get-AppxPackage -Name $framework.Name | Where-Object {
+            [string]$_.Architecture -ieq $architecture -and [version]$_.Version -ge [version]$framework.MinVersion -and
+            $_.Publisher -ceq $framework.Publisher
+        })
+    }
+    if ($installed.Count -eq 0) { throw 'Install the manifest-declared Windows App Runtime before extracted-package smoke testing.' }
 }
 $report = [IO.Path]::GetFullPath($ReportPath)
 if ($report.Contains('"')) { throw 'Report path cannot contain a quote.' }

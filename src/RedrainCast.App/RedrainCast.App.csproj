@@ -8,7 +8,7 @@
     <DefaultLanguage>en-US</DefaultLanguage>
     <WindowsPackageType Condition="'$(BuildStorePackage)' != 'true'">None</WindowsPackageType>
     <WindowsPackageType Condition="'$(BuildStorePackage)' == 'true'">MSIX</WindowsPackageType>
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">$(WindowsRuntimeIdentifier)</RuntimeIdentifier>
     <PlatformTarget>$(WindowsArchitecture)</PlatformTarget>
     <Platforms>ARM64;x64</Platforms>
@@ -38,6 +38,7 @@
     <Content Include="..\..\assets\package\RedrainCast.ico" Link="Assets\RedrainCast.ico"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"/>
     <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.6.5"/>
+    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" Version="2.6.5"/>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654"/>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools.MSIX" Version="1.7.251221100"/>
     <ProjectReference Include="..\RedrainCast.Core\RedrainCast.Core.csproj"/>

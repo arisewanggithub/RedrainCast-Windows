@@ -42,6 +42,9 @@ public sealed class PackageLocalizationTests
         var validation = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "Validate-Localization.ps1"));
         Assert.Contains("@('App.xbf', 'MainWindow.xbf')", validation);
         Assert.Contains("foreach ($key in $keys)", validation);
+        Assert.Contains("[@Name='Microsoft.WindowsAppRuntime.2']", validation);
+        Assert.Contains("if ($null -eq $sharedRuntime -and", validation);
+        Assert.Contains("GetAttribute('Publisher')", validation);
         Assert.DoesNotContain("$resources.Count -ne 1", validation);
     }
 
@@ -69,5 +72,8 @@ public sealed class PackageLocalizationTests
         Assert.DoesNotContain("--layout-self-test", helper);
         Assert.Contains("WaitForExit(90000)", helper);
         Assert.Contains("Stop-Process -Id $process.Id", helper);
+        Assert.Contains("[switch]$InstallFrameworkDependency", helper);
+        Assert.Contains("Add-AppxPackage -Path $dependencies[0].FullName -ErrorAction Stop", helper);
+        Assert.Contains("Install the manifest-declared Windows App Runtime", helper);
     }
 }

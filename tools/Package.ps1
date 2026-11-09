@@ -68,7 +68,8 @@ try {
     $env:PackageCertificatePassword = $oldPassword
     if ($certificatePath -and (Test-Path -LiteralPath $certificatePath)) { Remove-Item -LiteralPath $certificatePath -Force }
 }
-$packages = @(Get-ChildItem -LiteralPath (Join-Path $output 'packages') -Recurse -File -Filter '*.msix')
+$packages = @(Get-ChildItem -LiteralPath (Join-Path $output 'packages') -Recurse -File -Filter '*.msix' |
+    Where-Object { $_.FullName.Substring($output.Length + 1) -notmatch '(?i)(^|\\)Dependencies\\' })
 if ($packages.Count -ne 1) { throw 'The Windows SDK must produce exactly one architecture-specific MSIX.' }
 $package = Join-Path $output "RedrainCast-$Architecture.msix"
 Copy-Item -LiteralPath $packages[0].FullName -Destination $package
@@ -85,6 +86,11 @@ if ($actual.Package.Identity.Name -cne $identity.PackageName -or $actual.Package
     throw 'The SDK package identity, architecture or version differs from the requested publication.'
 }
 $deviceFamily = $actual.Package.Dependencies.TargetDeviceFamily
+$runtimeDependencies = @($actual.Package.Dependencies.PackageDependency | Where-Object { $_.Name -ceq 'Microsoft.WindowsAppRuntime.2' })
+if ($runtimeDependencies.Count -ne 1 -or $runtimeDependencies[0].Publisher -cne 'CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US' -or
+    [version]$runtimeDependencies[0].MinVersion -lt [version]'2.6.5.0') {
+    throw 'MSIX must declare the supported Microsoft Windows App Runtime framework dependency.'
+}
 if ($deviceFamily.Name -cne 'Windows.Desktop' -or $deviceFamily.MinVersion -cne '10.0.22621.0' -or
     $deviceFamily.MaxVersionTested -cne '10.0.26100.0') {
     throw 'The SDK package must preserve the supported Windows 11 device-family versions.'

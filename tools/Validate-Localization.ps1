@@ -121,7 +121,14 @@ try {
                 throw "Package-root PRI is missing compiled WinUI markup: $xaml"
             }
         }
-        if ($null -eq $maps[0].SelectSingleNode(".//ResourceMapSubtree[@name='Microsoft.UI.Xaml']/NamedResource") -and
+        $sharedRuntime = $manifest.SelectSingleNode("/*[local-name()='Package']/*[local-name()='Dependencies']/*[local-name()='PackageDependency'][@Name='Microsoft.WindowsAppRuntime.2']")
+        if ($null -ne $sharedRuntime -and
+            ($sharedRuntime.GetAttribute('Publisher') -cne 'CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US' -or
+            [version]$sharedRuntime.GetAttribute('MinVersion') -lt [version]'2.6.5.0')) {
+            throw 'Package localization requires a supported Microsoft Windows App Runtime dependency.'
+        }
+        if ($null -eq $sharedRuntime -and
+            $null -eq $maps[0].SelectSingleNode(".//ResourceMapSubtree[@name='Microsoft.UI.Xaml']/NamedResource") -and
             $null -eq $maps[0].SelectSingleNode(".//ResourceMapSubtree[@name='Microsoft.UI.Xaml']//NamedResource")) {
             throw 'Package-root PRI is missing self-contained WinUI framework resources.'
         }

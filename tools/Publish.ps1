@@ -38,7 +38,7 @@ if ($NoRestore) { $restoreArguments = @('--no-restore') }
     -r $rid "-p:Platform=$platform" --self-contained true "-p:Version=$Version" `
     -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o $OutputDirectory
 if ($LASTEXITCODE -ne 0) { throw 'Self-contained RedrainCast publish failed.' }
-foreach ($file in @('RedrainCast.App.exe', 'RedrainCast.App.pri', 'coreclr.dll', 'Microsoft.UI.Xaml.dll')) {
+foreach ($file in @('RedrainCast.App.exe', 'RedrainCast.App.pri', 'coreclr.dll', 'Microsoft.WindowsAppRuntime.Bootstrap.dll')) {
     if (-not (Test-Path -LiteralPath (Join-Path $OutputDirectory $file))) { throw "Missing runtime/resource: $file" }
 }
 if (@(Get-ChildItem -LiteralPath $OutputDirectory -Recurse -File -Filter '*.pdb').Count -ne 0) {
