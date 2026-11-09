@@ -644,9 +644,10 @@ public sealed class RecoveryTests
                 await RedrainCast.Receive.Core.Wire.WriteAsync(video.GetStream(),
                     new(PacketType.VideoFrame, 1, 1, 1, QpcUs(), 0, Convert.FromBase64String(dependent.GetProperty("data").GetString()!)),
                     timeout.Token);
-                await Task.Delay(10, timeout.Token);
+                while (Volatile.Read(ref factory.VideoPresented) < before + index + 1)
+                    await Task.Delay(5, timeout.Token);
             }
-            while (Volatile.Read(ref factory.VideoPresented) <= before) await Task.Delay(10, timeout.Token);
+            Assert.Equal(before + 5, Volatile.Read(ref factory.VideoPresented));
             Assert.Equal(1, factory.Opens);
             Assert.False(factory.Outputs[0].Disposed);
 
