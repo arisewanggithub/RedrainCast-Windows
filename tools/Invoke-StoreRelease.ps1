@@ -122,20 +122,23 @@ try {
             $receipt | Add-Member -NotePropertyName sourceSha -NotePropertyValue $env:GITHUB_SHA
             $receipt | Add-Member -NotePropertyName workflowRunId -NotePropertyValue $env:GITHUB_RUN_ID
             $receipt | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $WorkDirectory 'store-draft-receipt.json') -Encoding UTF8
-            Write-Host "Validated packages uploaded to draft $($receipt.submissionId). No certification requested. Saved publication mode: Immediate."
+            Write-Host "Draft $($receipt.submissionId) is saved. Source package bytes were validated locally; use the saved package evidence above to distinguish PendingUpload from verified ingestion. No certification has been requested yet."
             if ($Stage -ceq 'release-latest') {
-                $status = Submit-StoreCliDraft $identity $receipt $packages $BuildRunId $build.head_sha $cli
+                $certification = Submit-StoreCliDraft $identity $receipt $packages $BuildRunId $build.head_sha $cli
                 [pscustomobject]@{
                     submissionId = $receipt.submissionId; sourceBuildRunId = $BuildRunId
                     sourceSha = $env:GITHUB_SHA; workflowRunId = $env:GITHUB_RUN_ID
-                    targetPublishMode = 'Immediate'; status = $status
+                    targetPublishMode = 'Immediate'; status = $certification.status
+                    packages = $certification.packages
                 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $WorkDirectory 'store-certification-receipt.json') -Encoding UTF8
-                Write-Host "Certification request accepted and Immediate publication verified. Current state: $status."
+                Write-Host "Certification request accepted and Immediate publication verified. Current state: $($certification.status)."
+                Write-Host ('Post-commit package evidence: ' + (ConvertTo-Json -InputObject $certification.packages -Compress -Depth 5))
             }
         }
         'submit-draft' {
-            $status = Submit-StoreCliDraft $identity $receipt $packages $BuildRunId $build.head_sha $cli
-            Write-Host "Official CLI certification request accepted. Current state: $status. Publication is automatic after certification passes."
+            $certification = Submit-StoreCliDraft $identity $receipt $packages $BuildRunId $build.head_sha $cli
+            Write-Host "Official CLI certification request accepted. Current state: $($certification.status). Publication is automatic after certification passes."
+            Write-Host ('Post-commit package evidence: ' + (ConvertTo-Json -InputObject $certification.packages -Compress -Depth 5))
         }
         'status' {
             $state = Get-StoreState $identity $cli

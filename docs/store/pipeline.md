@@ -140,7 +140,10 @@ blocking explicit-price-approval gate, not a reason to use browser automation.
    and verify exact draft/published pointers and full CLI-visible fingerprint.
    Call official `submission publish`, then `submission status`.
    **Certification is requested and publication is automatic when it passes.**
-6. **`status`**: official read-only status request, suppressing raw service messages.
+6. **`status`**: official read-only status request, suppressing raw service messages
+   and projecting only saved package filenames, versions, architectures, and
+   upload states. Missing ingestion fields stay null and are never inferred from
+   CLI success.
 7. **`release-latest`**: manual end-to-end operation, also selected by the automatic
    trigger. Takes no build or draft run input. Resolve GitHub's current latest
    published non-prerelease official release and its manifest; require successful
@@ -150,8 +153,10 @@ blocking explicit-price-approval gate, not a reason to use browser automation.
    Upload once, persist the exact draft receipt, and immediately run the same
    receipt-bound certification checks in this trusted run. Verify the same
    submission ID, an accepted certification/publication state and persisted
-   `Immediate` mode, then retain `store-certification-receipt`. Certification
-   failures are not success. No certification is skipped and no retry is made.
+   `Immediate` mode, then retain `store-certification-receipt`, including the
+   safe package metadata returned by the Store after certification starts.
+   Certification failures are not success. No certification is skipped and
+   no retry is made.
    Existing drafts are always preserved; duplicate/older published package
    versions are rejected before upload. A failed submit retains its sanitized
    upload receipt for inspection, not automatic recovery.

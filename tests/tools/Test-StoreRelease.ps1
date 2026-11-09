@@ -446,7 +446,7 @@ try {
         Assert ($m.state.updates -eq 1) 'Dashboard flag triggered an unnecessary metadata restore.'
         $m.state.submission.pricing.isAdvancedPricingModel = $true
         $status = Submit-StoreCliDraft $identity $receipt (New-Packages) '123' ('a' * 40) $m.cli
-        Assert ($m.state.commits -eq 1 -and $status -ceq 'CommitStarted') 'Inconsistent dashboard flag blocked certification.'
+        Assert ($m.state.commits -eq 1 -and $status.status -ceq 'CommitStarted') 'Inconsistent dashboard flag blocked certification.'
     }
     Test 'metadata restoration failure never requests certification' {
         $m = New-Mock; $m.state.changedMetadata = $true; $m.state.failUpdate = $true
@@ -494,6 +494,8 @@ try {
     Test 'read-only status logs the safe package evidence projection' {
         $invoke = Get-Content -LiteralPath (Join-Path $root 'tools\Invoke-StoreRelease.ps1') -Raw
         Assert ($invoke -match "Current package evidence: .*Get-StorePackageEvidence") 'Status does not expose safe saved package version and architecture evidence.'
+        Assert ($invoke -match 'packages = \$certification\.packages' -and
+            $invoke -notmatch 'Validated packages uploaded to draft') 'Certification receipt overstates package ingestion.'
     }
     Test 'failed upload is never automatically retried or deleted' {
         $m = New-Mock; $m.state.failPublish = $true
@@ -532,7 +534,9 @@ try {
         $m = New-Mock; $receipt = Upload $m
         $status = Submit-StoreCliDraft $identity $receipt (New-Packages) '123' ('a' * 40) $m.cli
         Assert ($m.state.commits -eq 1 -and $m.state.calls.Contains('submission status')) 'Official commit/status missing.'
-        Assert ($status -ceq 'CommitStarted') 'Safe current state not reported.'
+        Assert ($status.status -ceq 'CommitStarted') 'Safe current state not reported.'
+        $newPackages = @($status.packages | Where-Object { $_.fileName -like 'RedrainCast-123-*' })
+        Assert ($newPackages.Count -eq 2 -and @($newPackages | Where-Object { $_.fileStatus -ceq 'PendingUpload' -and $null -eq $_.version -and $null -eq $_.architecture }).Count -eq 2) 'Actual post-commit package evidence was not projected without inferring ingestion.'
         $m.state.submission.status = 'fixture-secret'
         Assert ((Get-StoreSafeStatus $m.state.submission) -ceq 'Other (suppressed)') 'Untrusted status leaked.'
     }

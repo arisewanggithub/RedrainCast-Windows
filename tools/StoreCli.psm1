@@ -701,7 +701,10 @@ function Submit-StoreCliDraft {
             'PendingPublication', 'Publishing', 'PublishStarted', 'Published', 'InStore', 'Release')) {
         throw 'Certification acceptance and Immediate publication were not verified. Inspect status; never automatically retry.'
     }
-    return Get-StoreSafeStatus $accepted
+    return [pscustomobject]@{
+        status = Get-StoreSafeStatus $accepted
+        packages = @(Get-StorePackageEvidence $accepted)
+    }
 }
 
 Export-ModuleMember -Function Assert-StoreRun, Assert-StoreReleaseTrigger, Get-StoreLatestBuild, Get-StoreRun, Receive-StoreArtifact,
