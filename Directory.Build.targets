@@ -1,5 +1,6 @@
 <Project>
-  <Target Name="PrepareVersionedApplicationManifest" BeforeTargets="CoreCompile"
+  <Target Name="PrepareVersionedApplicationManifest" BeforeTargets="GetNewAppManifestValues;_SetEmbeddedWin32ManifestProperties;CoreCompile"
+          DependsOnTargets="GetAssemblyVersion"
           Condition="'$(ApplicationManifest)' != '' And '$(DesignTimeBuild)' != 'true'">
     <PropertyGroup>
       <_VersionedApplicationManifest>$(IntermediateOutputPath)versioned.app.manifest</_VersionedApplicationManifest>

@@ -73,7 +73,7 @@ foreach ($file in @('RedrainCast.App.exe', 'capture-worker\RedrainCast.CaptureWo
     $identity = $manifest.SelectSingleNode("/*[local-name()='assembly']/*[local-name()='assemblyIdentity']")
     $fileVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($path).FileVersion
     if ($null -eq $identity -or [version]$identity.version -ne $appVersion -or [version]$fileVersion -ne $appVersion) {
-        throw "Executable $file manifest/file version does not match app version $appVersion."
+        throw "Executable $file manifest version '$($identity.version)' / file version '$fileVersion' does not match app version $appVersion."
     }
 }
 $nativeDirectories = @(Get-ChildItem -LiteralPath (Join-Path $published 'native') -Force)
