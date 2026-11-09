@@ -10,12 +10,52 @@ function Assert-StoreRun {
         $Run.repository.full_name -cne $script:Repository -or
         $Run.head_repository.full_name -cne $script:Repository -or
         $Run.head_branch -cne 'main' -or $Run.status -cne 'completed' -or
-        $Run.conclusion -cne 'success' -or $Run.event -cnotin @('push', 'workflow_dispatch') -or
+        $Run.conclusion -cne 'success' -or $Run.event -cnotin @('push', 'workflow_dispatch', 'workflow_run') -or
+        ($Run.event -ceq 'workflow_run' -and $WorkflowPath -cne '.github/workflows/store-release.yml') -or
         $Run.path -cne $WorkflowPath -or [string]$Run.head_sha -notmatch '^[a-f0-9]{40}$' -or
         [string]$Run.run_attempt -notmatch '^[1-9][0-9]*$' -or
         [string]$Run.run_number -notmatch '^[1-9][0-9]*$') {
         throw 'Source must be a successful, completed main run of the expected workflow in this repository (not a PR or fork).'
     }
+}
+
+function Assert-StoreReleaseTrigger {
+    param($Event, $Run)
+    Assert-StoreRun $Run ([string]$Event.workflow_run.id) '.github/workflows/windows.yml'
+    $source = $Event.workflow_run
+    if ($Event.repository.full_name -cne $script:Repository -or
+        $source.repository.full_name -cne $script:Repository -or
+        $source.head_repository.full_name -cne $script:Repository -or
+        $source.head_branch -cne 'main' -or $source.event -cne 'push' -or
+        $source.status -cne 'completed' -or $source.conclusion -cne 'success' -or
+        $Run.event -cne 'push' -or $source.head_sha -cne $Run.head_sha -or
+        $source.run_attempt -ne $Run.run_attempt) {
+        throw 'Automatic Store publication requires the exact successful main push Windows build event.'
+    }
+}
+
+function Get-StoreLatestBuild {
+    param([string]$Directory)
+    $raw = & gh api "repos/$script:Repository/releases/latest" 2>$null
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve latest official release.' }
+    $release = $raw -join "`n" | ConvertFrom-Json
+    if ($release.draft -or $release.prerelease -or $release.tag_name -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') {
+        throw 'Latest release must be published, official and non-prerelease.'
+    }
+    $folder = Join-Path $Directory 'latest-manifest'
+    New-Item -ItemType Directory -Path $folder | Out-Null
+    & gh release download $release.tag_name --repo $script:Repository --pattern ci-manifest.json --dir $folder 2>$null
+    if ($LASTEXITCODE -ne 0) { throw 'Latest official release manifest is unavailable.' }
+    $path = Join-Path $folder 'ci-manifest.json'
+    if ((Get-Item -LiteralPath $path).Length -gt 64KB) { throw 'Release manifest is too large.' }
+    $manifest = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+    $run = Get-StoreRun ([string]$manifest.runId) '.github/workflows/windows.yml'
+    if ($run.event -cne 'push' -or $release.target_commitish -cne $run.head_sha -or
+        $manifest.headSha -cne $run.head_sha -or $release.tag_name -cne "v$($manifest.version)") {
+        throw 'Latest official release must originate from a successful main push.'
+    }
+    # Receive-CiBuild subsequently verifies the complete manifest, version, assets and hashes.
+    return $run
 }
 
 function Get-StoreRun {
@@ -38,7 +78,7 @@ function ConvertTo-StoreCanonicalJson {
     param($Value)
     if ($null -eq $Value) { return 'null' }
     if ($Value -is [Collections.IDictionary] -or $Value -is [pscustomobject]) {
-        $keys = @(if ($Value -is [Collections.IDictionary]) { $Value.Keys } else { $Value.PSObject.Properties.Name })
+        $keys = @(if ($Value -is [Collections.IDictionary]) { $Value.Keys } else { $Value.PSObject.Properties | ForEach-Object { $_.Name } })
         $keys = [string[]]$keys
         [Array]::Sort($keys, [StringComparer]::Ordinal)
         $pairs = foreach ($key in $keys) {
@@ -220,6 +260,18 @@ function Remove-StoreInspectedDraft {
     if ($null -ne $app.pendingApplicationSubmission) { throw 'A pending draft remains after the CLI discard. Inspect before any further operation; no automatic retry.' }
 }
 
+function Get-StorePriceClassification {
+    param($Submission)
+    $pricing = $Submission.PSObject.Properties['pricing']
+    if ($null -eq $pricing -or $null -eq $pricing.Value) { return 'Missing' }
+    $price = [string]$pricing.Value.priceId
+    if ($price -ieq 'Base') { return 'Base (not round-trippable; not evidence of Free)' }
+    if ($price -ceq 'Free') { return 'Free' }
+    if ($price -ceq 'NotAvailable') { return 'NotAvailable' }
+    if ($price -cmatch '^Tier[1-9][0-9]*$') { return 'Paid tier' }
+    return 'Other or missing'
+}
+
 function Assert-StorePricing {
     param($Submission, [string]$ApprovedBasePriceId)
     if ($ApprovedBasePriceId -and $ApprovedBasePriceId -cnotmatch '^(Free|NotAvailable|Tier[1-9][0-9]*)$') {
@@ -342,6 +394,13 @@ function New-StoreCliDraft {
     $state = Get-StoreState $Identity $Cli
     if ($null -ne $state.application.pendingApplicationSubmission) { throw 'Existing draft is preserved. Inspect and explicitly discard it before upload; --noCommit is not non-destructive.' }
     if ($null -eq $state.application.lastPublishedApplicationSubmission) { throw 'First publication must be completed before automated updates.' }
+    $version = [version]$PackageSet.packages[0].version
+    foreach ($package in @($state.submission.applicationPackages | Where-Object { $_.fileStatus -cne 'PendingDelete' })) {
+        $publishedVersion = $null
+        if (-not [version]::TryParse([string]$package.version, [ref]$publishedVersion) -or $version -le $publishedVersion) {
+            throw 'Release must be newer than every published package; duplicates and downgrades are not uploaded.'
+        }
+    }
     Assert-StorePricing $state.submission $ApprovedBasePriceId
     if ($ApprovedBasePriceId) {
         if ($null -eq $state.submission.pricing) { $state.submission.pricing = [pscustomobject]@{ priceId = $ApprovedBasePriceId } }
@@ -407,11 +466,17 @@ function Submit-StoreCliDraft {
     Assert-StoreUploadedPackages $draft $PackageSet.packages
     $null = & $Cli @('submission', 'publish', $script:Product) $false
     $null = & $Cli @('submission', 'status', $script:Product) $false
-    return Get-StoreSafeStatus (Get-StoreState $Identity $Cli).submission
+    $accepted = (Get-StoreState $Identity $Cli).submission
+    if ([string]$accepted.id -cne $Receipt.submissionId -or $accepted.targetPublishMode -cne 'Immediate' -or
+        $accepted.status -cnotin @('CommitStarted', 'PreProcessing', 'PendingCertification', 'Certification',
+            'PendingPublication', 'Publishing', 'PublishStarted', 'Published', 'InStore', 'Release')) {
+        throw 'Certification acceptance and Immediate publication were not verified. Inspect status; never automatically retry.'
+    }
+    return Get-StoreSafeStatus $accepted
 }
 
-Export-ModuleMember -Function Assert-StoreRun, Get-StoreRun, Receive-StoreArtifact,
+Export-ModuleMember -Function Assert-StoreRun, Assert-StoreReleaseTrigger, Get-StoreLatestBuild, Get-StoreRun, Receive-StoreArtifact,
     ConvertTo-StoreCanonicalJson, Get-StoreHash, Get-StoreMetadataFingerprint, Invoke-StoreCli,
     Initialize-StoreCli, Clear-StoreCliCredentials, Assert-StoreApplication, Get-StoreState, Get-StoreSafeStatus, Get-StoreInspection,
-    Remove-StoreInspectedDraft, Assert-StorePricing, Read-StorePackage, Get-StorePackageSet,
+    Remove-StoreInspectedDraft, Get-StorePriceClassification, Assert-StorePricing, Read-StorePackage, Get-StorePackageSet,
     Assert-StoreUploadedPackages, New-StoreCliDraft, Submit-StoreCliDraft

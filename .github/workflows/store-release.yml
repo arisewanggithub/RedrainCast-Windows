@@ -1,6 +1,10 @@
 name: Microsoft Store release
-run-name: Microsoft Store — ${{ inputs.stage }} (${{ github.ref_name }})
+run-name: Microsoft Store — ${{ inputs.stage || 'release-latest' }} (${{ github.ref_name }})
 on:
+  workflow_run:
+    workflows: [Windows build]
+    branches: [main]
+    types: [completed]
   workflow_dispatch:
     inputs:
       stage:
@@ -8,7 +12,7 @@ on:
         required: true
         default: preflight
         type: choice
-        options: [preflight, inspect-draft, discard-draft, upload-draft, submit-draft, status]
+        options: [preflight, inspect-draft, discard-draft, upload-draft, submit-draft, release-latest, status]
       inspect_submission_id:
         description: Exact pending submission ID (inspection or explicitly authorized discard only)
         type: string
@@ -36,8 +40,13 @@ concurrency:
   cancel-in-progress: false
 jobs:
   offline-checks:
-    if: github.ref == 'refs/heads/main' && github.repository == 'arisewanggithub/RedrainCast-Windows'
-    runs-on: windows-latest
+    if: >-
+      github.ref == 'refs/heads/main' && github.repository == 'arisewanggithub/RedrainCast-Windows' &&
+      (github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: [self-hosted, Windows, X64, arise-local]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Test Store guards without network or credentials
@@ -46,7 +55,7 @@ jobs:
   store:
     needs: offline-checks
     if: github.ref == 'refs/heads/main' && github.repository == 'arisewanggithub/RedrainCast-Windows'
-    runs-on: windows-latest
+    runs-on: [self-hosted, Windows, X64, arise-local]
     environment: microsoft-store
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -55,19 +64,21 @@ jobs:
         with:
           version: v0.4.4
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
-        if: inputs.stage == 'upload-draft'
+        if: inputs.stage == 'upload-draft' || inputs.stage == 'release-latest' || github.event_name == 'workflow_run'
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}\dotnet
         with:
           dotnet-version: 10.0.x
       - name: Perform explicitly selected Store operation
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
-          STORE_STAGE: ${{ inputs.stage }}
+          STORE_STAGE: ${{ inputs.stage || 'release-latest' }}
           STORE_INSPECT_SUBMISSION_ID: ${{ inputs.inspect_submission_id }}
           STORE_INSPECT_RUN_ID: ${{ inputs.inspect_run_id }}
           STORE_BUILD_RUN_ID: ${{ inputs.build_run_id }}
           STORE_DRAFT_RUN_ID: ${{ inputs.draft_run_id }}
-          STORE_CONFIRMATION: ${{ inputs.confirm_store }}
+          STORE_CONFIRMATION: ${{ github.event_name == 'workflow_run' && '9P1153MP6R32' || inputs.confirm_store }}
           STORE_APPROVED_BASE_PRICE_ID: ${{ inputs.approved_base_price_id }}
           PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
           PARTNER_CENTER_CLIENT_ID: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
@@ -80,12 +91,12 @@ jobs:
             -BuildRunId $env:STORE_BUILD_RUN_ID -DraftRunId $env:STORE_DRAFT_RUN_ID `
             -ConfirmStore $env:STORE_CONFIRMATION -ApprovedBasePriceId $env:STORE_APPROVED_BASE_PRICE_ID
       - name: Keep sanitized receipt in private Actions only
-        if: success() && inputs.stage == 'upload-draft'
+        if: always() && (inputs.stage == 'upload-draft' || inputs.stage == 'release-latest' || github.event_name == 'workflow_run')
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: store-draft-receipt
           path: artifacts/store-release/store-draft-receipt.json
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 14
       - name: Keep read-only fingerprint snapshot
         if: success() && inputs.stage == 'inspect-draft'
@@ -93,5 +104,13 @@ jobs:
         with:
           name: store-inspection
           path: artifacts/store-release/store-inspection.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Keep verified certification acceptance
+        if: success() && (inputs.stage == 'release-latest' || github.event_name == 'workflow_run')
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: store-certification-receipt
+          path: artifacts/store-release/store-certification-receipt.json
           if-no-files-found: error
           retention-days: 14
