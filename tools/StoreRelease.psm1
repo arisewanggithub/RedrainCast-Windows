@@ -378,9 +378,70 @@ function New-StorePackageArchive {
     return [pscustomobject]@{ path = $path; packages = $packages; listingUpdate = $ListingUpdate }
 }
 
+function Get-StoreSafeErrors {
+    param($Details)
+    $known = @('InvalidRequest', 'InvalidRequestBody', 'InvalidParameter', 'InvalidParameterValue',
+        'BadRequest', 'InvalidSubmission', 'InvalidApplicationPackage', 'InvalidFileStatus',
+        'InvalidPublishMode', 'InvalidJson', 'Conflict', 'Forbidden', 'Unauthorized',
+        'AuthenticationFailed', 'AuthorizationFailure', 'AuthorizationPermissionMismatch',
+        'InvalidAuthenticationInfo', 'InvalidHeaderValue', 'MissingRequiredHeader',
+        'InvalidBlobType', 'RequestBodyTooLarge', 'InvalidQueryParameterValue',
+        'InvalidResourceName', 'ResourceNotFound', 'BlobNotFound', 'OperationNotAllowed')
+    $codes = New-Object 'Collections.Generic.List[string]'
+    foreach ($item in @($Details) | Select-Object -First 20) {
+        if ($null -eq $item) { continue }
+        $property = $item.PSObject.Properties['code']
+        if ($null -eq $property) { continue }
+        $code = [string]$property.Value
+        $safe = if ($code -cin $known) { $code } else { 'UnrecognizedServiceError' }
+        if (-not $codes.Contains($safe)) { $codes.Add($safe) }
+    }
+    return $codes.ToArray()
+}
+
+function Get-StoreTransportDiagnostic {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text) -or $Text.Length -gt 16384) { return 'Service details unavailable or suppressed.' }
+    $details = @()
+    try {
+        if ($Text.TrimStart().StartsWith('{')) {
+            $json = $Text | ConvertFrom-Json -ErrorAction Stop
+            $details += $json
+            foreach ($name in @('error', 'errors')) {
+                $property = $json.PSObject.Properties[$name]
+                if ($null -ne $property) { $details += @($property.Value) }
+            }
+        } elseif ($Text.TrimStart().StartsWith('<')) {
+            $settings = New-Object Xml.XmlReaderSettings
+            $settings.DtdProcessing = [Xml.DtdProcessing]::Prohibit
+            $settings.XmlResolver = $null
+            $reader = [Xml.XmlReader]::Create((New-Object IO.StringReader($Text)), $settings)
+            try {
+                $xml = New-Object Xml.XmlDocument
+                $xml.XmlResolver = $null
+                $xml.Load($reader)
+                $node = $xml.SelectSingleNode('/Error/Code')
+                if ($null -ne $node) { $details += [pscustomobject]@{ code = $node.InnerText } }
+            } finally { $reader.Dispose() }
+        }
+    } catch { return 'Service details unavailable or suppressed.' }
+    $codes = @(Get-StoreSafeErrors $details)
+    if (-not $codes.Count) { return 'Service details unavailable or suppressed.' }
+    # Never echo free-form service messages, which can contain submitted metadata or signed URLs.
+    return 'Service codes: ' + ($codes -join ', ') + '. Service messages suppressed.'
+}
+
 function Invoke-StoreHttp {
     param([ValidateSet('GET', 'POST', 'PUT')][string]$Method, [string]$Uri, [hashtable]$Headers,
         $Body, [string]$InFile, [string]$ContentType = 'application/json')
+    $operation = 'Store API request'
+    if ($InFile) { $operation = 'Azure archive upload' }
+    elseif ($Uri -match '^https://login\.microsoftonline\.com/') { $operation = 'Authentication' }
+    elseif ($Uri -match '/submissions/[0-9]+/commit$') { $operation = 'Store submission commit' }
+    elseif ($Uri -match '/submissions/[0-9]+/status$') { $operation = 'Store submission status' }
+    elseif ($Uri -match '/submissions/[0-9]+$') { $operation = 'Store submission metadata' }
+    elseif ($Uri -match '/submissions$') { $operation = 'Store draft creation' }
+    elseif ($Uri -match '/applications/[A-Z0-9]+$') { $operation = 'Store application lookup' }
     try {
         $arguments = @{ Method = $Method; Uri = $Uri; Headers = $Headers; ContentType = $ContentType;
             TimeoutSec = 600; MaximumRedirection = 0; ErrorAction = 'Stop'; Verbose = $false; Debug = $false }
@@ -397,8 +458,25 @@ function Invoke-StoreHttp {
         if ($null -ne $responseProperty -and $null -ne $responseProperty.Value) {
             $status = [string][int]$responseProperty.Value.StatusCode
         }
-        # Never propagate service bodies, credentials, SAS URLs, or the original exception.
-        throw "Store transport failed ($Method, HTTP $status). Inspect Partner Center manually; no draft is automatically removed."
+        $text = ''
+        if ($null -ne $_.ErrorDetails) { $text = [string]$_.ErrorDetails.Message }
+        if (-not $text -and $null -ne $responseProperty -and $null -ne $responseProperty.Value) {
+            $stream = $null
+            $reader = $null
+            try {
+                $stream = $responseProperty.Value.GetResponseStream()
+                $reader = New-Object IO.StreamReader($stream)
+                $buffer = New-Object char[] 16385
+                $length = $reader.ReadBlock($buffer, 0, $buffer.Length)
+                $text = New-Object string($buffer, 0, $length)
+            } catch { $text = '' }
+            finally {
+                if ($null -ne $reader) { $reader.Dispose() }
+                elseif ($null -ne $stream) { $stream.Dispose() }
+            }
+        }
+        $diagnostic = Get-StoreTransportDiagnostic $text
+        throw "Store transport failed ($operation, $Method, HTTP $status). $diagnostic No draft is automatically removed or retried."
     }
 }
 
@@ -449,6 +527,49 @@ function Get-StoreReadiness {
     return [pscustomobject]@{
         applicationId = $script:Product; firstPublicationComplete = $hasPublished
         pendingDraftExists = $hasPending; automatedUpdateAllowed = $hasPublished -and -not $hasPending
+    }
+}
+
+function Get-StoreDraftInspection {
+    param($Identity, [string]$SubmissionId, [scriptblock]$Request)
+    if ($SubmissionId -cnotmatch '^[1-9][0-9]{0,19}$') { throw 'Inspection requires an exact numeric submission ID.' }
+    $app = & $Request GET "applications/$script:Product" $null $null
+    Assert-StoreApplication $app $Identity -AllowUnpublished
+    $pending = $app.PSObject.Properties['pendingApplicationSubmission']
+    if ($null -eq $pending -or $null -eq $pending.Value -or [string]$pending.Value.id -cne $SubmissionId) {
+        throw 'Exact inspection ID does not match the current pending submission; no draft was changed.'
+    }
+    $draft = & $Request GET "applications/$script:Product/submissions/$SubmissionId" $null $null
+    if ([string]$draft.id -cne $SubmissionId) { throw 'Inspection response ID mismatch.' }
+    $packages = @()
+    foreach ($package in @($draft.applicationPackages) | Select-Object -First 20) {
+        $row = [ordered]@{}
+        foreach ($field in @('fileName', 'fileStatus', 'version', 'architecture')) {
+            $property = $package.PSObject.Properties[$field]
+            $value = if ($null -ne $property) { [string]$property.Value } else { '' }
+            $allowed = switch ($field) {
+                'fileName' { $value -cmatch '^RedrainCast-(arm64|x64)\.msix$' }
+                'fileStatus' { $value -cin @('None', 'PendingUpload', 'Uploaded', 'PendingDelete') }
+                'version' { $value -cmatch '^[0-9]{1,5}(\.[0-9]{1,5}){3}$' }
+                'architecture' { $value -cin @('arm64', 'x64', 'x86', 'neutral', 'ARM64', 'X64', 'X86', 'Neutral') }
+            }
+            $row[$field] = if ($allowed) { $value } else { 'UnknownOrSuppressed' }
+        }
+        $packages += [pscustomobject]$row
+    }
+    $errors = @()
+    $details = $draft.PSObject.Properties['statusDetails']
+    if ($null -ne $details -and $null -ne $details.Value) {
+        $property = $details.Value.PSObject.Properties['errors']
+        if ($null -ne $property) { $errors = @(Get-StoreSafeErrors $property.Value) }
+    }
+    $status = if ($draft.status -cin @('PendingCommit', 'CommitStarted', 'CommitFailed', 'PreProcessing',
+        'PreProcessingFailed', 'Certification', 'CertificationFailed', 'Release', 'ReleaseFailed',
+        'PendingPublication', 'Publishing', 'PublishFailed', 'Published')) { $draft.status } else { 'UnknownOrSuppressed' }
+    $mode = if ($draft.targetPublishMode -cin @('Immediate', 'Manual', 'SpecificDate')) { $draft.targetPublishMode } else { 'UnknownOrSuppressed' }
+    return [pscustomobject]@{
+        submissionId = $SubmissionId; status = $status; targetPublishMode = $mode
+        ownership = 'Unknown'; applicationPackages = $packages; validationErrorCodes = $errors
     }
 }
 
@@ -588,4 +709,5 @@ Export-ModuleMember -Function Assert-StoreRun, Get-StoreRun, Receive-StoreArtifa
     Get-StoreHash, Get-StoreMetadataFingerprint, Get-StoreActivePackageFingerprint, Read-StorePackage,
     Assert-StoreArchiveLength, New-StorePackageArchive,
     Get-StoreListingLocales, Assert-StoreListingApproval, Read-StoreListings, Set-StoreDraftListings, Assert-StoreListingImages,
+    Get-StoreSafeErrors, Get-StoreTransportDiagnostic, Get-StoreDraftInspection,
     Invoke-StoreHttp, Get-StoreToken, Assert-StoreApplication, Get-StoreReadiness, Assert-StorePackages, New-StoreDraft, Submit-StoreDraft
