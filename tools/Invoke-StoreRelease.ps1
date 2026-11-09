@@ -55,16 +55,16 @@ try {
     $build = Get-StoreRun $BuildRunId '.github/workflows/windows.yml'
     . (Join-Path $PSScriptRoot 'CiBuild.ps1')
     try {
-        $null = Receive-CiBuild -RunId $BuildRunId -RunAttempt $build.run_attempt -ExpectedSha $build.head_sha -DestinationDirectory $WorkDirectory
+        $null = Receive-CiBuild -RunId $BuildRunId -RunAttempt $build.run_attempt -ExpectedSha $build.head_sha -RunNumber ([string]$build.run_number) -DestinationDirectory $WorkDirectory
     } catch {
-        throw "Required validated private CI build archive for run $BuildRunId attempt $($build.run_attempt) could not be received. Rebuild the reviewed main commit and use its successful Windows run; there is no Actions build-artifact fallback."
+        throw "Required validated official MSIX release for run $BuildRunId attempt $($build.run_attempt) could not be received. Rebuild the reviewed main commit and use its successful Windows run; there is no Actions build-artifact fallback."
     }
     $listingUpdate = $null
     if ($Stage -ceq 'upload-listings-draft') {
         $listingUpdate = Read-StoreListings (Split-Path -Parent $PSScriptRoot) $env:GITHUB_SHA $env:GITHUB_RUN_ID
     }
     $archive = New-StorePackageArchive $WorkDirectory $identity $listingUpdate
-    # -WhatIf downloads/validates private CI archives (and submission receipts) only; it never calls Store/Azure.
+    # -WhatIf downloads/validates release MSIX files (and submission receipts) only; it never calls Store/Azure.
     if (-not $PSCmdlet.ShouldProcess('9P1153MP6R32 (Manual publication hold)', $Stage)) { return }
     $headers = @{ Authorization = 'Bearer ' + (Get-StoreToken) }
     $request = {

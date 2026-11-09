@@ -12,7 +12,8 @@ function Assert-StoreRun {
         $Run.head_branch -cne 'main' -or $Run.status -cne 'completed' -or
         $Run.conclusion -cne 'success' -or $Run.event -cnotin @('push', 'workflow_dispatch') -or
         $Run.path -cne $WorkflowPath -or [string]$Run.head_sha -notmatch '^[a-f0-9]{40}$' -or
-        [string]$Run.run_attempt -notmatch '^[1-9][0-9]*$') {
+        [string]$Run.run_attempt -notmatch '^[1-9][0-9]*$' -or
+        [string]$Run.run_number -notmatch '^[1-9][0-9]*$') {
         throw 'Source must be a successful, completed main run of the expected workflow in this repository (not a PR or fork).'
     }
 }
@@ -309,6 +310,10 @@ function Read-StorePackage {
         if ($null -eq $resources -or $null -eq $dependencies -or $null -eq $applications -or $null -eq $capabilities) {
             throw 'Incomplete MSIX manifest.'
         }
+        # SDK-generated BCP47 casing is not an architecture metadata difference.
+        foreach ($resource in $resources.SelectNodes('p:Resource[@Language]', $ns)) {
+            $resource.SetAttribute('Language', $resource.GetAttribute('Language').ToLowerInvariant())
+        }
         return [pscustomobject]@{
             fileName = "RedrainCast-$Architecture.msix"
             sha256 = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -332,7 +337,7 @@ function New-StorePackageArchive {
     foreach ($arch in @('arm64', 'x64')) {
         $folder = Join-Path $Directory $arch
         $found = @(Get-ChildItem -LiteralPath $folder -Filter '*.msix' -Recurse -File)
-        if ($found.Count -ne 1) { throw 'Exactly one MSIX is required in each architecture build archive.' }
+        if ($found.Count -ne 1) { throw 'Exactly one MSIX is required in each architecture release download.' }
         $packages += Read-StorePackage $found[0].FullName $arch $Identity
         $files += $found[0].FullName
     }

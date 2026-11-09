@@ -983,30 +983,83 @@ and the requirement for a new/empty output directory are unchanged.
 
 ## Build and test
 
-### Private CI downloads and Actions storage
+### Official MSIX releases and Actions storage
 
 Pull requests still test and package both architectures, but do not upload large
 Actions artifacts or receive release-write permissions. Successful main pushes
-and manual main builds upload the x64/ARM64 packages directly to a private
-`ci-build-<run-id>-<attempt>` prerelease in this source repository. The paired
-packages and checksum files are downloaded and verified before the complete,
-run/attempt/commit-bound manifest is uploaded and the draft is published.
-CI packages include unsigned MSIX files; they are not production releases or
-Store approval. Failed packaging can leave an incomplete private draft, which
+and manual main builds publish official **non-prerelease** `vX.Y.Z` GitHub
+releases in this source repository (access still follows repository visibility).
+The only download assets are `RedrainCast-arm64.msix`, `RedrainCast-x64.msix`,
+their `.sha256` files, and `ci-manifest.json`; there is **no portable ZIP**.
+Both packages are downloaded and verified before the run/attempt/commit/version-bound
+manifest is uploaded and the draft is published. Store automation downloads
+these exact MSIX bytes, never a rebuild or an Actions binary artifact.
+Release status is not Store approval. Failed packaging can leave an incomplete draft, which
 is never accepted by the Store workflow. To retry, use **Re-run all jobs** or a
 new main build so the draft and both architectures share the new run attempt.
 
-Download private build files with authorized `gh release download` access.
+Download release files with authorized `gh release download vX.Y.Z` access.
 GitHub Release assets do not consume Actions artifact storage. Successful
 tests retain no TRX artifact; failed-test diagnostics expire after one day.
 Small sanitized Store receipts remain private Actions artifacts for 14 days
-because explicit draft submission depends on them. Public downloads and Store
-publication/approval behavior are unchanged.
+because explicit draft submission depends on them. Store publication remains
+manual and separately confirmed; nothing automatically dispatches a Store upload.
+
+CI overrides the local default version for **both architectures**: publishing
+receives `X.Y.Z`, packaging receives `X.Y.Z.0` with the same version identity.
+With workflow run number
+`N` and run attempt `A`, its three-component version is
+`0.(2 + floor((N - 1) / 655)).(100 * ((N - 1) % 655) + A)`.
+Thus run 42/attempt 2 is `v0.2.4102`; MSIX uses `0.2.4102.0`.
+Every version exceeds the previous `0.1.20` baseline. Supported run numbers
+are 1–42,924,770 and attempts 1–99, keeping every MSIX component at most 65535.
+Exhaustion fails closed and requires a reviewed version-epoch change; values
+never wrap. Versions increase by run number then attempt, not completion time:
+rerunning an older run yields a unique historical version, but cannot demote
+the current higher version marked **Latest**. Use **Re-run all jobs**, not only
+failed jobs, so preparation and both architectures use the same attempt.
+
+#### Optional signing for direct installation
+
+Without signing credentials the release MSIX files are **unsigned and not
+directly installable**. Store submission accepts these inputs and the Store
+signs the published packages independently. For installable GitHub downloads,
+the owner can configure repository Actions secrets `MSIX_SIGNING_PFX_BASE64`
+(a persistent code-signing PFX encoded as base64) and `MSIX_SIGNING_PASSWORD`.
+Both secrets are supplied only to the trusted main release packaging step,
+never PR builds. The certificate subject must exactly match the `Publisher`
+in `StoreIdentity.json`; retain the same certificate across updates. Do not
+generate a new throwaway publisher certificate per build. Signed releases and
+Store submission still consume the **same signed MSIX bytes**; the Store's
+final distribution signature may differ.
+
+For private testing with a self-signed certificate, manually trust only its
+public certificate after independently confirming its origin and fingerprint;
+never import a private key on test machines or blindly trust a downloaded
+certificate. The pipeline does not install packages or alter certificate trust.
+These packages use the same identity as the installed Store app: testing can
+interact with or update that app and its data. Review the installed identity
+and version first; never automatically replace a Store installation.
+
+`Package.ps1` only orchestrates and validates the pinned official
+`Microsoft.Windows.SDK.BuildTools.MSIX` SDK. Its MSBuild targets create the
+package manifest, root `resources.pri`, and MSIX; no handwritten MakePri/MakeAppx
+packaging path is used. Validation checks the complete compiled WinUI/framework
+resources, every supported language/key, and shell resource lookup, and verifies
+the app/helper published payload remains byte-identical inside the package.
+Both PR and main release builds also launch the extracted x64 staging payload
+with `--package-startup-self-test` through a bounded 90-second owned-process
+startup smoke check, requiring exit code zero and a JSON report with `passed=true`.
+It verifies an isolated window, a finite positive XAML root, resources and an
+initialized loopback receiver without input injection, capture or settings changes.
+The x64 hosted runner cannot launch ARM64. This is an **extracted-payload startup
+smoke test**, not input/layout acceptance, installation, an installed-identity/Store
+test, or physical-device acceptance.
 The three Windows test projects run in parallel on separate CI runners.
 Within each project, xUnit collections remain serialized to avoid CPU scheduling
 noise in wall-clock protocol deadline tests; global single-CPU/build limits
 are unnecessary for these single-project jobs. Read-only PR packaging for ARM64
-and x64 starts alongside the tests. Private release preparation still waits for
+and x64 starts alongside the tests. Official release preparation still waits for
 all test projects and the separate CI/Store guard job to pass.
 All test cases, concurrent scenarios inside tests, assertions and timeout
 bounds remain unchanged; no test filter or skip is applied.

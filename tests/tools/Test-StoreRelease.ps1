@@ -21,21 +21,23 @@ function New-Run {
     return [pscustomobject]@{
         id = 123; repository = @{ full_name = 'arisewanggithub/RedrainCast-Windows' }
         head_repository = @{ full_name = 'arisewanggithub/RedrainCast-Windows' }
-        head_branch = 'main'; head_sha = ('a' * 40); run_attempt = 2; status = 'completed'; conclusion = 'success'
+        head_branch = 'main'; head_sha = ('a' * 40); run_number = 42; run_attempt = 2; status = 'completed'; conclusion = 'success'
         event = 'push'; path = '.github/workflows/windows.yml'
     }
 }
 function New-FixturePackage {
     param([string]$Path, [string]$Arch, [string]$Version = '1.2.3.0',
         [string]$Name = $identity.PackageName, [string]$Publisher = $identity.Publisher,
-        [switch]$MissingWorker, [switch]$Duplicate, [switch]$Pdb)
+        [switch]$MissingWorker, [switch]$Duplicate, [switch]$Pdb,
+        [string[]]$Languages = @('en-US'))
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path }
+    $resourceXml = ($Languages | ForEach-Object { "<Resource Language=`"$_`"/>" }) -join ''
     $manifest = @"
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
 <Identity Name="$Name" Publisher="$Publisher" ProcessorArchitecture="$Arch" Version="$Version"/>
-<Resources><Resource Language="en-US"/></Resources>
+<Resources>$resourceXml</Resources>
 <Dependencies><TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22621.0"/></Dependencies>
 <Applications><Application Id="App" Executable="RedrainCast.App.exe"/></Applications>
 <Capabilities><Capability Name="internetClient"/></Capabilities>
@@ -128,7 +130,7 @@ if (Test-Path -LiteralPath $fixtures) { throw 'Fixture directory already exists.
 New-Item -ItemType Directory -Path $fixtures | Out-Null
 try {
     Test 'trusted completed main build' { Assert-StoreRun (New-Run) '123' '.github/workflows/windows.yml' }
-    foreach ($field in @('head_branch', 'status', 'conclusion', 'event', 'path', 'head_sha', 'run_attempt')) {
+    foreach ($field in @('head_branch', 'status', 'conclusion', 'event', 'path', 'head_sha', 'run_attempt', 'run_number')) {
         Test "reject untrusted run $field" {
             $run = New-Run; $run.$field = 'invalid'
             Reject { Assert-StoreRun $run '123' '.github/workflows/windows.yml' }
@@ -174,6 +176,20 @@ try {
         Assert ($archive.packages.Count -eq 2) 'Missing paired architecture.'
         $zip = [IO.Compression.ZipFile]::OpenRead($archive.path)
         try { Assert ($zip.Entries.Count -eq 2) 'ZIP must contain only the two MSIX packages.' } finally { $zip.Dispose() }
+    }
+    Test 'SDK uppercase BCP47 resources preserve architecture metadata equivalence' {
+        $languages = @('ar', 'de', 'en-US', 'es', 'fr', 'he', 'hi', 'id', 'it', 'ja', 'ko', 'ms',
+            'nl', 'pl', 'pt-BR', 'ru', 'sv', 'th', 'tr', 'vi', 'zh-Hans', 'zh-Hant')
+        $sdkPath = Join-Path $fixtures 'sdk-uppercase.msix'
+        $mixedPath = Join-Path $fixtures 'sdk-mixed-case.msix'
+        New-FixturePackage $sdkPath arm64 -Languages @($languages | ForEach-Object { $_.ToUpperInvariant() })
+        New-FixturePackage $mixedPath x64 -Languages $languages
+        $sdk = Read-StorePackage $sdkPath arm64 $identity
+        $mixed = Read-StorePackage $mixedPath x64 $identity
+        Assert ($sdk.manifestFingerprint -ceq $mixed.manifestFingerprint) 'Equivalent BCP47 casing must not reject SDK packages.'
+        New-FixturePackage $mixedPath x64 -Languages @($languages | Where-Object { $_ -ne 'zh-Hant' })
+        $missing = Read-StorePackage $mixedPath x64 $identity
+        Assert ($sdk.manifestFingerprint -cne $missing.manifestFingerprint) 'A genuinely missing package language must remain a metadata mismatch.'
     }
     Test 'observed full-size ARM64 plus x64 package pair fits the archive bound' {
         # Read-only measurements of candidate-pcmfix-20261105-230350, not tiny ZIP fixture lengths.
@@ -652,18 +668,17 @@ try {
         $entrypointPath = Join-Path $entryTools 'Invoke-StoreRelease.ps1'
         $ciStub = @'
 function Receive-CiBuild {
-    param([string]$RunId, [int]$RunAttempt, [string]$ExpectedSha, [string]$DestinationDirectory)
+    param([string]$RunId, [int]$RunAttempt, [string]$ExpectedSha, [string]$DestinationDirectory, [string]$RunNumber)
     $global:StoreTestCiCalls.Add([pscustomobject]@{
         runId = $RunId; runAttempt = $RunAttempt; sha = $ExpectedSha; destination = $DestinationDirectory
     })
-    if ($global:StoreTestCiFailure -or $RunId -cne '123' -or $RunAttempt -ne 2 -or $ExpectedSha -cne ('a' * 40)) {
+    if ($global:StoreTestCiFailure -or $RunId -cne '123' -or $RunAttempt -ne 2 -or $RunNumber -cne '42' -or $ExpectedSha -cne ('a' * 40)) {
         throw 'Offline private CI archive unavailable or provenance mismatched.'
     }
     foreach ($arch in @('arm64', 'x64')) {
-        $folder = Join-Path $DestinationDirectory "$arch\msix-$arch"
+        $folder = Join-Path $DestinationDirectory $arch
         New-Item -ItemType Directory -Path $folder -WhatIf:$false | Out-Null
         Copy-Item -LiteralPath (Join-Path $global:StoreTestFixturePath "$arch\package.msix") -Destination $folder -WhatIf:$false
-        New-Item -ItemType Directory -Path (Join-Path $DestinationDirectory "$arch\win-$arch") -WhatIf:$false | Out-Null
     }
     return [pscustomobject]@{ runId = $RunId; runAttempt = $RunAttempt; headSha = $ExpectedSha }
 }
@@ -733,7 +748,7 @@ function Receive-CiBuild {
             & $entrypointPath -Stage submit-draft -DraftRunId '456' -ConfirmStore $identity.StoreId `
                 -WorkDirectory (Join-Path $fixtures 'whatif-listing-submit') -WhatIf
             Assert ($global:StoreTestGhCount -eq 7 -and $global:StoreTestCiCalls.Count -eq 3) 'Listing submit preflight did not validate the Actions receipt and private build.'
-            foreach ($field in @('head_sha', 'run_attempt')) {
+            foreach ($field in @('head_sha', 'run_attempt', 'run_number')) {
                 $original = $global:StoreTestRun.$field
                 $global:StoreTestRun.$field = if ($field -ceq 'head_sha') { 'b' * 40 } else { 3 }
                 Reject {
@@ -748,17 +763,17 @@ function Receive-CiBuild {
                     -WorkDirectory (Join-Path $fixtures 'missing-private-archive') -WhatIf
             } 'Rebuild.*no Actions build-artifact fallback'
             $global:StoreTestCiFailure = $false
-            Assert ($global:StoreTestGhCount -eq 10 -and $global:StoreTestCiCalls.Count -eq 6) 'Private archive failure fell back to Actions.'
+            Assert ($global:StoreTestGhCount -eq 11 -and $global:StoreTestCiCalls.Count -eq 7) 'Release download failure fell back to Actions.'
             $global:StoreTestRun.event = 'pull_request'
             Reject {
                 & $entrypointPath -Stage upload-draft -BuildRunId '123' -ConfirmStore $identity.StoreId `
                     -WorkDirectory (Join-Path $fixtures 'untrusted-private-source') -WhatIf
             } 'successful, completed main run'
             $global:StoreTestRun.event = 'push'
-            Assert ($global:StoreTestCiCalls.Count -eq 6) 'Untrusted source reached the private build downloader.'
+            Assert ($global:StoreTestCiCalls.Count -eq 7) 'Untrusted source reached the release downloader.'
             $env:GITHUB_REF = 'refs/heads/feature'
             Reject { & $entrypointPath -Stage upload-draft -BuildRunId '123' -ConfirmStore $identity.StoreId -WorkDirectory (Join-Path $fixtures 'badbranch') -WhatIf } 'manual main'
-            Assert ($global:StoreTestGhCount -eq 11 -and $global:StoreTestCiCalls.Count -eq 6) 'Branch rejection accessed private builds.'
+            Assert ($global:StoreTestGhCount -eq 12 -and $global:StoreTestCiCalls.Count -eq 7) 'Branch rejection accessed release downloads.'
         } finally {
             Remove-Item Function:\gh
             if ($null -ne $oldGh) { Set-Item Function:\gh $oldGh.ScriptBlock }

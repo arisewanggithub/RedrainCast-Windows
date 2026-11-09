@@ -5,14 +5,15 @@
     <SupportedOSPlatformVersion>10.0.22621.0</SupportedOSPlatformVersion>
     <UseWinUI>true</UseWinUI>
     <DefaultLanguage>en-US</DefaultLanguage>
-    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsPackageType Condition="'$(BuildStorePackage)' != 'true'">None</WindowsPackageType>
+    <WindowsPackageType Condition="'$(BuildStorePackage)' == 'true'">MSIX</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">$(WindowsRuntimeIdentifier)</RuntimeIdentifier>
     <PlatformTarget>$(WindowsArchitecture)</PlatformTarget>
     <Platforms>ARM64;x64</Platforms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\..\assets\package\RedrainCast.ico</ApplicationIcon>
-    <EnableMsixTooling>false</EnableMsixTooling>
+    <EnableMsixTooling>$(BuildStorePackage)</EnableMsixTooling>
     <PublishTrimmed>false</PublishTrimmed>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
@@ -20,16 +21,56 @@
     <Product>RedrainCast</Product>
     <Description>Send and receive screens on your local network.</Description>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(BuildStorePackage)' == 'true'">
+    <TargetPlatformMinVersion>10.0.22621.0</TargetPlatformMinVersion>
+    <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
+    <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
+    <AppxBundle>Never</AppxBundle>
+    <AppxSymbolPackageEnabled>false</AppxSymbolPackageEnabled>
+    <AppxPackageIncludePrivateSymbols>false</AppxPackageIncludePrivateSymbols>
+    <GenerateTestArtifacts>false</GenerateTestArtifacts>
+    <AppxAutoIncrementPackageRevision>false</AppxAutoIncrementPackageRevision>
+    <AppxPackageResourceQualifiers>Language</AppxPackageResourceQualifiers>
+    <AppxBundleResourcePacksEnabled>false</AppxBundleResourcePacksEnabled>
+  </PropertyGroup>
   <ItemGroup>
     <Content Include="..\..\assets\package\RedrainCast.ico" Link="Assets\RedrainCast.ico"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"/>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.5"/>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654"/>
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools.MSIX" Version="1.7.251221100"/>
     <ProjectReference Include="..\RedrainCast.Core\RedrainCast.Core.csproj"/>
     <ProjectReference Include="..\RedrainCast.Receive.Media\RedrainCast.Receive.Media.csproj"/>
     <ProjectReference Include="..\RedrainCast.Send.Media\RedrainCast.Send.Media.csproj"/>
     <ProjectReference Include="..\RedrainCast.CaptureWorker\RedrainCast.CaptureWorker.csproj" ReferenceOutputAssembly="false"/>
   </ItemGroup>
+  <ItemGroup Condition="'$(BuildStorePackage)' == 'true'">
+    <AppxManifest Include="$(PackageManifestPath)"/>
+    <Content Include="..\..\assets\package\Cast44.png" Link="Assets\Cast44.png"/>
+    <Content Include="..\..\assets\package\Cast50.png" Link="Assets\Cast50.png"/>
+    <Content Include="..\..\assets\package\Cast150.png" Link="Assets\Cast150.png"/>
+  </ItemGroup>
+  <Target Name="UseValidatedPublicationForPackage" BeforeTargets="_ComputeAppxPackagePayload"
+          Condition="'$(BuildStorePackage)' == 'true'">
+    <Error Condition="'$(PublishedPackageDirectory)' == '' Or !Exists('$(PublishedPackageDirectory)\RedrainCast.App.exe')"
+           Text="Packaging requires a validated self-contained publication."/>
+    <ItemGroup>
+      <!-- Keep the self-contained app and helper payload byte-identical; the SDK adds its full package PRI separately. -->
+      <PackagingOutputs Remove="@(PackagingOutputs)"/>
+      <_ExpandedPriPayload Remove="@(_ExpandedPriPayload)"/>
+      <AppxPackagePayload Remove="@(AppxPackagePayload)"/>
+      <_ValidatedPackageFile Include="$(PublishedPackageDirectory)\**\*"
+                             Exclude="$(PublishedPackageDirectory)\resources.pri"/>
+      <_ValidatedPackageFile Update="@(_ValidatedPackageFile)">
+        <TargetPath>%(_ValidatedPackageFile.RecursiveDir)%(_ValidatedPackageFile.Filename)%(_ValidatedPackageFile.Extension)</TargetPath>
+      </_ValidatedPackageFile>
+      <_PackagedBrandAsset Include="..\..\assets\package\Cast44.png;..\..\assets\package\Cast50.png;..\..\assets\package\Cast150.png"/>
+      <_PackagedBrandAsset Update="@(_PackagedBrandAsset)">
+        <TargetPath>Assets\%(_PackagedBrandAsset.Filename)%(_PackagedBrandAsset.Extension)</TargetPath>
+      </_PackagedBrandAsset>
+      <AppxPackagePayload Include="@(_ValidatedPackageFile);@(_PackagedBrandAsset)"/>
+    </ItemGroup>
+  </Target>
   <Target Name="CopyCaptureWorkerForDevelopment" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
     <MSBuild Projects="..\RedrainCast.CaptureWorker\RedrainCast.CaptureWorker.csproj" Targets="GetCaptureWorkerFiles"
              Properties="Configuration=$(Configuration);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier)">
@@ -44,7 +85,7 @@
     <Error Condition="'$(RuntimeIdentifier)' != 'win-arm64' And '$(RuntimeIdentifier)' != 'win-x64'" Text="Only win-arm64 and win-x64 are supported."/>
     <Error Condition="('$(Platform)' == 'x64' And '$(RuntimeIdentifier)' != 'win-x64') Or ('$(Platform)' == 'ARM64' And '$(RuntimeIdentifier)' != 'win-arm64')" Text="Platform and RuntimeIdentifier must match."/>
   </Target>
-  <Target Name="PublishResources" AfterTargets="ComputeFilesToPublish">
+  <Target Name="PublishResources" AfterTargets="ComputeFilesToPublish" Condition="'$(BuildStorePackage)' != 'true'">
     <Error Condition="!Exists('$(TargetDir)$(AssemblyName).pri')" Text="WinUI resource index is missing."/>
     <ItemGroup>
       <ResolvedFileToPublish Include="$(TargetDir)$(AssemblyName).pri">

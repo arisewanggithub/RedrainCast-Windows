@@ -21,7 +21,7 @@ public partial class App : Application
             Exit();
             return;
         }
-        string[] supportedFlags = ["--self-test", "--sharing-settings-self-test", "--layout-self-test", "--playback-stats-self-test",
+        string[] supportedFlags = ["--self-test", "--sharing-settings-self-test", "--layout-self-test", "--package-startup-self-test", "--playback-stats-self-test",
             "--media-self-test", "--occlusion-self-test", "--color-self-test", "--encoder-self-test", "--hdr-self-test",
             "--peer-self-test", "--peer-timeline", "--peer-static-source", "--peer-duration-seconds",
             "--peer-sample-seconds", "--peer-silent-pcm", "--rotation-self-test",
@@ -39,6 +39,7 @@ public partial class App : Application
         var testIndex = Array.IndexOf(arguments, "--self-test");
         var sharingSettingsIndex = Array.IndexOf(arguments, "--sharing-settings-self-test");
         var layoutIndex = Array.IndexOf(arguments, "--layout-self-test");
+        var packageStartupIndex = Array.IndexOf(arguments, "--package-startup-self-test");
         var statisticsIndex = Array.IndexOf(arguments, "--playback-stats-self-test");
         var mediaIndex = Array.IndexOf(arguments, "--media-self-test");
         var occlusionIndex = Array.IndexOf(arguments, "--occlusion-self-test");
@@ -71,7 +72,7 @@ public partial class App : Application
             Exit();
             return;
         }
-        var uiIndex = statisticsIndex >= 0 ? statisticsIndex : layoutIndex >= 0 ? layoutIndex :
+        var uiIndex = packageStartupIndex >= 0 ? packageStartupIndex : statisticsIndex >= 0 ? statisticsIndex : layoutIndex >= 0 ? layoutIndex :
             sharingSettingsIndex >= 0 ? sharingSettingsIndex : testIndex;
         if (uiIndex >= 0 && uiIndex + 1 >= arguments.Length)
             throw new ArgumentException($"{arguments[uiIndex]} requires a report path.");
@@ -89,7 +90,12 @@ public partial class App : Application
         uiTestJournal?.Write("UI self-test phase: initializing receiver");
         await window.InitializeAsync();
         uiTestJournal?.Write("UI self-test phase: receiver initialization completed");
-        if (sharingSettingsIndex >= 0)
+        if (packageStartupIndex >= 0)
+        {
+            try { await window.RunPackageStartupSelfTestAsync(arguments[packageStartupIndex + 1], uiTestJournal); }
+            finally { window.Close(); }
+        }
+        else if (sharingSettingsIndex >= 0)
         {
             try { await window.RunSharingSettingsSelfTestAsync(arguments[sharingSettingsIndex + 1]); }
             finally { window.Close(); }
