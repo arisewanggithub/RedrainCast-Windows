@@ -23,8 +23,11 @@ if ($Stage -cnotin @('inspect-draft', 'discard-draft') -and ($InspectSubmissionI
     throw 'Inspection inputs are only accepted for inspect-draft or discard-draft.'
 }
 if ($Stage -ceq 'inspect-draft' -and $InspectRunId) { throw 'inspect-draft does not accept a prior inspection run.' }
-if ($Stage -cin @('inspect-draft', 'discard-draft') -and $InspectSubmissionId -cnotmatch '^[1-9][0-9]*$') {
-    throw 'An exact pending submission ID is required.'
+if ($Stage -ceq 'inspect-draft' -and $InspectSubmissionId -and $InspectSubmissionId -cnotmatch '^[1-9][0-9]*$') {
+    throw 'Inspection submission ID must be a positive integer when specified.'
+}
+if ($Stage -ceq 'discard-draft' -and $InspectSubmissionId -cnotmatch '^[1-9][0-9]*$') {
+    throw 'Discard requires an exact pending submission ID.'
 }
 if ($Stage -ceq 'discard-draft' -and $InspectRunId -cnotmatch '^[1-9][0-9]*$') {
     throw 'Discard requires a successful inspected draft run.'
