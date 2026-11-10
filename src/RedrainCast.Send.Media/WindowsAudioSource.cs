@@ -35,7 +35,7 @@ public sealed class WindowsAudioSource : IAudioSource
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, cancellationToken);
         var queue = new AudioQueue(1024 * 1024);
         var signals = Channel.CreateBounded<bool>(new BoundedChannelOptions(100) { SingleReader = true, SingleWriter = true });
-        worker = Task.Run(() => CaptureAsync(queue, signals.Writer, linked.Token), CancellationToken.None);
+        worker = CaptureAsync(queue, signals.Writer, linked.Token);
         try
         {
             await foreach (var _ in signals.Reader.ReadAllAsync(linked.Token)) yield return queue.Dequeue();
@@ -49,12 +49,23 @@ public sealed class WindowsAudioSource : IAudioSource
         Exception? error = null;
         try
         {
+            await AudioCaptureThread.RunAsync(Capture, token, () => new AudioInterop.AudioApartment(),
+                () => new AudioThreadScheduling(null),
+                caught => Interlocked.CompareExchange(ref shutdownFailure, caught, null)).ConfigureAwait(false);
+        }
+        catch (Exception caught) { error = caught; }
+        finally { signals.TryComplete(error); }
+
+        void Capture(CancellationToken token)
+        {
             using var activation = CancellationTokenSource.CreateLinkedTokenSource(token);
             activation.CancelAfter(TimeSpan.FromSeconds(10));
-            using var client = await AudioInterop.ActivateLoopbackAsync(activation.Token);
+            // Activation may await internally; the native capture lifetime stays on this MTA thread.
+            using var client = AudioInterop.ActivateLoopbackAsync(activation.Token).GetAwaiter().GetResult();
             using var ready = new EventWaitHandle(false, EventResetMode.AutoReset);
             using var capture = AudioInterop.InitializeCapture(client, ready);
             AudioInterop.Start(client);
+            Exception? captureError = null;
             try
             {
                 WaitHandle[] waits = [ready, token.WaitHandle];
@@ -90,19 +101,18 @@ public sealed class WindowsAudioSource : IAudioSource
                         throw new TimeoutException("AUDIO_FAILED: WASAPI supplied no audio buffers, including captured silence, for 10 seconds.");
                 }
             }
+            catch (Exception caught) { captureError = caught; throw; }
             finally
             {
                 try { AudioInterop.Stop(client); }
                 catch (Exception stopError)
                 {
                     Interlocked.CompareExchange(ref shutdownFailure, stopError, null);
+                    if (captureError is not null) throw new AggregateException(captureError, stopError);
                     throw;
                 }
             }
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-        catch (Exception caught) { error = caught; }
-        finally { signals.TryComplete(error); }
     }
 
     public async ValueTask DisposeAsync()

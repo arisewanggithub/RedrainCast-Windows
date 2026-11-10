@@ -72,6 +72,15 @@ Send and receive screens in one native Windows application. Windows 11 22H2+,
   caveats into one line without removing the source-PTS, sign, 1-Hz peak or latency
   qualifications.
 
+### Sender audio scheduling
+
+WASAPI capture runs synchronously on a dedicated MTA thread registered with
+MMCSS's `Audio` task at `AVRT_PRIORITY_NORMAL`, including in Release builds.
+Capture resources, MMCSS registration and COM initialization are released on
+that same thread before shutdown completes. Scheduling setup or cleanup failures
+are surfaced as audio failures. PCM format, timestamps and transport are unchanged;
+video scheduling is unaffected.
+
 ### System language
 
 The app's presentation follows the first supported entry in Windows' ordered
