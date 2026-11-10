@@ -1,4 +1,5 @@
 using RedrainCast.Send.Media;
+using RedrainCast.Media;
 using Xunit;
 
 namespace RedrainCast.Send.Tests;
@@ -11,7 +12,7 @@ public sealed class AudioCaptureThreadTests
         if (!OperatingSystem.IsWindows()) return;
         var messages = new List<string>();
         await AudioCaptureThread.RunAsync(_ => { }, CancellationToken.None, () => new Lease(() => { }),
-            () => new AudioThreadScheduling(messages.Add), _ => Assert.Fail());
+            () => new MediaThreadScheduling(MediaThreadTask.Audio, messages.Add), _ => Assert.Fail());
         Assert.Equal(4, messages.Count);
         Assert.Contains("stage=thread_start ", messages[0]);
         Assert.Contains("stage=mmcss_registered ", messages[1]);

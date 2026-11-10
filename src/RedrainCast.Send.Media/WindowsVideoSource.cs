@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using RedrainCast.Send.Core;
+using RedrainCast.Media;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -205,8 +206,11 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource, IHdrVideoSourc
     private void Capture(VideoQueue queue, ChannelWriter<bool> signals, CancellationToken token)
     {
         Exception? failure = null;
+        MediaThreadScheduling? scheduling = null;
         try
         {
+            token.ThrowIfCancellationRequested();
+            scheduling = new MediaThreadScheduling(MediaThreadTask.Capture, diagnostic);
             token.ThrowIfCancellationRequested();
             using var dispatcher = new CaptureDispatcher();
             Stage("reading display color");
@@ -420,9 +424,19 @@ public sealed class WindowsVideoSource : IRecoverableVideoSource, IHdrVideoSourc
         catch (Exception error)
         {
             failure = error;
-            diagnostic?.Invoke($"Sender capture failure: {error}\n{Statistics}\n{memory.Snapshot()}");
+            try { diagnostic?.Invoke($"Sender capture failure: {error}\n{Statistics}\n{memory.Snapshot()}"); }
+            catch (Exception observerError) { failure = new AggregateException(error, observerError); }
         }
-        finally { progress.Complete(); signals.TryComplete(failure); }
+        finally
+        {
+            try { scheduling?.Dispose(); }
+            catch (Exception cleanupError)
+            {
+                failure = failure is null ? cleanupError : new AggregateException(failure, cleanupError);
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+            }
+            finally { progress.Complete(); signals.TryComplete(failure); }
+        }
     }
 
     public async ValueTask DisposeAsync()

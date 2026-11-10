@@ -313,61 +313,62 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
 
     private void RenderLoop()
     {
+        VideoRenderWorker.Run(RenderFrames, () => awake.SetPlaying(false), renderCancellation.Token,
+            error => Interlocked.CompareExchange(ref renderFailure, error, null),
+            message => status(message).AsTask().GetAwaiter().GetResult());
+    }
+
+    private void RenderFrames()
+    {
         var token = renderCancellation.Token;
-        try
+        while (true)
         {
-            while (true)
+            var delay = presenter.IsOccluded ? 100 :
+                Volatile.Read(ref pendingFrame) is not null ||
+                Volatile.Read(ref lastFrame) is not null && presenter.HasPendingRedraw ? 5 : 250;
+            if (WaitHandle.WaitAny([renderWake, token.WaitHandle], delay) == 1) token.ThrowIfCancellationRequested();
+            token.ThrowIfCancellationRequested();
+            if (videoSuspended || sessionStopped) continue;
+            if (!Monitor.TryEnter(nativeGate)) continue;
+            var first = false;
+            try
             {
-                var delay = presenter.IsOccluded ? 100 :
-                    Volatile.Read(ref pendingFrame) is not null ||
-                    Volatile.Read(ref lastFrame) is not null && presenter.HasPendingRedraw ? 5 : 250;
-                if (WaitHandle.WaitAny([renderWake, token.WaitHandle], delay) == 1) token.ThrowIfCancellationRequested();
-                token.ThrowIfCancellationRequested();
-                if (videoSuspended || sessionStopped) continue;
-                if (!Monitor.TryEnter(nativeGate)) continue;
-                var first = false;
-                try
+                if (pendingFrame is { } frame)
                 {
-                    if (pendingFrame is { } frame)
+                    if (!presenter.Present(frame)) continue;
+                    clock.VideoPresented(frame.PtsUs);
+                    awake.SetPlaying(true);
+                    pendingFrame = null;
+                    lastFrame?.Dispose();
+                    lastFrame = frame;
+                    Volatile.Write(ref lastPresentedRotation, frame.RotationDegrees);
+                    Interlocked.Exchange(ref lastVideoPts, frame.PtsUs);
+                    if (audio?.Position is { ContentFrames: > 0, PtsUs: { } audioPts } position)
                     {
-                        if (!presenter.Present(frame)) continue;
-                        clock.VideoPresented(frame.PtsUs);
-                        awake.SetPlaying(true);
-                        pendingFrame = null;
-                        lastFrame?.Dispose();
-                        lastFrame = frame;
-                        Volatile.Write(ref lastPresentedRotation, frame.RotationDegrees);
-                        Interlocked.Exchange(ref lastVideoPts, frame.PtsUs);
-                        if (audio?.Position is { ContentFrames: > 0, PtsUs: { } audioPts } position)
-                        {
-                            var signedSkew = frame.PtsUs - audioPts;
-                            MediaTiming.Record(MediaStage.VideoPresent, timingSession, 1, configuredGeneration,
-                                frame.PtsUs, audioPts, position.ContentFrames, signedSkew);
-                            var skew = Math.Abs(signedSkew);
-                            Interlocked.Exchange(ref statisticsPeakSkewUs, Math.Max(Interlocked.Read(ref statisticsPeakSkewUs), skew));
-                            var timing = new AvTimingSample(configuredGeneration, frame.PtsUs, audioPts,
-                                position.ContentFrames, signedSkew, Environment.TickCount64);
-                            Volatile.Write(ref lastAvTiming, timing);
-                            if (skew > maximumAvSkewUs) Volatile.Write(ref maximumAvTiming, timing);
-                            maximumAvSkewUs = Math.Max(maximumAvSkewUs, skew);
-                            firstVideoPresentationPts ??= frame.PtsUs;
-                            if (frame.PtsUs - firstVideoPresentationPts.Value >= 1_000_000)
-                                maximumSteadySkewUs = Math.Max(maximumSteadySkewUs, skew);
-                            Interlocked.Increment(ref avMeasurements);
-                        }
-                        first = Interlocked.Exchange(ref rendered, 1) == 0;
+                        var signedSkew = frame.PtsUs - audioPts;
+                        MediaTiming.Record(MediaStage.VideoPresent, timingSession, 1, configuredGeneration,
+                            frame.PtsUs, audioPts, position.ContentFrames, signedSkew);
+                        var skew = Math.Abs(signedSkew);
+                        Interlocked.Exchange(ref statisticsPeakSkewUs, Math.Max(Interlocked.Read(ref statisticsPeakSkewUs), skew));
+                        var timing = new AvTimingSample(configuredGeneration, frame.PtsUs, audioPts,
+                            position.ContentFrames, signedSkew, Environment.TickCount64);
+                        Volatile.Write(ref lastAvTiming, timing);
+                        if (skew > maximumAvSkewUs) Volatile.Write(ref maximumAvTiming, timing);
+                        maximumAvSkewUs = Math.Max(maximumAvSkewUs, skew);
+                        firstVideoPresentationPts ??= frame.PtsUs;
+                        if (frame.PtsUs - firstVideoPresentationPts.Value >= 1_000_000)
+                            maximumSteadySkewUs = Math.Max(maximumSteadySkewUs, skew);
+                        Interlocked.Increment(ref avMeasurements);
                     }
-                    else if (presenter.HasPendingRedraw && lastFrame is not null)
-                        presenter.Redraw(lastFrame);
+                    first = Interlocked.Exchange(ref rendered, 1) == 0;
                 }
-                finally { Monitor.Exit(nativeGate); }
-                if (first) status("Playing: first hardware-decoded D3D11 surface presented" +
-                    (audio is null ? " (video only)." : " with low-latency audio recovery.")).AsTask().GetAwaiter().GetResult();
+                else if (presenter.HasPendingRedraw && lastFrame is not null)
+                    presenter.Redraw(lastFrame);
             }
+            finally { Monitor.Exit(nativeGate); }
+            if (first) status("Playing: first hardware-decoded D3D11 surface presented" +
+                (audio is null ? " (video only)." : " with low-latency audio recovery.")).AsTask().GetAwaiter().GetResult();
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-        catch (Exception error) { Interlocked.CompareExchange(ref renderFailure, error, null); throw; }
-        finally { awake.SetPlaying(false); }
     }
 
     public async ValueTask DisposeAsync()

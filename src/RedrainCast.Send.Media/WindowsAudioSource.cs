@@ -3,6 +3,7 @@ using RedrainCast.Protocol;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using RedrainCast.Send.Core;
+using RedrainCast.Media;
 
 namespace RedrainCast.Send.Media;
 
@@ -50,7 +51,7 @@ public sealed class WindowsAudioSource : IAudioSource
         try
         {
             await AudioCaptureThread.RunAsync(Capture, token, () => new AudioInterop.AudioApartment(),
-                () => new AudioThreadScheduling(null),
+                () => new MediaThreadScheduling(MediaThreadTask.Audio, null),
                 caught => Interlocked.CompareExchange(ref shutdownFailure, caught, null)).ConfigureAwait(false);
         }
         catch (Exception caught) { error = caught; }

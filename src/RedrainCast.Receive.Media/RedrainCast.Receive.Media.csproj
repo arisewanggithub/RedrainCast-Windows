@@ -6,6 +6,7 @@
     <NativeRuntime>$(ReceiverRuntimeIdentifier)</NativeRuntime>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\Shared\MediaThreadScheduling.cs" Link="MediaThreadScheduling.cs"/>
     <ProjectReference Include="..\RedrainCast.Receive.Core\RedrainCast.Receive.Core.csproj"/>
     <ProjectReference Include="..\RedrainCast.Send.Core\RedrainCast.Send.Core.csproj"/>
     <PackageReference Include="Vortice.D3DCompiler" Version="3.8.3"/>
