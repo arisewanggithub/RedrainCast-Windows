@@ -79,7 +79,30 @@ MMCSS's `Audio` task at `AVRT_PRIORITY_NORMAL`, including in Release builds.
 Capture resources, MMCSS registration and COM initialization are released on
 that same thread before shutdown completes. Scheduling setup or cleanup failures
 are surfaced as audio failures. PCM format, timestamps and transport are unchanged;
-video scheduling is unaffected.
+audio scheduling is independent of video scheduling.
+
+### Sender video scheduling
+
+The existing synchronous, dedicated `WindowsVideoSource.Capture` worker registers
+with MMCSS task `Capture` at `AVRT_PRIORITY_NORMAL` and reverts on that same native
+thread before completing its output channel, including startup failure and cancellation.
+`SENDER_VIDEO_THREAD` records the native thread ID and registration/priority/revert
+outcomes; native failures propagate as video failures. Capture, conversion and encoder
+servicing remain single-owner. No additional workers or changes to audio/network
+priority, frame queues, PTS, pacing or transport are introduced. MMCSS is a scheduling
+preference, not a latency guarantee.
+
+### Receiver video scheduling
+
+The existing synchronous, long-running `VideoPlayback.RenderLoop` worker registers
+with MMCSS task `Playback` at `AVRT_PRIORITY_NORMAL`, then reverts on that same
+native thread on shutdown, cancellation or failure. `RECEIVER_VIDEO_THREAD`
+reports native thread ID and registration/priority/revert outcomes through existing
+status diagnostics. Setup and cleanup errors surface through renderer health and
+disposal; cleanup errors retain any original render failure. Sender video retains
+`Capture`/NORMAL and audio scheduling is unchanged. No new threads, process priority,
+registry/timer adjustments, GPU ownership, frame pacing/drop or timestamp changes
+are introduced. This is a scheduling preference, not a latency guarantee.
 
 ### System language
 

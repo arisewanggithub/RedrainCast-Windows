@@ -7,6 +7,7 @@
     <Platforms>ARM64;x64</Platforms>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\Shared\MediaThreadScheduling.cs" Link="MediaThreadScheduling.cs" />
     <ProjectReference Include="..\RedrainCast.Send.Core\RedrainCast.Send.Core.csproj" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
     <PackageReference Include="Vortice.MediaFoundation" Version="3.8.3" />

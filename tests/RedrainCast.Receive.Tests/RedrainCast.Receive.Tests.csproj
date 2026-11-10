@@ -3,8 +3,11 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsTestProject>true</IsTestProject>
     <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\Shared\MediaThreadScheduling.cs" Link="MediaThreadScheduling.cs"/>
+    <Compile Include="..\..\src\RedrainCast.Receive.Media\VideoRenderWorker.cs" Link="VideoRenderWorker.cs"/>
     <Compile Include="..\..\src\RedrainCast.Receive.Media\HdrDisplayPolicy.cs" Link="HdrDisplayPolicy.cs"/>
     <Compile Include="..\..\src\RedrainCast.Receive.Media\PresentationRequestState.cs" Link="PresentationRequestState.cs"/>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0"/>
@@ -14,6 +17,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="fixtures\*.json" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.Receive.Media\VideoPlayback.cs" Link="fixtures\VideoPlayback.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.App\MainWindow.xaml" Link="fixtures\MainWindow.xaml" CopyToOutputDirectory="PreserveNewest"/>
   </ItemGroup>
 </Project>
