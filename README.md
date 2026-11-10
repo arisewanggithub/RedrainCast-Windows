@@ -927,6 +927,13 @@ failure to apply a required property is explicit, and empty encoded output is
 rejected except for the narrowly identified Qualcomm H.264/HEVC no-payload behavior described
 below.
 
+Initial codec configuration comes from the first encoded picture's parameter
+sets when present, falling back to the Media Foundation sequence header only
+when the picture has none. Qualcomm HEVC can expose a different PPS in that
+media type than it actually uses in the bitstream. Dimensions, profile and
+per-picture validation still apply; later parameter-set changes remain fatal
+in a fixed-format session.
+
 Qualcomm H.264 and HEVC have reported a successful, driver-provided whole-sample
 output with a valid submitted-input timestamp but zero payload. Only an exact
 `S_OK`, zero sample/transform statuses, positive buffer capacity, provided/whole/

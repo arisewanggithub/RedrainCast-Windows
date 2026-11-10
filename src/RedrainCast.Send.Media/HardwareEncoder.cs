@@ -390,10 +390,16 @@ public sealed class HardwareEncoder : IDisposable
                 finally { buffer.Unlock(); }
                 if (configuration.Length == 0)
                 {
-                    using var actualType = transform.GetOutputCurrentType(0);
-                    if (actualType.GetBlobSize(MediaTypeAttributeKeys.MpegSequenceHeader, out var size).Success && size > 0)
+                    // Some MFTs expose a different PPS in the media type than in their actual first picture.
+                    if (VideoBitstream.HasConfiguration(settings.VideoCodec, bytes))
+                        configuration = VideoBitstream.Configuration(settings.VideoCodec, bytes);
+                    else
+                    {
+                        using var actualType = transform.GetOutputCurrentType(0);
+                        if (!actualType.GetBlobSize(MediaTypeAttributeKeys.MpegSequenceHeader, out var size).Success || size <= 0)
+                            throw new ProtocolException("Hardware encoder did not provide an initial video configuration.");
                         configuration = VideoBitstream.Configuration(settings.VideoCodec, actualType.GetBlob(MediaTypeAttributeKeys.MpegSequenceHeader));
-                    else configuration = VideoBitstream.Configuration(settings.VideoCodec, bytes);
+                    }
                     VideoBitstream.ValidateConfiguration(settings.VideoCodec, configuration, Width, Height, color);
                 }
                 VideoBitstream.ValidateFrame(settings.VideoCodec, bytes, configuration);
