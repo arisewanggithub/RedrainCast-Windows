@@ -677,7 +677,7 @@ try {
     }
     Test 'workflow pins official CLI and has no custom transport or legacy recovery stage' {
         $workflow = Get-Content -LiteralPath (Join-Path $root '.github\workflows\store-release.yml') -Raw
-        Assert ([regex]::Matches($workflow, '(?m)^    runs-on: \[self-hosted, Windows, X64, arise-local\]\s*$').Count -eq 2) 'Store jobs must use the dedicated self-hosted Windows runners.'
+        Assert ([regex]::Matches($workflow, '(?m)^    runs-on: windows-latest\s*$').Count -eq 2) 'Store jobs must use standard GitHub-hosted Windows runners.'
         Assert ($workflow -match '(?m)^          DOTNET_INSTALL_DIR: \$\{\{ runner\.tool_cache \}\}\\dotnet\s*$') 'The Store CLI build must install .NET under the runner-writable tool cache.'
         Assert ($workflow -match 'concurrency:\s*\r?\n  group: microsoft-store-9P1153MP6R32\s*\r?\n  cancel-in-progress: false') 'Store operations must remain serialized on the shared runner credential store.'
         Assert ($workflow -match 'microsoft/microsoft-store-apppublisher@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0') 'Official action not pinned.'
