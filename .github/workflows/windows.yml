@@ -12,7 +12,7 @@ concurrency:
 jobs:
   guards:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, Windows, X64, arise-local]
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
@@ -27,7 +27,7 @@ jobs:
           .\tests\tools\Test-StoreRelease.ps1
   test:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, Windows, X64, arise-local]
+    runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
@@ -48,7 +48,7 @@ jobs:
           retention-days: 1
   prepare-release:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.repository == 'arisewanggithub/RedrainCast-Windows'
-    runs-on: [self-hosted, Windows, X64, arise-local]
+    runs-on: windows-latest
     permissions:
       contents: write
       actions: read
@@ -61,7 +61,7 @@ jobs:
         run: .\tools\Publish-CiBuild.ps1 -Stage Prepare
   package:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, Windows, X64, arise-local]
+    runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
@@ -88,7 +88,7 @@ jobs:
         run: .\tools\Test-PackageLaunch.ps1 -StagingDirectory .\artifacts\msix-x64\staging -ReportPath .\artifacts\msix-x64\launch-validation.json -InstallFrameworkDependency
   release-package:
     needs: prepare-release
-    runs-on: [self-hosted, Windows, X64, arise-local]
+    runs-on: windows-latest
     permissions:
       contents: write
       actions: read
@@ -132,7 +132,7 @@ jobs:
         run: .\tools\Publish-CiBuild.ps1 -Stage Upload -Architecture ${{ matrix.architecture }}
   complete-release:
     needs: [guards, test, release-package]
-    runs-on: [self-hosted, Windows, X64, arise-local]
+    runs-on: windows-latest
     permissions:
       contents: write
       actions: read
