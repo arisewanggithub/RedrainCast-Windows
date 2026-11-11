@@ -37,12 +37,11 @@ The environment needs these four secrets:
   tenant ID or Store product ID. It is required for noninteractive CLI configuration.
 
 All four secrets are configured; read-only workflow **42567665907** verified
-authentication and noninteractive cleanup. Windows build and Store jobs use the
-repository's dedicated self-hosted Windows runners (`self-hosted`, `Windows`,
-`X64`, `arise-local`); the runners must stay online and idle when a job is
-queued. Fork pull requests are excluded from these runners. Because the runner
-profiles persist between jobs, Store operations are serialized and CLI
-credentials/configuration are cleared in `finally`. .NET 10 setup uses each
+authentication and noninteractive cleanup. Windows build and Store jobs use
+standard GitHub-hosted Windows runners (`windows-latest`), with a fresh runner
+for each job. The existing same-repository pull request gates remain in place.
+Store operations remain serialized to protect shared Store submission state,
+and CLI credentials/configuration are cleared in `finally`. .NET 10 setup uses each
 runner's tool cache as a writable install directory instead of the default
 machine-wide `Program Files` location. Never upload runner profiles, CLI logs,
 raw responses, or the private payload.

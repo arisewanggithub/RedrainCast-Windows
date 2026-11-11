@@ -283,13 +283,13 @@ try {
     foreach ($job in @('guards', 'test', 'prepare-release', 'package', 'release-package', 'complete-release')) {
         $body = [regex]::Match($workflow, ('(?ms)^  ' + [regex]::Escape($job) +
             ':\r?\n(?<body>.*?)(?=^  [a-z][a-z-]*:\r?\n|\z)')).Groups['body'].Value
-        Assert ($body -match '(?m)^    runs-on: \[self-hosted, Windows, X64, arise-local\]\s*$') "$job must use the dedicated self-hosted Windows runners."
+        Assert ($body -match '(?m)^    runs-on: windows-latest\s*$') "$job must use standard GitHub-hosted Windows runners."
     }
     Assert ([regex]::Matches($workflow, '(?m)^          DOTNET_INSTALL_DIR: \$\{\{ runner\.tool_cache \}\}\\dotnet\s*$').Count -eq 4) 'Windows jobs must install .NET under the runner-writable tool cache.'
     foreach ($job in @('guards', 'test', 'package')) {
         $body = [regex]::Match($workflow, ('(?ms)^  ' + [regex]::Escape($job) +
             ':\r?\n(?<body>.*?)(?=^  [a-z][a-z-]*:\r?\n|\z)')).Groups['body'].Value
-        Assert ($body -match 'github\.event\.pull_request\.head\.repo\.full_name == github\.repository') "$job must not execute untrusted fork code on a self-hosted runner."
+        Assert ($body -match 'github\.event\.pull_request\.head\.repo\.full_name == github\.repository') "$job must preserve the same-repository pull request gate."
     }
     Assert ($workflow -notmatch 'name: RedrainCast-\$\{\{') 'Windows binaries must not be Actions artifacts.'
     Assert ($workflow -match 'if: failure\(\)' -and $workflow -match 'retention-days: 1') 'Diagnostics need failure-only one-day retention.'
