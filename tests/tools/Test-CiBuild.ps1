@@ -296,7 +296,7 @@ try {
     Assert ($workflow -match "if: github.event_name == 'pull_request'") 'PR packages must remain read-only and separate from release writes.'
     Assert ($workflow -match 'Publish-CiBuild.ps1 -Stage Complete') 'Private releases require complete paired verification.'
     $testJob = [regex]::Match($workflow, '(?ms)^  test:\r?\n(?<body>.*?)(?=^  [a-z][a-z-]*:\r?\n|\z)').Groups['body'].Value
-    Assert ($testJob -match 'project: \[RedrainCast.Tests, RedrainCast.Receive.Tests, RedrainCast.Send.Tests\]') 'Every test project must run on its own matrix runner.'
+    Assert ($testJob -match 'project: \[RedrainCast.Tests, RedrainCast.Receive.Tests, RedrainCast.Receive.Audio.Tests, RedrainCast.Send.Tests\]') 'Every test project must run on its own matrix runner.'
     Assert ($testJob -match 'dotnet test \.\\tests\\\$\{\{ matrix.project \}\}\\\$\{\{ matrix.project \}\}\.csproj') 'Test matrix must execute each complete project.'
     Assert ($testJob -match 'xUnit.ParallelizeTestCollections=false') 'Timing-sensitive collections must remain isolated within each runner.'
     Assert ($testJob -notmatch 'RunConfiguration.MaxCpuCount=1| -m:1') 'Independent single-project runners do not need global build/test CPU limits.'

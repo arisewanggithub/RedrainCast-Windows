@@ -67,6 +67,8 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
     public RedrainCast.Protocol.ReceiverOptionCapabilities ReceiverOptions => RedrainCast.Protocol.ReceiverOptionCapabilities.Implemented;
     public CastRequest? StatisticsRequest { get; private set; }
     public PlaybackStatistics? Statistics => playback?.Statistics(PlaybackEpoch);
+    public void RecordStatisticsSample(long session, PlaybackStatistics sample, long sampledAtMs, bool baselineReset) =>
+        playback?.RecordStatisticsSample(session, sample, sampledAtMs, baselineReset);
     public event Action? StatisticsAvailabilityChanged;
     public string Description => "Hardware-only H.264, HEVC Main/Main10 HDR10 and AV1 Profile 0 over custom TCP with PCM/AAC-LC/Opus audio. HDR10 availability is hardware-verified; local output uses native scRGB on HDR displays or GPU BT.2390 SDR mapping. Immediate video and adaptive 50-150 ms audio buffering. Auto orientation, uncapped or 1 to 240 FPS requests; actual decode/display performance depends on codec, resolution and hardware. Brief audio gaps remain possible.";
 

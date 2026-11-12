@@ -28,6 +28,7 @@ public sealed class GpuPresenter : IDisposable
     public int ProcessorConfigurations { get; private set; }
     public IDXGISwapChain1 SwapChain { get; }
     private readonly ID3D11DeviceContext context;
+    private readonly ID3D11Multithread multithread;
     private readonly ID3D11VideoDevice videoDevice;
     private readonly ID3D11VideoContext videoContext;
     private readonly HdrVideoFormat color;
@@ -113,7 +114,8 @@ public sealed class GpuPresenter : IDisposable
         try
         {
             context = Device.ImmediateContext.QueryInterface<ID3D11DeviceContext>();
-            using (var multithread = context.QueryInterface<ID3D11Multithread>()) multithread.SetMultithreadProtected(true);
+            multithread = context.QueryInterface<ID3D11Multithread>();
+            multithread.SetMultithreadProtected(true);
             videoDevice = Device.QueryInterface<ID3D11VideoDevice>();
             videoContext = context.QueryInterface<ID3D11VideoContext>();
             if (this.color.Hdr10) hdrRenderer = new HdrRenderer(Device);
@@ -150,6 +152,7 @@ public sealed class GpuPresenter : IDisposable
             videoContext?.Dispose();
             videoDevice?.Dispose();
             context?.Dispose();
+            multithread?.Dispose();
             Device.Dispose();
             throw;
         }
@@ -158,14 +161,37 @@ public sealed class GpuPresenter : IDisposable
     public bool SetViewport(int width, int height, float scaleX, float scaleY) =>
         requests.SetViewport(width, height, scaleX, scaleY);
 
+    internal string LastRenderOutcome { get; private set; } = "request_rejected";
     public bool Present(HardwareFrame frame) =>
-        requests.TryRender(frame.ColorFormat, request => Render(frame, true, request));
+        TryRender(frame, true);
     public bool Redraw(HardwareFrame frame) =>
-        requests.TryRender(frame.ColorFormat, request => Render(frame, false, request));
+        TryRender(frame, false);
+
+    internal bool Present(HardwareFrame frame, Action<string, string?> diagnostic) =>
+        TryRender(frame, true, diagnostic);
+    internal bool Redraw(HardwareFrame frame, Action<string, string?> diagnostic) =>
+        TryRender(frame, false, diagnostic);
+
+    internal int WaitForRender(WaitHandle publication, WaitHandle cancellation, int timeout,
+        bool readinessEligible, Action? signalObserved) =>
+        VideoRenderWait.Wait(publication, cancellation, frameReady, presentationSlot, timeout,
+            readinessEligible, signalObserved);
+
+    private bool TryRender(HardwareFrame frame, bool newFrame, Action<string, string?>? diagnostic = null)
+    {
+        LastRenderOutcome = "request_rejected";
+        return requests.TryRender(frame.ColorFormat, request => RenderSynchronized(frame, newFrame, request,
+            diagnostic: diagnostic));
+    }
 
     public bool SetDisplayPolicy(HdrDisplayPolicy policy) => requests.SetDisplayPolicy(policy);
 
-    public void Prepare(int width, int height) => Prepare(width, height, requests.Desired);
+    public void Prepare(int width, int height)
+    {
+        multithread.Enter();
+        try { Prepare(width, height, requests.Desired); }
+        finally { multithread.Leave(); }
+    }
 
     private void Prepare(int width, int height, PresentationRequest target)
     {
@@ -208,18 +234,42 @@ public sealed class GpuPresenter : IDisposable
     internal void InspectForDiagnostics(HardwareFrame frame, Action<ID3D11Texture2D> inspect)
     {
         presentationSlot.TryAcquire(true);
-        requests.TryRender(frame.ColorFormat, request => Render(frame, false, request, inspect));
+        requests.TryRender(frame.ColorFormat, request => RenderSynchronized(frame, false, request, inspect));
     }
 
-    private bool Render(HardwareFrame frame, bool newFrame, PresentationRequest request, Action<ID3D11Texture2D>? inspect = null)
+    private bool RenderSynchronized(HardwareFrame frame, bool newFrame, PresentationRequest request,
+        Action<ID3D11Texture2D>? inspect = null, Action<string, string?>? diagnostic = null)
     {
         Device.DeviceRemovedReason.CheckError();
-        if (!presentationSlot.TryAcquire(presentationSlot.IsHeld || frameReady.WaitOne(0)))
+        var held = presentationSlot.IsHeld;
+        var ready = held || frameReady.WaitOne(0);
+        var acquired = presentationSlot.TryAcquire(ready);
+        diagnostic?.Invoke("readiness_check", held ? "held" : ready ? "signal" : "not_ready");
+        if (!acquired)
         {
+            LastRenderOutcome = "not_ready";
             Interlocked.Increment(ref readinessWaits);
             Interlocked.Increment(ref busyAttempts);
             return false;
         }
+        // FFmpeg uses this same recursive device lock only around its GPU-context operations.
+        // Keep the entire HDR/video-processor state transaction atomic, not the decode call.
+        diagnostic?.Invoke("context_wait", null);
+        multithread.Enter();
+        try
+        {
+            diagnostic?.Invoke("context_enter", null);
+            return Render(frame, newFrame, request, inspect);
+        }
+        finally
+        {
+            multithread.Leave();
+            diagnostic?.Invoke("context_leave", null);
+        }
+    }
+
+    private bool Render(HardwareFrame frame, bool newFrame, PresentationRequest request, Action<ID3D11Texture2D>? inspect)
+    {
         var begin = Stopwatch.GetTimestamp();
         Stage("prepare");
         try
@@ -267,6 +317,7 @@ public sealed class GpuPresenter : IDisposable
             Volatile.Write(ref lastPresentResult, result.Code);
             if (result == Vortice.DXGI.ResultCode.WasStillDrawing || result.Code == 0x087A0001)
             {
+                LastRenderOutcome = result == Vortice.DXGI.ResultCode.WasStillDrawing ? "still_drawing" : "occluded";
                 if (result == Vortice.DXGI.ResultCode.WasStillDrawing) Interlocked.Increment(ref stillDrawing);
                 else Interlocked.Increment(ref occluded);
                 Interlocked.Increment(ref busyAttempts);
@@ -288,6 +339,7 @@ public sealed class GpuPresenter : IDisposable
                 }
             }
             else Interlocked.Increment(ref redrawnFrames);
+            LastRenderOutcome = newFrame ? "presented" : "redrawn";
             return true;
         }
         finally
@@ -345,6 +397,7 @@ public sealed class GpuPresenter : IDisposable
         videoContext.Dispose();
         videoDevice.Dispose();
         context.Dispose();
+        multithread.Dispose();
         Device.Dispose();
     }
 }

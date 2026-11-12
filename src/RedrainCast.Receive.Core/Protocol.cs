@@ -121,40 +121,74 @@ public static class Wire
     public const int HeaderSize = 40;
 
     public static async ValueTask<Packet> ReadAsync(Stream input, CancellationToken cancellationToken = default,
-        Action<Packet, int, int>? payloadProgress = null)
+        Action<Packet, int, int>? payloadProgress = null,
+        Action<VideoReadObservation>? diagnostic = null, long readId = 0)
     {
-        var header = new byte[HeaderSize];
-        await input.ReadExactlyAsync(header.AsMemory(0, 4), cancellationToken);
-        JsonObject.Require(header.AsSpan(0, 4).SequenceEqual("SCPY"u8), "Invalid magic.");
-        await input.ReadExactlyAsync(header.AsMemory(4, 2), cancellationToken);
-        JsonObject.Require(BinaryPrimitives.ReadUInt16BigEndian(header.AsSpan(4)) == Version,
-            "Protocol version 3 required.", "VERSION");
-        await input.ReadExactlyAsync(header.AsMemory(6), cancellationToken);
-        var packet = new Packet((PacketType)BinaryPrimitives.ReadUInt16BigEndian(header.AsSpan(6)),
-            BinaryPrimitives.ReadInt64BigEndian(header.AsSpan(16)),
-            BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(24)),
-            BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(28)),
-            BinaryPrimitives.ReadInt64BigEndian(header.AsSpan(32)),
-            BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(12)), []);
-        var length = BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(8));
-        Validate(packet, length);
-        packet = packet with { Payload = new byte[checked((int)length)] };
-        if (payloadProgress is null) await input.ReadExactlyAsync(packet.Payload, cancellationToken);
-        else
+        var observation = diagnostic is null ? null : new VideoReadDiagnostic(readId, diagnostic);
+        observation?.Record("read_begin");
+        var phase = "header";
+        var asyncReads = 0;
+        var syncReads = 0;
+        try
         {
-            var received = 0;
-            payloadProgress(packet, received, packet.Payload.Length);
-            while (received < packet.Payload.Length)
+            var header = new byte[HeaderSize];
+            observation?.Record("header_begin");
+            if (observation is null) await ReadExactlyAsync(input, header.AsMemory(0, 4), cancellationToken);
+            else await observation.ReadHeaderAsync(input, header.AsMemory(0, 4), cancellationToken);
+            JsonObject.Require(header.AsSpan(0, 4).SequenceEqual("SCPY"u8), "Invalid magic.");
+            if (observation is null) await ReadExactlyAsync(input, header.AsMemory(4, 2), cancellationToken);
+            else await observation.ReadHeaderAsync(input, header.AsMemory(4, 2), cancellationToken);
+            JsonObject.Require(BinaryPrimitives.ReadUInt16BigEndian(header.AsSpan(4)) == Version,
+                "Protocol version 3 required.", "VERSION");
+            if (observation is null) await ReadExactlyAsync(input, header.AsMemory(6), cancellationToken);
+            else await observation.ReadHeaderAsync(input, header.AsMemory(6), cancellationToken);
+            var packet = new Packet((PacketType)BinaryPrimitives.ReadUInt16BigEndian(header.AsSpan(6)),
+                BinaryPrimitives.ReadInt64BigEndian(header.AsSpan(16)),
+                BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(24)),
+                BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(28)),
+                BinaryPrimitives.ReadInt64BigEndian(header.AsSpan(32)),
+                BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(12)), []);
+            var length = BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(8));
+            Validate(packet, length);
+            observation?.Header(packet);
+            observation?.Record("header_end", HeaderSize, observation.HeaderAsyncReads, observation.HeaderSyncReads);
+            phase = "payload";
+            asyncReads = syncReads = 0;
+            packet = packet with { Payload = new byte[checked((int)length)] };
+            observation?.Record("payload_begin", packet.Payload.Length);
+            if (payloadProgress is null && observation is null) await ReadExactlyAsync(input, packet.Payload, cancellationToken);
+            else
             {
-                var count = await input.ReadAsync(packet.Payload.AsMemory(received), cancellationToken);
-                if (count == 0) throw new EndOfStreamException("Unable to read beyond the end of the stream.");
-                received += count;
-                payloadProgress(packet, received, packet.Payload.Length);
+                var received = 0;
+                payloadProgress?.Invoke(packet, received, packet.Payload.Length);
+                while (received < packet.Payload.Length)
+                {
+                    var read = input.ReadAsync(packet.Payload.AsMemory(received), cancellationToken);
+                    if (observation is not null) { if (read.IsCompleted) syncReads++; else asyncReads++; }
+                    var count = await read;
+                    if (count == 0) throw new EndOfStreamException("Unable to read beyond the end of the stream.");
+                    received += count;
+                    payloadProgress?.Invoke(packet, received, packet.Payload.Length);
+                }
             }
+            observation?.Record("payload_end", packet.Payload.Length, asyncReads, syncReads);
+            phase = "validation";
+            if (!IsMedia(packet.Type)) _ = packet.Object();
+            observation?.Record("read_end", outcome: "complete");
+            return packet;
         }
-        if (!IsMedia(packet.Type)) _ = packet.Object();
-        return packet;
+        catch (Exception error) when (error is IOException or OperationCanceledException)
+        {
+            observation?.Record("read_end",
+                asyncReads: phase == "header" ? observation.HeaderAsyncReads : asyncReads,
+                syncReads: phase == "header" ? observation.HeaderSyncReads : syncReads,
+                outcome: $"{phase}:{(error is OperationCanceledException ? "cancelled" : error is EndOfStreamException ? "eof" : "invalid_or_io")}");
+            throw;
+        }
     }
+
+    internal static ValueTask ReadExactlyAsync(Stream input, Memory<byte> bytes, CancellationToken token) =>
+        RedrainCast.Media.MediaLaneThread.ReadExactlyAsync(input, bytes, token);
 
     public static async ValueTask WriteAsync(Stream output, Packet packet, CancellationToken cancellationToken = default)
     {

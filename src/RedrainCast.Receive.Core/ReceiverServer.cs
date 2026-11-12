@@ -12,6 +12,7 @@ public sealed record ReceiverNotice(string State, string Detail, IReadOnlyList<s
 
 public sealed class ReceiverServer : IAsyncDisposable
 {
+    private static long nextVideoReadId;
     private readonly object gate = new();
     private readonly string name;
     private readonly string instanceId;
@@ -379,7 +380,8 @@ public sealed class ReceiverServer : IAsyncDisposable
             finally { writer.Release(); }
         }
 
-        private async Task<Packet> ReadAsync(CancellationToken token)
+        private async Task<Packet> ReadAsync(CancellationToken token,
+            Action<VideoReadObservation>? diagnostic = null, long readId = 0)
         {
             var begin = Environment.TickCount64;
             var bytes = input.BytesRead;
@@ -388,7 +390,8 @@ public sealed class ReceiverServer : IAsyncDisposable
             {
                 var packet = await Wire.ReadAsync(input, token, (incoming, received, total) =>
                     activity.Progress(ReceiverOperation.Read,
-                        $"{incoming.Type} track={incoming.Track} generation={incoming.Generation} payload={received}/{total}"));
+                        $"{incoming.Type} track={incoming.Track} generation={incoming.Generation} payload={received}/{total}"),
+                    diagnostic, readId);
                 receive.Received(packet, Environment.TickCount64 - begin);
                 Interlocked.Exchange(ref lastInput, Environment.TickCount64);
                 return packet;
@@ -418,7 +421,11 @@ public sealed class ReceiverServer : IAsyncDisposable
                 {
                     session = hello.Session;
                     var target = AttachMedia(hello);
-                    await target.ReadMediaAsync(this, setup.Token);
+                    if (target.playbackForMedia is { AffineMediaReaders: true } mediaPlayback)
+                        await TrackThread.Run(() => target.ReadMediaAsync(this, setup.Token),
+                            () => mediaPlayback.EnterMediaReader(mediaTrack));
+                    else
+                        await target.ReadMediaAsync(this, setup.Token);
                     return;
                 }
                 JsonObject.Require(hello.Session == 0, "Control HELLO requires session zero.");
@@ -676,7 +683,10 @@ public sealed class ReceiverServer : IAsyncDisposable
                 await mediaAttached.Task.WaitAsync(linked.Token);
                 while (true)
                 {
-                    var packet = await channel.ReadAsync(linked.Token);
+                    var diagnostic = channel.mediaTrack == 1 ? playbackForMedia?.VideoReadDiagnostics : null;
+                    var currentReadId = diagnostic is null ? 0 : Interlocked.Increment(ref nextVideoReadId);
+                    var packet = await channel.ReadAsync(linked.Token, diagnostic, currentReadId);
+                    if (Wire.IsMedia(packet.Type)) playbackForMedia?.ObserveReceived(packet);
                     MediaTiming.Record(MediaStage.SocketRead, packet.Session, packet.Track, packet.Generation,
                         packet.PtsUs, a: packet.Payload.Length);
                     if (Volatile.Read(ref stopping) != 0 || Volatile.Read(ref mediaEof) is not null) continue;
@@ -686,6 +696,10 @@ public sealed class ReceiverServer : IAsyncDisposable
                         "Packet does not belong to this media channel.");
                     JsonObject.Require(channel.mediaTrack == 1 || expectedTracks == 2, "Audio was not enabled.");
                     var handlingAt = Environment.TickCount64;
+                    var admission = diagnostic is null ? null : new VideoReadDiagnostic(currentReadId, diagnostic);
+                    admission?.Header(packet);
+                    admission?.Record("admission_begin");
+                    var admissionOutcome = "error";
                     MediaTiming.Record(MediaStage.AdmissionBegin, packet.Session, packet.Track, packet.Generation, packet.PtsUs);
                     channel.activity.Begin(ReceiverOperation.Admission,
                         $"{packet.Type} track={packet.Track} generation={packet.Generation} bytes={packet.Payload.Length}");
@@ -694,17 +708,24 @@ public sealed class ReceiverServer : IAsyncDisposable
                         JsonObject.Require(videoRotation || packet.Flags <= 1, "Video rotation was not negotiated.");
                         if (playbackForMedia is RecoveryPlayback recovery)
                         {
-                            if (!recovery.Admit(packet)) continue;
+                            if (!recovery.Admit(packet)) { admissionOutcome = "recovery_filtered"; continue; }
                             try { queue.Add(packet); }
                             catch (ProtocolException error) when (error.Code == "CONGESTION" && Wire.IsMedia(packet.Type))
-                            { recovery.Pressure(packet.Track); continue; }
+                            { admissionOutcome = "recovery_pressure"; recovery.Pressure(packet.Track); continue; }
                         }
 
                         else await queue.AddAsync(packet, linked.Token);
                         if (Wire.IsMedia(packet.Type)) playbackForMedia?.Observe(packet);
+                        admissionOutcome = "accepted";
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        admissionOutcome = "cancelled";
+                        throw;
                     }
                     finally
                     {
+                        admission?.Record("admission_end", outcome: admissionOutcome);
                         MediaTiming.Record(MediaStage.AdmissionEnd, packet.Session, packet.Track, packet.Generation, packet.PtsUs);
                         channel.activity.Complete(ReceiverOperation.Admission);
                         channel.receive.Handled(Environment.TickCount64 - handlingAt);
@@ -817,6 +838,7 @@ public sealed class ReceiverServer : IAsyncDisposable
                 while (true)
                 {
                     var packet = await queue.TakeAsync(track, playbackCancellation.Token);
+                    if (Wire.IsMedia(packet.Type)) playback.ObserveDequeued(packet);
                     var operation = track == 1 ? ReceiverOperation.Video : ReceiverOperation.Audio;
                     activity.Begin(operation, $"{packet.Type} generation={packet.Generation} bytes={packet.Payload.Length}");
                     try

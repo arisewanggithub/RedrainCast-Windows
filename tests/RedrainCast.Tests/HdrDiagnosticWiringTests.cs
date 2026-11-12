@@ -8,6 +8,39 @@ public sealed class HdrDiagnosticWiringTests
         File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", name + ".cs.txt"));
 
     [Fact]
+    public void SharedContextLockCallbacksAreRootedUntilFinalNativeDeviceReleaseNotDecoderDisposal()
+    {
+        var synchronization = Source("D3D11ContextSynchronization");
+        Assert.Contains("static readonly AVD3D11VADeviceContext_lock EnterCallback", synchronization);
+        Assert.Contains("static readonly AVD3D11VADeviceContext_unlock LeaveCallback", synchronization);
+        Assert.Contains("static readonly AVHWDeviceContext_free FreeCallback", synchronization);
+        Assert.Contains("GCHandle.Alloc(multithread)", synchronization);
+        Assert.Contains("hardware->free = FreeCallback;", synchronization);
+        Assert.Contains("d3d->@lock = EnterCallback;", synchronization);
+        Assert.Contains("d3d->unlock = LeaveCallback;", synchronization);
+        Assert.Contains("Target(value).Enter()", synchronization);
+        Assert.Contains("Target(value).Leave()", synchronization);
+        var free = synchronization[synchronization.IndexOf("private static void Free(", StringComparison.Ordinal)..];
+        Assert.Contains("((ID3D11Multithread)handle.Target!).Dispose();", free);
+        Assert.Contains("handle.Free();", free);
+        var decoder = Source("HardwareDecoder");
+        Assert.True(decoder.IndexOf("D3D11ContextSynchronization.Attach(", StringComparison.Ordinal) <
+            decoder.IndexOf("ffmpeg.av_hwdevice_ctx_init(", StringComparison.Ordinal));
+        Assert.DoesNotContain("multithread.Enter()", decoder);
+        var presenter = Source("GpuPresenter");
+        Assert.Contains("multithread.SetMultithreadProtected(true);", presenter);
+        var render = presenter[presenter.IndexOf("private bool RenderSynchronized(", StringComparison.Ordinal)..
+            presenter.IndexOf("private bool Render(HardwareFrame", StringComparison.Ordinal)];
+        Assert.Contains("return Render(frame, newFrame, request, inspect);", render);
+        Assert.Contains("finally", render);
+        Assert.Contains("multithread.Leave();", render);
+        Assert.True(render.IndexOf("multithread.Enter();", StringComparison.Ordinal) <
+            render.IndexOf("return Render(", StringComparison.Ordinal));
+        Assert.True(render.IndexOf("multithread.Leave();", StringComparison.Ordinal) <
+            render.IndexOf("diagnostic?.Invoke(\"context_leave\"", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void DisplayMetadataFallbackUsesPlaybackWakePathWithoutFatalHealthLatch()
     {
         var host = Source("VideoHost");
@@ -23,16 +56,20 @@ public sealed class HdrDiagnosticWiringTests
         Assert.Contains("if (!presenter.SetDisplayPolicy(policy)) return;", playback);
         Assert.Contains("renderWake.Set();", playback);
         Assert.Contains("else if (presenter.HasPendingRedraw && lastFrame is not null)", playback);
-        Assert.Contains("presenter.Redraw(lastFrame);", playback);
+        Assert.Contains("presenter.Redraw(lastFrame.Surface);", playback);
         Assert.DoesNotContain("resizeRequested", playback);
         var presenter = Source("GpuPresenter");
         Assert.Contains("internal bool HasPendingRedraw => requests.HasPending;", presenter);
-        Assert.Contains("requests.TryRender(frame.ColorFormat, request => Render(frame, true, request));", presenter);
-        Assert.Contains("requests.TryRender(frame.ColorFormat, request => Render(frame, false, request));", presenter);
+        Assert.Contains("TryRender(frame, true);", presenter);
+        Assert.Contains("TryRender(frame, false);", presenter);
+        Assert.Contains("requests.TryRender(frame.ColorFormat, request => RenderSynchronized(frame, newFrame, request,", presenter);
+        Assert.Contains("diagnostic: diagnostic)", presenter);
         Assert.Contains("Prepare(frame.Width, frame.Height, request);", presenter);
         Assert.Contains("hdrRenderer.Draw(frame, buffer, request.Display);", presenter);
         Assert.Contains("Interlocked.CompareExchange(ref resizeFailure, error, null)", playback);
         Assert.Contains("Interlocked.CompareExchange(ref renderFailure, error, null)", playback);
+        Assert.Contains("trace.StatisticsSample(session, sample, sampledAtMs, baselineReset)", playback);
+        Assert.Contains("playback?.RecordStatisticsSample(session, sample, sampledAtMs, baselineReset)", host);
     }
 
     [Fact]
@@ -41,17 +78,16 @@ public sealed class HdrDiagnosticWiringTests
         var playback = Source("VideoPlayback");
         var begin = playback.IndexOf("public void Resize(", StringComparison.Ordinal);
         var end = playback.IndexOf("public void FailDisplay(", begin, StringComparison.Ordinal);
-        Assert.DoesNotContain("nativeGate", playback[begin..end]);
-        var renderExit = playback.IndexOf("finally { Monitor.Exit(nativeGate); }", StringComparison.Ordinal);
-        var notify = playback.IndexOf("if (first) status(", renderExit, StringComparison.Ordinal);
-        Assert.True(renderExit >= 0 && notify > renderExit);
+        Assert.DoesNotContain("lock (", playback[begin..end]);
+        Assert.Contains("            }\n            if (first) status(", playback.Replace("\r\n", "\n"));
         var cancel = playback.IndexOf("renderCancellation.Cancel();", StringComparison.Ordinal);
         var awaitRender = playback.IndexOf("await renderTask;", cancel, StringComparison.Ordinal);
         var detach = playback.IndexOf("await detach();", awaitRender, StringComparison.Ordinal);
-        var disposeGate = playback.IndexOf("lock (nativeGate)", detach, StringComparison.Ordinal);
+        var disposeGate = playback.IndexOf("lock (decoderGate)", detach, StringComparison.Ordinal);
+        var renderGate = playback.IndexOf("lock (renderGate)", disposeGate, StringComparison.Ordinal);
         var disposeWake = playback.IndexOf("renderWake.Dispose();", disposeGate, StringComparison.Ordinal);
         Assert.True(cancel >= 0 && awaitRender > cancel && detach > awaitRender &&
-            disposeGate > detach && disposeWake > disposeGate);
+            disposeGate > detach && renderGate > disposeGate && disposeWake > renderGate);
     }
 
     [Fact]

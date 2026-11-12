@@ -42,6 +42,13 @@ public interface IPlayback : IAsyncDisposable
     string Diagnostics => "";
     // The caller owns this worker-thread scope across configuration/native epoch changes.
     IDisposable? EnterTrack(uint track) => null;
+    bool AffineMediaReaders => false;
+    IDisposable? EnterMediaReader(uint track) => null;
+    // Managed full-packet read completion, not kernel arrival or queue admission.
+    void ObserveReceived(Packet packet) { }
+    Action<VideoReadObservation>? VideoReadDiagnostics => null;
+    // Encoded queue removal, before recovery filtering and native decode.
+    void ObserveDequeued(Packet packet) { }
     void Observe(Packet packet) { }
     // Completion means the real resources exist, not merely that configuration was queued.
     ValueTask ConfigureAsync(Packet configuration, CancellationToken cancellationToken);

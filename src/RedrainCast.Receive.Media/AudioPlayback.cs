@@ -6,6 +6,7 @@ namespace RedrainCast.Receive.Media;
 
 public sealed class AudioPlayback : IAsyncDisposable
 {
+    internal Action<string>? ThreadDiagnostic { get; set; }
     private readonly string codec;
     private readonly PlaybackClock clock;
     private bool recoveryCatchup;
@@ -14,8 +15,12 @@ public sealed class AudioPlayback : IAsyncDisposable
     private volatile bool suspended;
     private bool recoveringEpoch;
     private volatile bool sessionStopped;
+    // Native decode/regulation belongs to the producer; the refill worker never takes this gate.
     private readonly object gate = new();
+    // Generation publication, device writes/start and clock reads must retire atomically.
     private readonly object startGate = new();
+    private readonly SemaphoreSlim lifecycle = new(1, 1);
+    private bool disposed;
     private WasapiOutput? output;
     private AudioDecoder? decoder;
     private AudioRegulator? regulator;
@@ -33,9 +38,9 @@ public sealed class AudioPlayback : IAsyncDisposable
     public long? FirstRecoverySourcePtsUs => Interlocked.Read(ref firstRecoverySourcePts) is var pts && pts >= 0 ? pts : null;
     public void SetRecoveryCutoff(long pts)
     {
-        Interlocked.Exchange(ref recoveryCutoff, pts);
-        lock (gate)
+        lock (startGate)
         {
+            Interlocked.Exchange(ref recoveryCutoff, pts);
             if (firstRecoverySourcePts < 0)
             {
                 recoveryCatchup = true;
@@ -46,8 +51,11 @@ public sealed class AudioPlayback : IAsyncDisposable
     public void SetEncodedQueueDepth(int packets) => Volatile.Write(ref encodedQueueDepth, packets);
     public void SuspendForRecovery()
     {
-        suspended = true;
-        clock.BeginAudioRecovery();
+        lock (startGate)
+        {
+            suspended = true;
+            clock.BeginAudioRecovery();
+        }
     }
     public void StopSession()
     {
@@ -63,7 +71,7 @@ public sealed class AudioPlayback : IAsyncDisposable
     {
         get
         {
-            lock (gate)
+            lock (startGate)
                 return configuring || output is null || presentation is null ? (0, null) : presentation.Current(output.PlayedFrames());
         }
     }
@@ -72,7 +80,7 @@ public sealed class AudioPlayback : IAsyncDisposable
     {
         get
         {
-            lock (gate)
+            lock (startGate)
             {
                 if (configuring || regulator is null || output?.CachedStatistics is not { } device) return null;
                 var buffer = regulator.Buffer.Snapshot;
@@ -80,10 +88,10 @@ public sealed class AudioPlayback : IAsyncDisposable
             }
         }
     }
-    public int TargetFrames { get { lock (gate) return regulator?.Buffer.Target ?? AudioBuffer.TargetFrames; } }
+    public int TargetFrames { get { lock (startGate) return regulator?.Buffer.Target ?? AudioBuffer.TargetFrames; } }
     public (long Silence, long Dropped) Recovery
     {
-        get { lock (gate) { var snapshot = regulator?.Buffer.Snapshot; return (snapshot?.Silence ?? 0, snapshot?.Dropped ?? 0); } }
+        get { lock (startGate) { var snapshot = regulator?.Buffer.Snapshot; return (snapshot?.Silence ?? 0, snapshot?.Dropped ?? 0); } }
     }
     public string Diagnostics
     {
@@ -105,9 +113,20 @@ public sealed class AudioPlayback : IAsyncDisposable
 
     public async ValueTask ConfigureAsync(Packet packet, CancellationToken token, bool midstream = false)
     {
+        await lifecycle.WaitAsync(token);
+        try
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            await ConfigureCoreAsync(packet, token, midstream);
+        }
+        finally { lifecycle.Release(); }
+    }
+
+    private async ValueTask ConfigureCoreAsync(Packet packet, CancellationToken token, bool midstream)
+    {
         var format = AudioFormat.Parse(packet.Object(), codec);
         if (midstream) format = format with { PreSkip = 0 };
-        lock (gate) configuring = true;
+        lock (gate) { lock (startGate) configuring = true; }
         try
         {
             if (decoder is not null) await RetireAsync(!midstream, token);
@@ -131,6 +150,7 @@ public sealed class AudioPlayback : IAsyncDisposable
                 var ownedOutput = nextOutput;
                 var ownedRegulator = nextRegulator;
                 lock (gate)
+                lock (startGate)
                 {
                     token.ThrowIfCancellationRequested();
                     if (sessionStopped) throw new OperationCanceledException("Audio session has stopped.", token);
@@ -166,7 +186,7 @@ public sealed class AudioPlayback : IAsyncDisposable
                 nextSignal?.Dispose();
             }
         }
-        finally { lock (gate) configuring = false; }
+        finally { lock (startGate) configuring = false; }
     }
 
     public async ValueTask PresentAsync(Packet packet, CancellationToken token)
@@ -176,9 +196,10 @@ public sealed class AudioPlayback : IAsyncDisposable
         while (true)
         {
             bool wait;
-            lock (gate)
+            lock (startGate)
             {
                 CheckWorker();
+                if (configuring || suspended || sessionStopped) return;
                 wait = recoveryCatchup && regulator is { } current &&
                     current.Buffer.Frames >= current.Buffer.Target;
             }
@@ -189,6 +210,8 @@ public sealed class AudioPlayback : IAsyncDisposable
         var waiting = Stopwatch.GetTimestamp();
         lock (gate)
         {
+            token.ThrowIfCancellationRequested();
+            if (configuring || suspended || sessionStopped) return;
             var entered = Stopwatch.GetTimestamp();
             maximumGateWaitUs = Math.Max(maximumGateWaitUs, (long)Stopwatch.GetElapsedTime(waiting, entered).TotalMicroseconds);
             var now = Environment.TickCount64;
@@ -200,6 +223,8 @@ public sealed class AudioPlayback : IAsyncDisposable
                 var currentDecoder = decoder ?? throw new InvalidOperationException("Audio is not configured.");
                 var currentRegulator = regulator ?? throw new InvalidOperationException("Audio regulation is not initialized.");
                 var decoded = currentDecoder.Decode(packet);
+                token.ThrowIfCancellationRequested();
+                if (suspended || sessionStopped) return;
                 if (Interlocked.Read(ref recoveryCutoff) is var cutoff && cutoff >= 0)
                 {
                     var skip = RecoveryAudio.Skip(decoded.PtsUs, cutoff, decoded.Data.Length / 4);
@@ -233,7 +258,9 @@ public sealed class AudioPlayback : IAsyncDisposable
     {
         try
         {
-            using var scheduling = WasapiOutput.AudioThread();
+            using var scheduling = ThreadDiagnostic is { } diagnostic
+                ? new MediaLaneScheduling("audio_output", "Audio", WasapiOutput.AudioThread, diagnostic)
+                : WasapiOutput.AudioThread();
             var previousLoop = Environment.TickCount64;
             long traceSourcePts = -1, traceContentFrames = 0;
             while (true)
@@ -247,14 +274,11 @@ public sealed class AudioPlayback : IAsyncDisposable
                 MediaTiming.Record(MediaStage.OutputWake, session, 2, generation,
                     traceSourcePts, a: traceContentFrames, b: traceContentFrames);
                 var played = position.Current(output.PlayedFrames());
-                lock (gate)
+                lock (startGate)
                 {
-                    lock (startGate)
-                    {
-                        if (!token.IsCancellationRequested && !suspended && !sessionStopped &&
-                            ReferenceEquals(this.output, output) && played.PtsUs is { } presentedPts)
-                            clock.ObserveAudio(presentedPts);
-                    }
+                    if (!token.IsCancellationRequested && !suspended && !sessionStopped &&
+                        ReferenceEquals(this.output, output) && played.PtsUs is { } presentedPts)
+                        clock.ObserveAudio(presentedPts);
                     if (recoveryCatchup && Volatile.Read(ref encodedQueueDepth) == 0 &&
                         played.ContentFrames - catchupPresentedStart >= buffer.Target &&
                         buffer.Frames < buffer.Target)
@@ -320,20 +344,20 @@ public sealed class AudioPlayback : IAsyncDisposable
                                 if (token.WaitHandle.WaitOne(2)) token.ThrowIfCancellationRequested();
                             }
                         }
-                        if (suspended || sessionStopped) return;
-                        var start = output.Written;
-                        var writeStarted = Stopwatch.GetTimestamp();
-                        MediaTiming.Record(MediaStage.OutputWriteBegin, session, 2, generation,
-                            a: start, b: block.Frames);
-                        var written = output.Write(block.Data, 0, block.Frames);
-                        MediaTiming.Record(MediaStage.OutputWriteEnd, session, 2, generation,
-                            a: start, b: written);
-                        Interlocked.Exchange(ref maximumOutputWriteUs, Math.Max(Interlocked.Read(ref maximumOutputWriteUs),
-                            (long)Stopwatch.GetElapsedTime(writeStarted).TotalMicroseconds));
-                        if (written != block.Frames) throw new IOException("WASAPI did not accept the reserved output block.");
-                        position.Submit(start, block);
                         lock (startGate)
                         {
+                            if (suspended || sessionStopped || token.IsCancellationRequested) return;
+                            var start = output.Written;
+                            var writeStarted = Stopwatch.GetTimestamp();
+                            MediaTiming.Record(MediaStage.OutputWriteBegin, session, 2, generation,
+                                a: start, b: block.Frames);
+                            var written = output.Write(block.Data, 0, block.Frames);
+                            MediaTiming.Record(MediaStage.OutputWriteEnd, session, 2, generation,
+                                a: start, b: written);
+                            Interlocked.Exchange(ref maximumOutputWriteUs, Math.Max(Interlocked.Read(ref maximumOutputWriteUs),
+                                (long)Stopwatch.GetElapsedTime(writeStarted).TotalMicroseconds));
+                            if (written != block.Frames) throw new IOException("WASAPI did not accept the reserved output block.");
+                            position.Submit(start, block);
                             if (!sessionStopped && !suspended && !token.IsCancellationRequested)
                             {
                                 if (block.Spans.Length > 0)
@@ -369,6 +393,7 @@ public sealed class AudioPlayback : IAsyncDisposable
     public void CheckHealth()
     {
         lock (gate)
+        lock (startGate)
         {
             if (configuring) return;
             try
@@ -385,28 +410,36 @@ public sealed class AudioPlayback : IAsyncDisposable
 
     private async Task RetireAsync(bool drain, CancellationToken token)
     {
-        WasapiOutput? ownedOutput;
-        AudioDecoder? ownedDecoder;
-        AudioRegulator? ownedRegulator;
-        CancellationTokenSource? stop;
-        AutoResetEvent? signal;
-        Task? worker;
-        lock (gate)
-        {
-            ownedOutput = output; output = null;
-            if (ownedOutput is not null && presentation?.Current(ownedOutput.PlayedFrames()).PtsUs is { } pts)
-                clock.ObserveAudio(pts);
-            clock.DetachAudio();
-            ownedDecoder = decoder; decoder = null;
-            ownedRegulator = regulator; regulator = null;
-            stop = outputCancellation; outputCancellation = null;
-            signal = dataReady; dataReady = null;
-            worker = outputTask; outputTask = null;
-            presentation = null;
-            firstInputAt = null;
-        }
+        WasapiOutput? ownedOutput = null;
+        AudioDecoder? ownedDecoder = null;
+        AudioRegulator? ownedRegulator = null;
+        CancellationTokenSource? stop = null;
+        AutoResetEvent? signal = null;
+        Task? worker = null;
         try
         {
+            lock (gate)
+            lock (startGate)
+            {
+                ownedOutput = output; output = null;
+                ownedDecoder = decoder; decoder = null;
+                ownedRegulator = regulator; regulator = null;
+                stop = outputCancellation; outputCancellation = null;
+                signal = dataReady; dataReady = null;
+                worker = outputTask; outputTask = null;
+                var position = presentation; presentation = null;
+                firstInputAt = null;
+                try
+                {
+                    if (ownedOutput is not null && position?.Current(ownedOutput.PlayedFrames()).PtsUs is { } pts)
+                        clock.ObserveAudio(pts);
+                }
+                finally
+                {
+                    clock.DetachAudio();
+                    if (!drain) stop?.Cancel();
+                }
+            }
             if (drain) { ownedOutput?.BeginDrain(); ownedRegulator?.BeginDrain(); signal?.Set(); }
             else stop?.Cancel();
             if (worker is not null) await worker.WaitAsync(TimeSpan.FromMilliseconds(500), token);
@@ -421,14 +454,31 @@ public sealed class AudioPlayback : IAsyncDisposable
                 try { ownedOutput?.Dispose(); }
                 finally
                 {
-                    ownedDecoder?.Dispose();
-                    ownedRegulator?.Dispose();
-                    signal?.Dispose();
-                    stop?.Dispose();
+                    try { ownedDecoder?.Dispose(); }
+                    finally
+                    {
+                        try { ownedRegulator?.Dispose(); }
+                        finally
+                        {
+                            try { signal?.Dispose(); }
+                            finally { stop?.Dispose(); }
+                        }
+                    }
                 }
             }
         }
     }
 
-    public async ValueTask DisposeAsync() => await RetireAsync(false, CancellationToken.None);
+    public async ValueTask DisposeAsync()
+    {
+        await lifecycle.WaitAsync();
+        try
+        {
+            if (disposed) return;
+            disposed = true;
+            lock (startGate) configuring = true;
+            await RetireAsync(false, CancellationToken.None);
+        }
+        finally { lifecycle.Release(); }
+    }
 }

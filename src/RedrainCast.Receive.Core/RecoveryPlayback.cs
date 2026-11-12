@@ -328,6 +328,11 @@ internal sealed class RecoveryPlayback : IPlayback, IVideoPlaybackProgress
     }
 
     public IDisposable? EnterTrack(uint track) => playback.EnterTrack(track);
+    public bool AffineMediaReaders => playback.AffineMediaReaders;
+    public IDisposable? EnterMediaReader(uint track) => playback.EnterMediaReader(track);
+    public void ObserveReceived(Packet packet) => playback.ObserveReceived(packet);
+    public Action<VideoReadObservation>? VideoReadDiagnostics => playback.VideoReadDiagnostics;
+    public void ObserveDequeued(Packet packet) => playback.ObserveDequeued(packet);
     public void Observe(Packet packet) => playback.Observe(packet);
 
     public async ValueTask ConfigureAsync(Packet packet, CancellationToken token)

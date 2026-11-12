@@ -10,6 +10,65 @@ namespace RedrainCast.Receive.Tests;
 
 public sealed class ListenerTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OptInMediaReadersKeepBothSocketsOnTheirOwnLaneThroughStop(bool affine)
+    {
+        var factory = new TestFactory();
+        factory.Playback.AffineMediaReaders = affine;
+        var readers = new ConcurrentDictionary<uint, int>();
+        var retired = new ConcurrentDictionary<uint, int>();
+        factory.Playback.OnEnterReader = track =>
+        {
+            Assert.False(Thread.CurrentThread.IsThreadPoolThread);
+            Assert.True(readers.TryAdd(track, Environment.CurrentManagedThreadId));
+            return new ReaderLease(() =>
+            {
+                Assert.Equal(readers[track], Environment.CurrentManagedThreadId);
+                retired.AddOrUpdate(track, 1, (_, count) => count + 1);
+            });
+        };
+        factory.Playback.OnReceived = packet =>
+        {
+            if (affine)
+            {
+                Assert.False(Thread.CurrentThread.IsThreadPoolThread);
+                Assert.Equal(readers[packet.Track], Environment.CurrentManagedThreadId);
+            }
+        };
+        factory.Playback.OnPresent = async (_, _) => await Task.Yield();
+        await using var server = Server(factory);
+        server.Start(false);
+        using var peer = await ConnectAsync(server);
+        await HelloAsync(peer);
+        await RequestAsync(peer, audio: true);
+        Assert.Equal(PacketType.SessionAccept, (await ReadAsync(peer)).Type);
+        foreach (var track in new uint[] { 1, 2 })
+        {
+            await SendAsync(peer, QueueAndTrackTests.Configuration(track));
+            Assert.Equal(PacketType.StreamReady, (await ReadAsync(peer)).Type);
+        }
+        await SendAsync(peer, QueueAndTrackTests.Media(100));
+        await SendAsync(peer, QueueAndTrackTests.Media(100, track: 2));
+        await factory.Playback.TwoPresented.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await SendAsync(peer, Packet.Control(PacketType.Stop, 1, new { reason = "affine test" }));
+        Assert.Equal(PacketType.SessionEnd, (await ReadAsync(peer)).Type);
+        await factory.Playback.DisposalObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(affine ? 2 : 0, readers.Count);
+        if (affine)
+        {
+            Assert.NotEqual(readers[1], readers[2]);
+            Assert.Equal(1, retired[1]);
+            Assert.Equal(1, retired[2]);
+        }
+    }
+
+    private sealed class ReaderLease(Action release) : IDisposable
+    {
+        public void Dispose() => release();
+    }
+
     [Fact]
     public async Task IdleDiagnosticsDoNotInventAnActiveSession()
     {
@@ -20,6 +79,46 @@ public sealed class ListenerTests
 
     private static ReceiverServer Server(IPlaybackFactory? factory = null) =>
         new("Test receiver", factory ?? new UnavailablePlaybackFactory(), _ => { }, 0, IPAddress.Loopback);
+
+    [Fact]
+    public async Task SocketReceiveObservationPrecedesQueueTakeWhileDecodeIsBlocked()
+    {
+        var firstDequeued = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var factory = new TestFactory();
+        factory.Playback.OnReceived = packet =>
+        {
+            if (packet.PtsUs == 200) secondReceived.TrySetResult();
+        };
+        factory.Playback.OnPresent = async (packet, token) =>
+        {
+            if (packet.PtsUs == 100)
+            {
+                firstDequeued.TrySetResult();
+                await release.Task.WaitAsync(token);
+            }
+        };
+        await using var server = Server(factory);
+        server.Start(false);
+        using var peer = await ConnectAsync(server);
+        await HelloAsync(peer);
+        await RequestAsync(peer);
+        Assert.Equal(PacketType.SessionAccept, (await ReadAsync(peer)).Type);
+        await SendAsync(peer, QueueAndTrackTests.Configuration());
+        Assert.Equal(PacketType.StreamReady, (await ReadAsync(peer)).Type);
+        await SendAsync(peer, QueueAndTrackTests.Media(100));
+        await firstDequeued.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await SendAsync(peer, QueueAndTrackTests.Media(200));
+        await secondReceived.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(new long[] { 100, 200 }, factory.Playback.Received);
+        Assert.Equal(new long[] { 100 }, factory.Playback.Dequeued);
+        release.TrySetResult();
+        await factory.Playback.TwoPresented.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(new long[] { 100, 200 }, factory.Playback.Dequeued);
+        await SendAsync(peer, Packet.Control(PacketType.Stop, 1, new { reason = "done" }));
+        Assert.Equal(PacketType.SessionEnd, (await ReadAsync(peer)).Type);
+    }
 
     [Fact]
     public async Task QueuedMediaDoesNotBlockThreeTcpStop()
@@ -1146,6 +1245,10 @@ public sealed class ListenerTests
 
     private sealed class TestPlayback : IPlayback, IVideoPlaybackProgress
     {
+        public bool AffineMediaReaders { get; set; }
+        public Func<uint, IDisposable>? OnEnterReader { get; set; }
+        public IDisposable? EnterMediaReader(uint track) => OnEnterReader?.Invoke(track);
+        public TaskCompletionSource DisposalObserved { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int DisposeCalls;
         public bool Disposed { get; private set; }
         public bool SuppressCurrentPresentation { get; set; }
@@ -1154,6 +1257,15 @@ public sealed class ListenerTests
         public Exception? HealthFailure { get; set; }
         public Func<ValueTask>? OnDispose { get; set; }
         public Func<Packet, CancellationToken, ValueTask>? OnPresent { get; set; }
+        public Action<Packet>? OnReceived { get; set; }
+        public ConcurrentQueue<long> Received { get; } = [];
+        public ConcurrentQueue<long> Dequeued { get; } = [];
+        public void ObserveReceived(Packet packet)
+        {
+            Received.Enqueue(packet.PtsUs);
+            OnReceived?.Invoke(packet);
+        }
+        public void ObserveDequeued(Packet packet) => Dequeued.Enqueue(packet.PtsUs);
         public void CheckHealth()
         {
             if (HealthFailure is { } failure) throw failure;
@@ -1178,6 +1290,7 @@ public sealed class ListenerTests
         {
             Interlocked.Increment(ref DisposeCalls);
             Disposed = true;
+            DisposalObserved.TrySetResult();
             return OnDispose?.Invoke() ?? ValueTask.CompletedTask;
         }
     }

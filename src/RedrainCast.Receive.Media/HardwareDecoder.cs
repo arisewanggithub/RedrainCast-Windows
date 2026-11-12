@@ -86,6 +86,7 @@ public sealed unsafe class HardwareDecoder : IDisposable
             var d3d = (AVD3D11VADeviceContext*)hardwareContext->hwctx;
             Marshal.AddRef(device.NativePointer);
             d3d->device = (FFmpeg.AutoGen.ID3D11Device*)device.NativePointer;
+            D3D11ContextSynchronization.Attach(hardwareContext, device);
             NativeRuntime.Check(ffmpeg.av_hwdevice_ctx_init(hardware), "Initialize hardware D3D11VA decoder device");
         }
         catch
@@ -123,7 +124,7 @@ public sealed unsafe class HardwareDecoder : IDisposable
         if (context->hw_device_ctx == null) throw new OutOfMemoryException();
         context->get_format = formatCallback;
         context->thread_count = 1;
-        // Application-owned displayed, pending and in-progress frames must not exhaust the codec's reference surfaces.
+        // Displayed, mailbox and renderer-owned frames need reserves beyond the codec's reference/current-picture surfaces.
         context->extra_hw_frames = AdditionalHardwareFrames;
         context->flags |= ffmpeg.AV_CODEC_FLAG_LOW_DELAY;
         context->flags |= ffmpeg.AV_CODEC_FLAG_COPY_OPAQUE;
