@@ -43,6 +43,7 @@ function Msix([string]$Name, [string]$Architecture, [string]$Version = '0.2.4102
 $sha = 'a' * 40
 $script:ghCalls = @()
 $script:private = $true
+$script:repositoryName = $script:CiRepository
 $script:releaseDraft = $false
 $script:tamperDownload = $false
 $script:ghFailure = $false
@@ -129,7 +130,7 @@ try {
         $script:ghCalls += ,$Arguments
         if ($script:ghFailure) { throw 'GitHub HTTP 403 fixture' }
         if ($Arguments[0] -eq 'api' -and $Arguments[1] -eq "repos/$script:CiRepository") {
-            return (@{ full_name = $script:CiRepository; private = $script:private } | ConvertTo-Json)
+            return (@{ full_name = $script:repositoryName; private = $script:private } | ConvertTo-Json)
         }
         if ($Arguments[0] -eq 'api' -and $Arguments[1] -match '/actions/runs/') {
             return ($script:run | ConvertTo-Json)
@@ -169,7 +170,16 @@ try {
     Reject { Assert-CiBuildContext '42' 2 $sha }
     $env:GITHUB_EVENT_NAME = 'push'
     $script:private = $false
-    Reject { Assert-CiRepositoryPrivate }
+    $null = Assert-CiBuildContext '42' 2 $sha
+    Assert $true 'Trusted public source repository must support official releases.'
+    $script:repositoryName = 'arisewanggithub/RedrainCast-Releases'
+    Reject { Assert-CiRepository }
+    $script:repositoryName = $script:CiRepository
+    $script:private = 'false'
+    Reject { Assert-CiRepository }
+    $script:private = $false
+    $publicReceived = Receive-CiBuild '42' 2 $sha (Join-Path $scratch 'received-public') '42'
+    Assert ($publicReceived.headSha -ceq $sha) 'Public release download must preserve source binding.'
     $script:private = $true
     $script:run.head_sha = 'b' * 40
     Reject { Assert-CiBuildContext '42' 2 $sha }

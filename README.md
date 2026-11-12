@@ -1067,6 +1067,11 @@ Pull requests still test and package both architectures, but do not upload large
 Actions artifacts or receive release-write permissions. Successful main pushes
 and manual main builds publish official **non-prerelease** `vX.Y.Z` GitHub
 releases in this source repository (access still follows repository visibility).
+The canonical Windows source repository may be public or private; release
+provenance is bound to its exact repository identity, trusted main workflow,
+commit, run and attempt, not to visibility. Public-repository MSIX assets are
+publicly downloadable build/Store inputs; Store publication remains separately
+owner-approved. Android binaries remain in the separate Android releases repository.
 The only download assets are `RedrainCast-arm64.msix`, `RedrainCast-x64.msix`,
 their `.sha256` files, and `ci-manifest.json`; there is **no portable ZIP**.
 Both packages are downloaded and verified before the run/attempt/commit/version-bound

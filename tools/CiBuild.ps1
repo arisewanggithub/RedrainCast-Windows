@@ -22,11 +22,10 @@ function Invoke-CiGh([string[]]$Arguments) {
     return ($output -join "`n")
 }
 
-function Assert-CiRepositoryPrivate {
+function Assert-CiRepository {
     $repository = Invoke-CiGh @('api', "repos/$script:CiRepository") | ConvertFrom-Json
-    if ($repository.full_name -cne $script:CiRepository -or $repository.private -isnot [bool] -or
-        -not $repository.private) {
-        throw 'CI binaries may only be stored in the private Windows source repository.'
+    if ($repository.full_name -cne $script:CiRepository -or $repository.private -isnot [bool]) {
+        throw 'CI binaries may only be stored in the canonical Windows source repository.'
     }
 }
 
@@ -36,7 +35,7 @@ function Assert-CiBuildContext([string]$RunId, [int]$RunAttempt, [string]$Expect
         $env:GITHUB_REF -cne 'refs/heads/main' -or $env:GITHUB_EVENT_NAME -notin @('push', 'workflow_dispatch')) {
         throw 'CI release writes require a trusted main push or manual main dispatch.'
     }
-    Assert-CiRepositoryPrivate
+    Assert-CiRepository
     $run = Invoke-CiGh @('api', "repos/$script:CiRepository/actions/runs/$RunId") | ConvertFrom-Json
     if ([string]$run.id -cne $RunId -or $run.run_attempt -ne $RunAttempt -or $run.head_sha -cne $ExpectedSha -or
         $run.head_branch -cne 'main' -or $run.event -cne $env:GITHUB_EVENT_NAME -or
@@ -178,7 +177,7 @@ function Receive-CiBuild(
     $ErrorActionPreference = 'Stop'
     if ($RunId -notmatch '^[1-9][0-9]{0,18}$') { throw 'Invalid trusted run ID.' }
     $tag = Get-CiBuildTag $RunNumber $RunAttempt
-    Assert-CiRepositoryPrivate
+    Assert-CiRepository
     $release = Get-CiRelease $tag $ExpectedSha $false
     Assert-CiReleaseAssets $release $true
     New-Item -ItemType Directory -Path $DestinationDirectory -Force | Out-Null
