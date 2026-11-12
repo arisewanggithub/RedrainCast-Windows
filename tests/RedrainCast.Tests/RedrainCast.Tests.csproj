@@ -57,6 +57,7 @@
     <None Include="..\..\src\RedrainCast.App\PlaybackStatisticsOverlay.cs" Link="fixtures\PlaybackStatisticsOverlay.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.Send.Media\WindowsVideoSource.cs" Link="fixtures\WindowsVideoSource.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.Receive.Media\GpuPresenter.cs" Link="fixtures\GpuPresenter.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.Receive.Media\D3D11ContextSynchronization.cs" Link="fixtures\D3D11ContextSynchronization.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.Receive.Media\PresentationRequestState.cs" Link="fixtures\PresentationRequestState.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.Receive.Media\HardwareDecoder.cs" Link="fixtures\HardwareDecoder.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.Receive.Media\VideoPlayback.cs" Link="fixtures\VideoPlayback.cs.txt" CopyToOutputDirectory="PreserveNewest"/>

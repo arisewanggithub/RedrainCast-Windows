@@ -11,6 +11,7 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
     private HardwareDecoder decoder;
     private readonly Func<ValueTask> detach;
     private readonly Func<string, ValueTask> status;
+    private readonly VideoFrameTrace trace;
     private readonly AudioPlayback? audio;
     private readonly PlaybackClock clock;
     private bool independentRecovery;
@@ -21,9 +22,19 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
     private readonly HdrVideoFormat expectedFormat;
     private int rendered;
     private int decodedCurrentGeneration;
-    private readonly object nativeGate = new();
-    private HardwareFrame? lastFrame;
-    private HardwareFrame? pendingFrame;
+    // Order for lifecycle changes: decoderGate -> renderGate -> mailbox/device lock.
+    // Neither lane acquires the other's gate during ordinary decoding/presentation.
+    private readonly object decoderGate = new();
+    private readonly object renderGate = new();
+    // Publication tracing may race consumer retirement; cache metadata before transferring ownership.
+    private sealed record VideoFrame(HardwareFrame Surface, long Session, uint Generation) : IDisposable
+    {
+        public long PtsUs { get; } = Surface.PtsUs;
+        public int RotationDegrees { get; } = Surface.RotationDegrees;
+        public void Dispose() => Surface.Dispose();
+    }
+    private VideoFrame? lastFrame;
+    private readonly VideoFrameMailbox<VideoFrame> mailbox;
     private readonly AutoResetEvent renderWake = new(false);
     private readonly CancellationTokenSource renderCancellation = new();
     private readonly Task renderTask;
@@ -56,6 +67,10 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
             ? null : result;
     }
     public AvTimingSample? LastAvTiming => Volatile.Read(ref lastAvTiming);
+    public Action<VideoReadObservation>? VideoReadDiagnostics => trace.ReadsActive
+        ? observation => trace.ReadObservation(Interlocked.Read(ref timingSession), observation) : null;
+    public void RecordStatisticsSample(long session, PlaybackStatistics sample, long sampledAtMs, bool baselineReset) =>
+        trace.StatisticsSample(session, sample, sampledAtMs, baselineReset);
     public AvTimingSample? MaximumAvTiming => Volatile.Read(ref maximumAvTiming);
     private long? firstVideoPresentationPts;
     private long receivedVideoPackets, decodedVideoPackets, decodedFrames, skippedFrames;
@@ -108,10 +123,12 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
         }
         if (midstream)
         {
-            lock (nativeGate)
+            lock (decoderGate)
+            lock (renderGate)
             {
                 token.ThrowIfCancellationRequested();
-                pendingFrame?.Dispose(); pendingFrame = null;
+                ObjectDisposedException.ThrowIf(disposed || renderCancellation.IsCancellationRequested, this);
+                mailbox.Reset("recovery_reset");
                 lastFrame?.Dispose(); lastFrame = null;
                 decoder.Dispose();
                 decoder = new HardwareDecoder(presenter.Device, codecName, expectedFormat);
@@ -152,11 +169,34 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
     {
         if (packet.Track == 1) Interlocked.Increment(ref receivedVideoPackets);
     }
+    public void ObserveReceived(Packet packet)
+    {
+        if (packet.Track == 1) trace.Record("receive", packet.Session, packet.Generation, packet.PtsUs);
+    }
+    public void ObserveDequeued(Packet packet)
+    {
+        if (packet.Track == 1) trace.Stage("queue_take", packet.Session, packet.Generation, packet.PtsUs);
+    }
     private long lastVideoPts;
     public string Diagnostics => $"video received={Interlocked.Read(ref receivedVideoPackets)}, decoded={DecodedFrames}, rendered={presenter.PresentedFrames}, skipped={SkippedFrames}, lastPts={Interlocked.Read(ref lastVideoPts)}, maxSkewUs={MaximumAvSkewUs}, decodeMaxUs={Interlocked.Read(ref maximumDecodeUs)}, decodeAvgUs={Interlocked.Read(ref totalDecodeUs) / Math.Max(1, Interlocked.Read(ref decodedVideoPackets))}, gateWaitMaxUs={Interlocked.Read(ref maximumGateWaitUs)}; {decoder.Diagnostics}; {presenter.Diagnostics}; {audio?.Diagnostics}";
 
     public long PlayedAudioFrames => audio?.PlayedFrames ?? 0;
-    public IDisposable? EnterTrack(uint track) => track == 2 && audio is not null ? WasapiOutput.AudioThread() : null;
+    public bool AffineMediaReaders { get; } =
+        MediaLaneScheduling.IsEnabled(Environment.GetEnvironmentVariable("REDRAIN_MEDIA_MMCSS_LANES"));
+    private void ThreadDiagnostic(string message) => status(message).AsTask().GetAwaiter().GetResult();
+    public IDisposable? EnterTrack(uint track) => track == 2 && audio is not null
+        ? new MediaLaneScheduling("audio_decode", "Audio", WasapiOutput.AudioThread, ThreadDiagnostic)
+        : track == 1 && AffineMediaReaders
+            ? PlaybackLane("video_decode")
+            : null;
+    public IDisposable? EnterMediaReader(uint track) => track == 1
+        ? PlaybackLane("video_read")
+        : track == 2 && audio is not null
+            ? new MediaLaneScheduling("audio_read", "Audio", WasapiOutput.AudioThread, ThreadDiagnostic)
+            : throw new InvalidOperationException("Unknown media reader lane.");
+    private IDisposable PlaybackLane(string lane) => new MediaLaneScheduling(lane, "Playback",
+        () => new RedrainCast.Media.MediaThreadScheduling(RedrainCast.Media.MediaThreadTask.Playback, null),
+        ThreadDiagnostic);
     public VideoPlayback(GpuPresenter presenter, HardwareDecoder decoder, Func<ValueTask> detach, Func<string, ValueTask> status,
         AudioPlayback? audio, string codecName = "h264", HdrVideoFormat? color = null, PlaybackClock? clock = null)
     {
@@ -164,12 +204,22 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
         this.decoder = decoder;
         this.detach = detach;
         this.status = status;
+        trace = new VideoFrameTrace(status);
+        mailbox = new VideoFrameMailbox<VideoFrame>(() => renderWake.Set(), ReleasePending,
+            frame => trace.Stage("pending", frame.Session, frame.Generation, frame.PtsUs));
         this.audio = audio;
+        if (audio is not null) audio.ThreadDiagnostic = ThreadDiagnostic;
         this.clock = clock ?? new PlaybackClock(audioExpected: audio is not null);
         this.codecName = codecName;
         expectedFormat = color ?? HdrVideoFormat.Sdr;
         expectedFormat.Validate(codecName);
         renderTask = Task.Factory.StartNew(RenderLoop, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+    }
+
+    private void ReleasePending(VideoFrame frame, string reason)
+    {
+        try { trace.Record("skip", frame.Session, frame.Generation, frame.PtsUs, reason); }
+        finally { frame.Dispose(); Interlocked.Increment(ref skippedFrames); }
     }
 
     public static void Validate(CastRequest request)
@@ -228,19 +278,22 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
         var buffers = JsonObject.Member(json, "csd", JsonValueKind.Array).EnumerateArray()
             .Select(item => Convert.FromBase64String(item.GetString()!)).ToArray();
         CheckVideoHealth();
-        lock (nativeGate)
+        lock (decoderGate)
+        lock (renderGate)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            ObjectDisposedException.ThrowIf(disposed || renderCancellation.IsCancellationRequested, this);
             Volatile.Write(ref statisticsConfiguration, null);
             Volatile.Write(ref statisticsVideo, null);
             presenter.ResetStatistics();
             Interlocked.Exchange(ref statisticsPeakSkewUs, 0);
             Volatile.Write(ref rendered, 0);
+            mailbox.Reset("configuration_reset");
             configuredGeneration = configuration.Generation;
             videoAnchored = false;
             timingSession = configuration.Session;
             Volatile.Write(ref lastAvTiming, null);
             Volatile.Write(ref decodedCurrentGeneration, 0);
-            if (pendingFrame is not null) { pendingFrame.Dispose(); pendingFrame = null; Interlocked.Increment(ref skippedFrames); }
             lastFrame?.Dispose(); lastFrame = null;
             decoder.Configure(CodecConfiguration.VideoData(codecName, buffers),
                 JsonObject.Number(json, "width"), JsonObject.Number(json, "height"));
@@ -262,9 +315,15 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
         }
         CheckVideoHealth();
         IReadOnlyList<HardwareFrame> frames;
+        long revision, totalDecoded;
         var waitingAt = Stopwatch.GetTimestamp();
-        lock (nativeGate)
+        trace.Stage("decode_wait", media.Session, media.Generation, media.PtsUs);
+        lock (decoderGate)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            ObjectDisposedException.ThrowIf(disposed || renderCancellation.IsCancellationRequested, this);
+            revision = mailbox.Revision;
+            trace.Stage("decode_enter", media.Session, media.Generation, media.PtsUs);
             if (!videoAnchored)
             {
                 clock.AnchorVideo(media.PtsUs);
@@ -276,14 +335,17 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
             var elapsed = (long)Stopwatch.GetElapsedTime(begin).TotalMicroseconds;
             Interlocked.Exchange(ref maximumDecodeUs, Math.Max(Interlocked.Read(ref maximumDecodeUs), elapsed));
             Interlocked.Add(ref totalDecodeUs, elapsed);
+            trace.Stage("decode_end", media.Session, media.Generation, media.PtsUs);
+            Interlocked.Increment(ref decodedVideoPackets);
+            totalDecoded = Interlocked.Add(ref decodedFrames, frames.Count);
+            if (frames.Count > 0) Volatile.Write(ref decodedCurrentGeneration, 1);
+            var expectedKey = Interlocked.Read(ref recoveryKey);
+            if (expectedKey >= 0 && frames.Any(frame => frame.PtsUs >= expectedKey &&
+                (!independentRecovery || clock.CurrentUs is not { } source || source - frame.PtsUs <= StreamRecovery.MaximumKeyAgeUs)))
+                Interlocked.CompareExchange(ref decodedRecoveryKey, expectedKey, -1);
         }
-        Interlocked.Increment(ref decodedVideoPackets);
-        var totalDecoded = Interlocked.Add(ref decodedFrames, frames.Count);
-        if (frames.Count > 0) Volatile.Write(ref decodedCurrentGeneration, 1);
-        var expectedKey = Interlocked.Read(ref recoveryKey);
-        if (expectedKey >= 0 && frames.Any(frame => frame.PtsUs >= expectedKey &&
-            (!independentRecovery || clock.CurrentUs is not { } source || source - frame.PtsUs <= StreamRecovery.MaximumKeyAgeUs)))
-            Interlocked.CompareExchange(ref decodedRecoveryKey, expectedKey, -1);
+        foreach (var frame in frames)
+            trace.Record("decode", media.Session, media.Generation, frame.PtsUs);
         try
         {
             if (frames.Count > 0 && totalDecoded == frames.Count)
@@ -295,16 +357,19 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
                 if (independentRecovery && clock.CurrentUs is { } source &&
                     source - frame.PtsUs > StreamRecovery.MaximumKeyAgeUs)
                 {
+                    trace.Record("skip", media.Session, media.Generation, frame.PtsUs, "stale_recovery");
                     Interlocked.Increment(ref skippedFrames);
                     continue;
                 }
-                lock (nativeGate)
+                trace.Stage("pending_wait", media.Session, media.Generation, frame.PtsUs);
+                lock (decoderGate)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    ObjectDisposedException.ThrowIf(disposed || renderCancellation.IsCancellationRequested, this);
                     CheckVideoHealth();
-                    Volatile.Write(ref statisticsVideo, frame.Statistics);
-                    if (pendingFrame is not null) { pendingFrame.Dispose(); Interlocked.Increment(ref skippedFrames); }
-                    pendingFrame = frame.Clone();
-                    renderWake.Set();
+                    if (revision == mailbox.Revision)
+                        Volatile.Write(ref statisticsVideo, frame.Statistics);
+                    mailbox.Publish(new(frame.Clone(), media.Session, media.Generation), revision);
                 }
             }
         }
@@ -323,52 +388,110 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
         var token = renderCancellation.Token;
         while (true)
         {
-            var delay = presenter.IsOccluded ? 100 :
-                Volatile.Read(ref pendingFrame) is not null ||
-                Volatile.Read(ref lastFrame) is not null && presenter.HasPendingRedraw ? 5 : 250;
-            if (WaitHandle.WaitAny([renderWake, token.WaitHandle], delay) == 1) token.ThrowIfCancellationRequested();
+            var hasWork = mailbox.HasPending ||
+                Volatile.Read(ref lastFrame) is not null && presenter.HasPendingRedraw;
+            var occluded = presenter.IsOccluded;
+            var delay = occluded ? 100 : hasWork ? 5 : 250;
+            var wake = WaitForRender(token, delay, hasWork && !occluded && !videoSuspended && !sessionStopped);
+            if (wake == 1) token.ThrowIfCancellationRequested();
             token.ThrowIfCancellationRequested();
+            trace.Stage("render_wake", Interlocked.Read(ref timingSession), Volatile.Read(ref configuredGeneration),
+                -1, wake == 0 ? "signaled" : wake == 2 ? "readiness" : "timeout");
             if (videoSuspended || sessionStopped) continue;
-            if (!Monitor.TryEnter(nativeGate)) continue;
             var first = false;
-            try
+            (long Session, uint Generation, long PtsUs, long Revision)? presentedFrame = null;
+            trace.ReadinessStage("render_gate_wait", Interlocked.Read(ref timingSession),
+                Volatile.Read(ref configuredGeneration), -1);
+            lock (renderGate)
             {
-                if (pendingFrame is { } frame)
+                trace.ReadinessStage("render_gate_enter", timingSession, configuredGeneration, -1);
+                token.ThrowIfCancellationRequested();
+                if (videoSuspended || sessionStopped) continue;
+                var frame = mailbox.Take(out var revision);
+                if (frame is not null)
                 {
-                    if (!presenter.Present(frame)) continue;
-                    clock.VideoPresented(frame.PtsUs);
-                    awake.SetPlaying(true);
-                    pendingFrame = null;
+                    trace.ReadinessStage("mailbox_take", frame.Session, frame.Generation, frame.PtsUs);
+                    bool presented;
+                    try
+                    {
+                        trace.Stage("render_begin", frame.Session, frame.Generation, frame.PtsUs);
+                        presented = trace.ReadinessActive
+                            ? presenter.Present(frame.Surface, (stage, reason) =>
+                                trace.ReadinessStage(stage, frame.Session, frame.Generation, frame.PtsUs, reason))
+                            : presenter.Present(frame.Surface);
+                        trace.Stage("render_end", frame.Session, frame.Generation, frame.PtsUs, presenter.LastRenderOutcome);
+                    }
+                    catch { frame.Dispose(); throw; }
+                    if (!presented)
+                    {
+                        trace.ReadinessStage("mailbox_return", frame.Session, frame.Generation, frame.PtsUs, "begin");
+                        mailbox.Return(frame, revision);
+                        trace.ReadinessStage("mailbox_return", frame.Session, frame.Generation, frame.PtsUs, "end");
+                        continue;
+                    }
                     lastFrame?.Dispose();
                     lastFrame = frame;
+                    trace.Record("present", frame.Session, frame.Generation, frame.PtsUs);
+                    clock.VideoPresented(frame.PtsUs);
+                    awake.SetPlaying(true);
                     Volatile.Write(ref lastPresentedRotation, frame.RotationDegrees);
                     Interlocked.Exchange(ref lastVideoPts, frame.PtsUs);
-                    if (audio?.Position is { ContentFrames: > 0, PtsUs: { } audioPts } position)
-                    {
-                        var signedSkew = frame.PtsUs - audioPts;
-                        MediaTiming.Record(MediaStage.VideoPresent, timingSession, 1, configuredGeneration,
-                            frame.PtsUs, audioPts, position.ContentFrames, signedSkew);
-                        var skew = Math.Abs(signedSkew);
-                        Interlocked.Exchange(ref statisticsPeakSkewUs, Math.Max(Interlocked.Read(ref statisticsPeakSkewUs), skew));
-                        var timing = new AvTimingSample(configuredGeneration, frame.PtsUs, audioPts,
-                            position.ContentFrames, signedSkew, Environment.TickCount64);
-                        Volatile.Write(ref lastAvTiming, timing);
-                        if (skew > maximumAvSkewUs) Volatile.Write(ref maximumAvTiming, timing);
-                        maximumAvSkewUs = Math.Max(maximumAvSkewUs, skew);
-                        firstVideoPresentationPts ??= frame.PtsUs;
-                        if (frame.PtsUs - firstVideoPresentationPts.Value >= 1_000_000)
-                            maximumSteadySkewUs = Math.Max(maximumSteadySkewUs, skew);
-                        Interlocked.Increment(ref avMeasurements);
-                    }
+                    presentedFrame = (frame.Session, frame.Generation, frame.PtsUs, revision);
                     first = Interlocked.Exchange(ref rendered, 1) == 0;
                 }
                 else if (presenter.HasPendingRedraw && lastFrame is not null)
-                    presenter.Redraw(lastFrame);
+                {
+                    trace.Stage("render_begin", timingSession, configuredGeneration, lastFrame.PtsUs, "redraw");
+                    if (trace.ReadinessActive)
+                        presenter.Redraw(lastFrame.Surface, (stage, reason) =>
+                            trace.ReadinessStage(stage, timingSession, configuredGeneration, lastFrame.PtsUs, reason));
+                    else
+                        presenter.Redraw(lastFrame.Surface);
+                    trace.Stage("render_end", timingSession, configuredGeneration, lastFrame.PtsUs, presenter.LastRenderOutcome);
+                }
             }
-            finally { Monitor.Exit(nativeGate); }
+            // Audio's position getter can wait for audio decoding; never nest it inside video locks.
+            if (presentedFrame is { } sample &&
+                audio?.Position is { ContentFrames: > 0, PtsUs: { } audioPts } position)
+            {
+                lock (renderGate)
+                {
+                    if (sample.Revision == mailbox.Revision && !token.IsCancellationRequested)
+                        RecordAvTiming(sample.Session, sample.Generation, sample.PtsUs, audioPts, position.ContentFrames);
+                }
+            }
             if (first) status("Playing: first hardware-decoded D3D11 surface presented" +
                 (audio is null ? " (video only)." : " with low-latency audio recovery.")).AsTask().GetAwaiter().GetResult();
         }
+    }
+
+    private int WaitForRender(CancellationToken token, int delay, bool readinessEligible)
+    {
+        trace.ReadinessStage("render_wait", Interlocked.Read(ref timingSession),
+            Volatile.Read(ref configuredGeneration), -1, $"timeoutMs={delay};pending={mailbox.HasPending}");
+        return presenter.WaitForRender(renderWake, token.WaitHandle, delay, readinessEligible,
+            trace.ReadinessActive ? () =>
+                trace.ReadinessStage("readiness_signal", Interlocked.Read(ref timingSession),
+                    Volatile.Read(ref configuredGeneration), -1, mailbox.HasPending ? "pending" : "idle")
+                : null);
+    }
+
+    private void RecordAvTiming(long session, uint generation, long videoPts, long audioPts, long contentFrames)
+    {
+        var signedSkew = videoPts - audioPts;
+        MediaTiming.Record(MediaStage.VideoPresent, session, 1, generation,
+            videoPts, audioPts, contentFrames, signedSkew);
+        var skew = Math.Abs(signedSkew);
+        Interlocked.Exchange(ref statisticsPeakSkewUs, Math.Max(Interlocked.Read(ref statisticsPeakSkewUs), skew));
+        var timing = new AvTimingSample(generation, videoPts, audioPts,
+            contentFrames, signedSkew, Environment.TickCount64);
+        Volatile.Write(ref lastAvTiming, timing);
+        if (skew > maximumAvSkewUs) Volatile.Write(ref maximumAvTiming, timing);
+        maximumAvSkewUs = Math.Max(maximumAvSkewUs, skew);
+        firstVideoPresentationPts ??= videoPts;
+        if (videoPts - firstVideoPresentationPts.Value >= 1_000_000)
+            maximumSteadySkewUs = Math.Max(maximumSteadySkewUs, skew);
+        Interlocked.Increment(ref avMeasurements);
     }
 
     public async ValueTask DisposeAsync()
@@ -382,24 +505,28 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
         }
         finally
         {
-            try { await detach(); }
+            try { await trace.DisposeAsync(); }
             finally
             {
-                lock (nativeGate)
+                try { await detach(); }
+                finally
                 {
-                    disposed = true;
-                    pendingFrame?.Dispose();
-                    pendingFrame = null;
-                    lastFrame?.Dispose();
-                    lastFrame = null;
-                    try { decoder.Dispose(); }
-                    finally
+                    lock (decoderGate)
+                    lock (renderGate)
                     {
-                        try { presenter.Dispose(); }
+                        disposed = true;
+                        mailbox.Reset("disposed", close: true);
+                        lastFrame?.Dispose();
+                        lastFrame = null;
+                        try { decoder.Dispose(); }
                         finally
                         {
-                            try { awake.Dispose(); }
-                            finally { renderWake.Dispose(); renderCancellation.Dispose(); }
+                            try { presenter.Dispose(); }
+                            finally
+                            {
+                                try { awake.Dispose(); }
+                                finally { renderWake.Dispose(); renderCancellation.Dispose(); }
+                            }
                         }
                     }
                 }

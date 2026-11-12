@@ -178,6 +178,45 @@ not live decoder performance, physical scanout, or phone interoperability.
 
 ## Network and media
 
+### Receiver media scheduling and latest-frame rendering
+
+Receiver media reading/framing/admission and per-track decoding now use dedicated
+thread-affine MMCSS workers by default. Video uses `Playback` at
+`AVRT_PRIORITY_NORMAL`; audio retains its existing `Audio` policy. Rendering
+and audio output retain their dedicated MMCSS workers. For a process-only
+rollback comparison, set `REDRAIN_MEDIA_MMCSS_LANES=0`; `1` explicitly enables
+the default. No shared ThreadPool thread is registered. Lifecycle diagnostics
+include lane names, native thread IDs and registration/revert outcomes; native
+failures surface instead of silently running unregistered.
+
+The initial channel identification, control/UI/recovery coordination and CLR
+I/O-completion/kernel/driver internals are outside this guarantee. MMCSS is a
+scheduling preference, not a zero-delay or latency guarantee. Sender scheduling
+is unchanged by this receiver-only change.
+
+Video decode publishes a latest-frame mailbox without waiting for presentation.
+The render owner consumes swap-chain readiness once and immediately attempts
+the latest pending frame, prioritizing cancellation/publication and retaining
+rejected-present tokens. Redraw, occlusion, recovery and disposal preserve their
+ownership rules. D3D11 immediate-context operations are serialized separately
+from presentation waits. Audio PCM conversion and WASAPI work no longer hold
+the PCM state lock; see [receiver audio locking](docs/receiver-audio-locking.md).
+
+### Optional bounded receiver diagnostics
+
+Diagnostics remain disabled unless `REDRAIN_VIDEO_TRACE=1`. Optional process-only
+`REDRAIN_VIDEO_TRACE_SECONDS` selects 1-600 seconds (default 30).
+`REDRAIN_VIDEO_TRACE_STAGES=1` enables stage metadata;
+`REDRAIN_VIDEO_TRACE_READINESS=1` and `REDRAIN_VIDEO_TRACE_READS=1` additionally
+enable readiness and framing/admission observations when stages are enabled.
+Recordings have fixed capacities, explicit overflow/completeness outcomes, and
+contain timestamps/counters/identifiers, not media payloads. Exact
+`STATISTICS_SAMPLE` records preserve the actual overlay sampling/reset window:
+recent skipped percentage is delta-skipped / (delta-presented + delta-skipped).
+Read completion is an application observation, not kernel/network arrival;
+readiness observation and successful presentation do not prove physical scanout.
+Diagnostic perturbation and workload differences limit comparisons.
+
 **Trusted local networks only.** Incoming casts require no approval and custom
 TCP/discovery are unauthenticated and unencrypted. Use a trusted Private network
 and application-based Windows Firewall rules. TCP listener ports are OS-assigned;

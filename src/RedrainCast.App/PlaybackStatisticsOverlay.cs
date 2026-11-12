@@ -119,7 +119,10 @@ public sealed partial class MainWindow
                 ClearStatistics();
                 return;
             }
-            var rates = statisticsRates.Sample(Environment.TickCount64, playback, receive);
+            var sampledAtMs = Environment.TickCount64;
+            var rates = statisticsRates.Sample(sampledAtMs, playback, receive);
+            if (isolatedStatisticsProvider is null)
+                video.RecordStatisticsSample(receive.Session, playback, sampledAtMs, statisticsRates.BaselineReset);
             var peak = statisticsPeak.Sample(playback, receive, statisticsRates.BaselineReset);
             var canvasWidth = (int)Math.Ceiling(VideoSurface.ActualWidth * VideoSurface.CompositionScaleX);
             var canvasHeight = (int)Math.Ceiling(VideoSurface.ActualHeight * VideoSurface.CompositionScaleY);

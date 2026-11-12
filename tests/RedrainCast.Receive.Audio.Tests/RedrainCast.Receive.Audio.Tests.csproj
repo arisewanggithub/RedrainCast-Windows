@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\RedrainCast.Receive.Media\AudioPlayback.cs" Link="AudioPlayback.cs"/>
+    <Compile Include="..\..\src\RedrainCast.Receive.Media\MediaLaneScheduling.cs" Link="MediaLaneScheduling.cs"/>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0"/>
+    <PackageReference Include="xunit" Version="2.9.3"/>
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" PrivateAssets="all"/>
+    <ProjectReference Include="..\..\src\RedrainCast.Receive.Core\RedrainCast.Receive.Core.csproj"/>
+  </ItemGroup>
+</Project>

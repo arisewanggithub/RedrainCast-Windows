@@ -4,4 +4,5 @@
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="..\RedrainCast.Protocol\RedrainCast.Protocol.csproj"/></ItemGroup>
   <ItemGroup><InternalsVisibleTo Include="RedrainCast.Receive.Tests" /></ItemGroup>
+  <ItemGroup><Compile Include="..\Shared\MediaLaneThread.cs" Link="MediaLaneThread.cs" /></ItemGroup>
 </Project>

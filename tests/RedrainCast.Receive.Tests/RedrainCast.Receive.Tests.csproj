@@ -7,7 +7,11 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\src\Shared\MediaThreadScheduling.cs" Link="MediaThreadScheduling.cs"/>
+    <Compile Include="..\..\src\RedrainCast.Receive.Media\MediaLaneScheduling.cs" Link="MediaLaneScheduling.cs"/>
     <Compile Include="..\..\src\RedrainCast.Receive.Media\VideoRenderWorker.cs" Link="VideoRenderWorker.cs"/>
+    <Compile Include="..\..\src\RedrainCast.Receive.Media\VideoFrameMailbox.cs" Link="VideoFrameMailbox.cs"/>
+    <Compile Include="..\..\src\RedrainCast.Receive.Media\VideoFrameTrace.cs" Link="VideoFrameTrace.cs"/>
+    <Compile Include="..\..\src\RedrainCast.Receive.Media\VideoRenderWait.cs" Link="VideoRenderWait.cs"/>
     <Compile Include="..\..\src\RedrainCast.Receive.Media\HdrDisplayPolicy.cs" Link="HdrDisplayPolicy.cs"/>
     <Compile Include="..\..\src\RedrainCast.Receive.Media\PresentationRequestState.cs" Link="PresentationRequestState.cs"/>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0"/>
@@ -18,6 +22,7 @@
   <ItemGroup>
     <None Include="fixtures\*.json" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.Receive.Media\VideoPlayback.cs" Link="fixtures\VideoPlayback.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="..\..\src\RedrainCast.Receive.Core\ReceiverServer.cs" Link="fixtures\ReceiverServer.cs.txt" CopyToOutputDirectory="PreserveNewest"/>
     <None Include="..\..\src\RedrainCast.App\MainWindow.xaml" Link="fixtures\MainWindow.xaml" CopyToOutputDirectory="PreserveNewest"/>
   </ItemGroup>
 </Project>

@@ -35,6 +35,11 @@ paths, but not screen images or audio recordings. Logs remain local unless you
 choose to share them; review and redact identifying information before sharing.
 Explicit developer self-tests write reports only to a caller-specified path.
 
+Explicitly enabled developer video traces (`REDRAIN_VIDEO_TRACE=1`) save bounded
+local timestamp/counter/session metadata under `RedrainCast\Logs`.
+They do not contain encoded or decoded media payloads and are disabled by
+default. Trace files remain local; review identifiers before sharing them.
+
 Receiving pauses while this app sends and automatically resumes when sending
 ends. Closing the app normally stops listeners/capture and releases owned media
 resources. No remote keyboard/mouse control is granted by receiving video.
