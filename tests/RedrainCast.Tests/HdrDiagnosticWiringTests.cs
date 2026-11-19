@@ -65,7 +65,8 @@ public sealed class HdrDiagnosticWiringTests
         Assert.Contains("requests.TryRender(frame.ColorFormat, request => RenderSynchronized(frame, newFrame, request,", presenter);
         Assert.Contains("diagnostic: diagnostic)", presenter);
         Assert.Contains("Prepare(frame.Width, frame.Height, request);", presenter);
-        Assert.Contains("hdrRenderer.Draw(frame, buffer, request.Display);", presenter);
+        Assert.Contains("var rotation = request.OutputRotation(frame.RotationDegrees, orientation);", presenter);
+        Assert.Contains("hdrRenderer.Draw(frame, buffer, request.Display, rotation);", presenter);
         Assert.Contains("Interlocked.CompareExchange(ref resizeFailure, error, null)", playback);
         Assert.Contains("Interlocked.CompareExchange(ref renderFailure, error, null)", playback);
         Assert.Contains("trace.StatisticsSample(session, sample, sampledAtMs, baselineReset)", playback);
