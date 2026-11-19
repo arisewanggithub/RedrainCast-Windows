@@ -30,7 +30,6 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
     private sealed record VideoFrame(HardwareFrame Surface, long Session, uint Generation) : IDisposable
     {
         public long PtsUs { get; } = Surface.PtsUs;
-        public int RotationDegrees { get; } = Surface.RotationDegrees;
         public void Dispose() => Surface.Dispose();
     }
     private VideoFrame? lastFrame;
@@ -78,7 +77,6 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
     public long DecodedFrames => Interlocked.Read(ref decodedFrames);
     public long SkippedFrames => Interlocked.Read(ref skippedFrames);
     public long LastPresentedPtsUs => Interlocked.Read(ref lastVideoPts);
-    private int lastPresentedRotation;
     private long recoveryKey = -1, decodedRecoveryKey = -1;
     public long? DecodedRecoveryKeyPtsUs => Interlocked.Read(ref decodedRecoveryKey) is var pts && pts >= 0 ? pts : null;
     public long? FirstRecoverySourceAudioPtsUs => audio?.FirstRecoverySourcePtsUs;
@@ -151,7 +149,7 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
         await ConfigureAsync(video, token);
         token.ThrowIfCancellationRequested();
     }
-    public int LastPresentedRotationDegrees => Volatile.Read(ref lastPresentedRotation);
+    public int LastPresentedRotationDegrees => presenter.LastPresentedRotationDegrees;
     public string DecoderDiagnostics => decoder.Diagnostics;
     public int HardwareSurfaceCount => decoder.HardwareSurfaceCount;
     public int MinimumHardwareSurfaces => decoder.MinimumHardwareSurfaces;
@@ -258,6 +256,12 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed), this);
         if (!presenter.SetDisplayPolicy(policy)) return;
         renderWake.Set();
+    }
+
+    public void SetMonitorSize(int width, int height)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed), this);
+        if (presenter.SetMonitorSize(width, height)) renderWake.Set();
     }
 
     public void FailDisplay(Exception error) => Interlocked.CompareExchange(ref resizeFailure, error, null);
@@ -434,7 +438,6 @@ public sealed class VideoPlayback : IPlayback, IVideoPlaybackProgress, IStreamRe
                     trace.Record("present", frame.Session, frame.Generation, frame.PtsUs);
                     clock.VideoPresented(frame.PtsUs);
                     awake.SetPlaying(true);
-                    Volatile.Write(ref lastPresentedRotation, frame.RotationDegrees);
                     Interlocked.Exchange(ref lastVideoPts, frame.PtsUs);
                     presentedFrame = (frame.Session, frame.Generation, frame.PtsUs, revision);
                     first = Interlocked.Exchange(ref rendered, 1) == 0;

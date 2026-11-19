@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -23,6 +24,7 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
     private bool disposed;
     private bool hdrVerified;
     private HdrDisplayPolicy displayPolicy = HdrDisplayPolicy.MetadataUnavailable("The UI-owned display window is not available.");
+    private (int Width, int Height)? monitorSize;
     private HdrReceiverCapabilities hdrCapabilities = HdrReceiverCapabilities.None;
     public HdrReceiverCapabilities HdrCapabilities => Volatile.Read(ref hdrCapabilities);
     public event Action? HdrCapabilitiesChanged;
@@ -66,11 +68,12 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
     public bool SupportsStreamRecovery => true;
     public RedrainCast.Protocol.ReceiverOptionCapabilities ReceiverOptions => RedrainCast.Protocol.ReceiverOptionCapabilities.Implemented;
     public CastRequest? StatisticsRequest { get; private set; }
+    public PresentationOrientation Presentation { get; private set; }
     public PlaybackStatistics? Statistics => playback?.Statistics(PlaybackEpoch);
     public void RecordStatisticsSample(long session, PlaybackStatistics sample, long sampledAtMs, bool baselineReset) =>
         playback?.RecordStatisticsSample(session, sample, sampledAtMs, baselineReset);
     public event Action? StatisticsAvailabilityChanged;
-    public string Description => "Hardware-only H.264, HEVC Main/Main10 HDR10 and AV1 Profile 0 over custom TCP with PCM/AAC-LC/Opus audio. HDR10 availability is hardware-verified; local output uses native scRGB on HDR displays or GPU BT.2390 SDR mapping. Immediate video and adaptive 50-150 ms audio buffering. Auto orientation, uncapped or 1 to 240 FPS requests; actual decode/display performance depends on codec, resolution and hardware. Brief audio gaps remain possible.";
+    public string Description => "Hardware-only H.264, HEVC Main/Main10 HDR10 and AV1 Profile 0 over custom TCP with PCM/AAC-LC/Opus audio. HDR10 availability is hardware-verified; local output uses native scRGB on HDR displays or GPU BT.2390 SDR mapping. Immediate video and adaptive 50-150 ms audio buffering. Automatic, Landscape or Portrait presentation; uncapped or 1 to 240 FPS requests. Actual decode/display performance depends on codec, resolution and hardware. Brief audio gaps remain possible.";
 
     public VideoHost(SwapChainPanel panel, Action<string> status)
     {
@@ -135,6 +138,20 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
     {
         if (!dispatcher.HasThreadAccess) throw new InvalidOperationException("Display policy must be refreshed on its UI thread.");
         if (disposed) return;
+        if (displayWindow != 0)
+        {
+            try
+            {
+                var size = WindowLayoutController.MonitorSize(displayWindow);
+                if (size != monitorSize)
+                {
+                    if (playback is not null) playback.SetMonitorSize(size.Width, size.Height);
+                    else active?.SetMonitorSize(size.Width, size.Height);
+                    monitorSize = size;
+                }
+            }
+            catch (Win32Exception error) { status($"Monitor orientation unavailable: {error.Message}"); }
+        }
         var next = HdrDisplayPolicy.Query(displayWindow);
         if (next != displayPolicy)
         {
@@ -195,7 +212,10 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
             request.ColorFormat.Validate(request.VideoCodec);
             if (request.ColorFormat.Hdr10 && !HdrCapabilities.CanReceiveHdr10)
                 throw new NotSupportedException("Native Main10/P010 decode and local HDR renderer have not passed hardware preflight.");
-            presenter = new GpuPresenter(request.VideoProcessingFramesPerSecond, request.ColorFormat);
+            // Fullscreen transitions, resizing or moving the window can require a turn after admission.
+            if (!request.ColorFormat.Hdr10 && request.Presentation != PresentationOrientation.Auto)
+                request.ValidatePresentation(SupportsVideoRotation);
+            presenter = new GpuPresenter(request.VideoProcessingFramesPerSecond, request.ColorFormat, request.Presentation);
             if (CollectPresentationSamples) presenter.EnablePresentationDiagnostics();
             decoder = new HardwareDecoder(presenter.Device, request.VideoCodec, request.ColorFormat);
             var clock = new PlaybackClock(audioExpected: request.AudioCodec is not null);
@@ -207,9 +227,13 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
                 if (active is not null) throw new InvalidOperationException("A video surface is already attached.");
                 if (request.ColorFormat.Hdr10 && !HdrCapabilities.CanReceiveHdr10)
                     throw new NotSupportedException("HDR display policy changed during playback preflight.");
+                if (monitorSize is null && request.Presentation != PresentationOrientation.Auto)
+                    throw new NotSupportedException("The receiver cannot determine the monitor orientation. Select Automatic.");
                 Attach(panel, ownedPresenter.SwapChain.NativePointer);
                 active = ownedPresenter;
                 ownedPresenter.SetDisplayPolicy(displayPolicy);
+                if (monitorSize is { } size)
+                    ownedPresenter.SetMonitorSize(size.Width, size.Height);
                 Resize();
             });
             cancellationToken.ThrowIfCancellationRequested();
@@ -222,6 +246,7 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
                     playback = null;
                     active = null;
                     StatisticsRequest = null;
+                    Presentation = PresentationOrientation.Auto;
                     StatisticsAvailabilityChanged?.Invoke();
                     status("Playback ended.");
                 }
@@ -235,6 +260,7 @@ internal sealed class VideoHost : IPlaybackFactory, IDisposable
                 playback = ownedPlayback;
                 ownedPlayback.RefreshDisplay(displayPolicy);
                 PlaybackEpoch++;
+                Presentation = request.Presentation;
                 StatisticsRequest = request.EffectiveOptions.PlaybackStats ? request : null;
                 StatisticsAvailabilityChanged?.Invoke();
                 Resize();

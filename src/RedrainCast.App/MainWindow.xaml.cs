@@ -435,7 +435,7 @@ public sealed partial class MainWindow : Window
         PlayerInput.IsTabStop = playing;
         if (playing)
         {
-            Diagnostic($"Receiver video surface exposed: decodedFrames={video.DecodedFrames}, presentedFrames={video.PresentedFrames}");
+            Diagnostic($"Receiver video surface exposed: decodedFrames={video.DecodedFrames}, presentedFrames={video.PresentedFrames}, orientation={video.Presentation}");
             presenterBeforePlayback = AppWindow.Presenter;
             AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
             Activate();

@@ -10,6 +10,23 @@ public sealed record CastRequest(string VideoCodec, string? AudioCodec, int Fram
     public HdrVideoFormat ColorFormat => VideoColor ?? HdrVideoFormat.Sdr;
     public ReceiverOptions EffectiveOptions => Options ?? ReceiverOptions.None;
     public uint[] Tracks => AudioCodec is null ? [1u] : [1u, 2u];
+    public PresentationOrientation Presentation => ParsePresentation(ReceiverOrientation);
+
+    public void ValidatePresentation(bool supportsSdrRotation)
+    {
+        if (Presentation != PresentationOrientation.Auto && !ColorFormat.Hdr10 && !supportsSdrRotation)
+            throw new ProtocolException(
+                "Forced Landscape or Portrait requires hardware SDR video rotation. Select Automatic for this receiver.",
+                "UNSUPPORTED_CONFIG");
+    }
+
+    private static PresentationOrientation ParsePresentation(string orientation) => orientation switch
+    {
+        "auto" => PresentationOrientation.Auto,
+        "landscape" => PresentationOrientation.Landscape,
+        "portrait" => PresentationOrientation.Portrait,
+        _ => throw new ProtocolException("Invalid receiver orientation.", "UNSUPPORTED_CONFIG")
+    };
 
     // Capture cap; zero means uncapped/unknown, not a zero-rate stream.
     public int VideoProcessingFramesPerSecond
@@ -18,9 +35,9 @@ public sealed record CastRequest(string VideoCodec, string? AudioCodec, int Fram
         {
             try { ColorFormat.Validate(VideoCodec); }
             catch (FormatException error) { throw new ProtocolException(error.Message, "UNSUPPORTED_CONFIG"); }
-            JsonObject.Require(VideoCodec is "h264" or "h265" or "av1" &&
-                ReceiverOrientation == "auto" && FramesPerSecond is >= 0 and <= 240,
-                "Supports hardware-only H.264, HEVC Main/Main10 and AV1 Profile 0, auto presentation, and uncapped or 1 to 240 FPS requests. HDR10 requires explicit negotiation. Actual codec/raster support and throughput depend on hardware. No substitution.",
+            _ = Presentation;
+            JsonObject.Require(VideoCodec is "h264" or "h265" or "av1" && FramesPerSecond is >= 0 and <= 240,
+                "Supports hardware-only H.264, HEVC Main/Main10 and AV1 Profile 0, and uncapped or 1 to 240 FPS requests. HDR10 requires explicit negotiation. Actual codec/raster support and throughput depend on hardware. No substitution.",
                 "UNSUPPORTED_CONFIG");
             return FramesPerSecond;
         }
@@ -65,8 +82,7 @@ public sealed record CastRequest(string VideoCodec, string? AudioCodec, int Fram
         }
         var orientation = root.TryGetProperty("receiverOrientation", out _)
             ? JsonObject.Text(root, "receiverOrientation") : "auto";
-        JsonObject.Require(orientation is "auto" or "landscape" or "portrait",
-            "Invalid receiver orientation.", "UNSUPPORTED_CONFIG");
+        _ = ParsePresentation(orientation);
         var audio = JsonObject.Member(root, "audio", JsonValueKind.Object);
         var enabled = JsonObject.Boolean(audio, "enabled");
         var audioCodec = JsonObject.Text(audio, "codec");

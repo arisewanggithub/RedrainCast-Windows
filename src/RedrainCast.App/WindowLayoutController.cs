@@ -49,6 +49,21 @@ internal sealed partial class WindowLayoutController : IDisposable
     private void RootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => Update(false);
     private void Changed(AppWindow sender, AppWindowChangedEventArgs args) => Update(false);
 
+    internal static (int Width, int Height) MonitorSize(nint window)
+    {
+        var (_, info) = QueryMonitor(window);
+        return (info.Bounds.Right - info.Bounds.Left, info.Bounds.Bottom - info.Bounds.Top);
+    }
+
+    private static (nint Monitor, MonitorInfo Info) QueryMonitor(nint window)
+    {
+        var monitor = MonitorFromWindow(window, 2);
+        var info = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>() };
+        if (monitor == 0 || GetMonitorInfo(monitor, ref info) == 0)
+            throw new Win32Exception(Marshal.GetLastPInvokeError(), "Cannot query the window's monitor.");
+        return (monitor, info);
+    }
+
     private void Update(bool initial)
     {
         if (disposed || updating || window.AppWindow.Presenter is not OverlappedPresenter presenter) return;
@@ -56,10 +71,7 @@ internal sealed partial class WindowLayoutController : IDisposable
         try
         {
             var handle = WinRT.Interop.WindowNative.GetWindowHandle(window);
-            var monitor = MonitorFromWindow(handle, 2);
-            var info = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>() };
-            if (monitor == 0 || GetMonitorInfo(monitor, ref info) == 0)
-                throw new Win32Exception(Marshal.GetLastPInvokeError(), "Cannot query display work area.");
+            var (monitor, info) = QueryMonitor(handle);
             var dpi = GetDpiForWindow(handle);
             var app = window.AppWindow;
             var geometry = (monitor, dpi, info.Work);

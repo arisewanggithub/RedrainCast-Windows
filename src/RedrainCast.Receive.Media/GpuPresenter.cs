@@ -33,6 +33,7 @@ public sealed class GpuPresenter : IDisposable
     private readonly ID3D11VideoContext videoContext;
     private readonly HdrVideoFormat color;
     private readonly HdrRenderer? hdrRenderer;
+    private readonly PresentationOrientation orientation;
     private HdrDisplayPolicy appliedDisplay = HdrDisplayPolicy.Sdr;
     private readonly PresentationRequestState requests = new();
     internal bool HasPendingRedraw => requests.HasPending;
@@ -80,6 +81,8 @@ public sealed class GpuPresenter : IDisposable
     }
     public long PresentedFrames => Interlocked.Read(ref presentedFrames);
     public long RedrawnFrames => Interlocked.Read(ref redrawnFrames);
+    private int lastPresentedRotation;
+    internal int LastPresentedRotationDegrees => Volatile.Read(ref lastPresentedRotation);
     public bool IsOccluded => Volatile.Read(ref lastPresentResult) == 0x087A0001;
     public bool SupportsVideoRotation => color.Hdr10 || enumerator?.VideoProcessorCaps.FeatureCaps.HasFlag(VideoProcessorFeatureCaps.Rotation) == true;
 
@@ -105,9 +108,11 @@ public sealed class GpuPresenter : IDisposable
         return presenter.SupportsVideoRotation;
     }
 
-    public GpuPresenter(int framesPerSecond, HdrVideoFormat? color = null)
+    public GpuPresenter(int framesPerSecond, HdrVideoFormat? color = null,
+        PresentationOrientation orientation = PresentationOrientation.Auto)
     {
         this.color = color ?? HdrVideoFormat.Sdr;
+        this.orientation = orientation;
         if (framesPerSecond is < 0 or > 240) throw new ArgumentOutOfRangeException(nameof(framesPerSecond));
         FramesPerSecond = framesPerSecond;
         Device = D3D11CreateDevice(DriverType.Hardware, DeviceCreationFlags.BgraSupport | DeviceCreationFlags.VideoSupport);
@@ -185,6 +190,7 @@ public sealed class GpuPresenter : IDisposable
     }
 
     public bool SetDisplayPolicy(HdrDisplayPolicy policy) => requests.SetDisplayPolicy(policy);
+    public bool SetMonitorSize(int width, int height) => requests.SetMonitorSize(width, height);
 
     public void Prepare(int width, int height)
     {
@@ -277,18 +283,19 @@ public sealed class GpuPresenter : IDisposable
             Prepare(frame.Width, frame.Height, request);
             if (frame.ColorFormat != color) throw new ProtocolException("Presenter color differs from the decoded surface.");
             using var buffer = SwapChain.GetBuffer<ID3D11Texture2D>(0);
+            var rotation = request.OutputRotation(frame.RotationDegrees, orientation);
             if (hdrRenderer is not null)
             {
                 Stage("hdr-shader");
-                hdrRenderer.Draw(frame, buffer, request.Display);
+                hdrRenderer.Draw(frame, buffer, request.Display, rotation);
             }
             else
             {
-                if (frame.RotationDegrees != 0 && !SupportsVideoRotation)
+                if (rotation != 0 && !SupportsVideoRotation)
                     throw new NotSupportedException("Hardware video-processor rotation is unavailable. Rotation will not be ignored or performed on the CPU.");
                 if (SupportsVideoRotation)
-                    videoContext.VideoProcessorSetStreamRotation(processor!, 0, frame.RotationDegrees != 0,
-                        (VideoProcessorRotation)(frame.RotationDegrees / 90));
+                    videoContext.VideoProcessorSetStreamRotation(processor!, 0, rotation != 0,
+                        (VideoProcessorRotation)(rotation / 90));
                 videoContext.VideoProcessorSetStreamColorSpace(processor!, 0,
                     new() { YCbCr_Matrix = frame.ColorMatrix, Nominal_Range = frame.NominalRange });
                 Marshal.AddRef(frame.Texture);
@@ -303,7 +310,7 @@ public sealed class GpuPresenter : IDisposable
                     ViewDimension = VideoProcessorOutputViewDimension.Texture2D,
                     Texture2D = new() { MipSlice = 0 }
                 });
-                var (x, y, width, height) = VideoLayout.Fit(input.Width, input.Height, frame.RotationDegrees, output.Width, output.Height);
+                var (x, y, width, height) = VideoLayout.Fit(input.Width, input.Height, rotation, output.Width, output.Height);
                 videoContext.VideoProcessorSetStreamSourceRect(processor!, 0, true, new RawRect(0, 0, input.Width, input.Height));
                 videoContext.VideoProcessorSetStreamDestRect(processor!, 0, true, new RawRect(x, y, x + width, y + height));
                 Stage("video-blt");
@@ -326,6 +333,7 @@ public sealed class GpuPresenter : IDisposable
             result.CheckError();
             presentationSlot.Submitted();
             Device.DeviceRemovedReason.CheckError();
+            Volatile.Write(ref lastPresentedRotation, rotation);
             if (newFrame)
             {
                 Interlocked.Increment(ref presentedFrames);

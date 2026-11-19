@@ -80,6 +80,38 @@ public sealed class RequestTests
     }
 
     [Theory]
+    [InlineData("auto", PresentationOrientation.Auto)]
+    [InlineData("landscape", PresentationOrientation.Landscape)]
+    [InlineData("portrait", PresentationOrientation.Portrait)]
+    public void SenderOrientationIsAcceptedForPlayback(string orientation, PresentationOrientation expected)
+    {
+        var settings = JsonSerializer.SerializeToNode(Settings(false))!;
+        settings["receiverOrientation"] = orientation;
+        var request = CastRequest.Parse(JsonObject.Parse(JsonSerializer.SerializeToUtf8Bytes(settings)));
+        Assert.Equal(expected, request.Presentation);
+        Assert.Equal(60, request.VideoProcessingFramesPerSecond);
+    }
+
+    [Theory]
+    [InlineData("auto", false, false, false)]
+    [InlineData("portrait", false, false, true)]
+    [InlineData("landscape", false, false, true)]
+    [InlineData("portrait", false, true, false)]
+    [InlineData("landscape", true, false, false)]
+    public void ForcedSdrOrientationRequiresHardwareRotation(
+        string orientation, bool hdr, bool supportsSdrRotation, bool reject)
+    {
+        var request = new CastRequest("h265", null, 60, orientation, VideoColor: new(hdr));
+        if (reject)
+        {
+            var error = Assert.Throws<ProtocolException>(() => request.ValidatePresentation(supportsSdrRotation));
+            Assert.Equal("UNSUPPORTED_CONFIG", error.Code);
+            Assert.Contains("Select Automatic", error.Message);
+        }
+        else request.ValidatePresentation(supportsSdrRotation);
+    }
+
+    [Theory]
     [InlineData("null")]
     [InlineData("{}")]
     [InlineData("{\"kind\":\"external\",\"url\":\"udp://127.0.0.1:1234\"}")]
