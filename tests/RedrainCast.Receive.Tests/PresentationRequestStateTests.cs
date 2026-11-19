@@ -10,6 +10,29 @@ public sealed class PresentationRequestStateTests
     private static readonly HdrVideoFormat source = new(true);
     private static readonly TimeSpan timeout = TimeSpan.FromSeconds(10);
 
+    [Fact]
+    public void ResizingKeepsMonitorRotationAndMovingRedrawsWithoutResizing()
+    {
+        var requests = new PresentationRequestState();
+        requests.SetMonitorSize(1920, 1080);
+        Assert.True(requests.TryRender(source, request =>
+            request.OutputRotation(0, PresentationOrientation.Portrait) == 270));
+        requests.SetViewport(480, 640, 1, 1);
+        Assert.True(requests.TryRender(source, request =>
+            request.OutputRotation(0, PresentationOrientation.Portrait) == 270));
+        Assert.False(requests.SetMonitorSize(1920, 1080));
+        Assert.False(requests.HasPending);
+        Assert.True(requests.SetMonitorSize(1080, 1920));
+        Assert.True(requests.HasPending);
+        Assert.True(requests.TryRender(source, request =>
+        {
+            Assert.Equal((480, 640), (request.Width, request.Height));
+            Assert.Equal(0, request.OutputRotation(0, PresentationOrientation.Portrait));
+            return true;
+        }));
+        Assert.False(requests.HasPending);
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]

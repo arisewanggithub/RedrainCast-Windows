@@ -8,10 +8,19 @@ namespace RedrainCast.Receive.Media;
 
 public static class RotationDiagnostics
 {
-    public static unsafe string Run()
+    public static string Run()
     {
         NativeRuntime.Initialize();
-        using var presenter = new GpuPresenter(60);
+        var maximumError = Math.Max(RunMode(PresentationOrientation.Auto, 0, 0),
+            Math.Max(RunMode(PresentationOrientation.Portrait, 3, 0),
+                RunMode(PresentationOrientation.Landscape, 0, 3)));
+        if (maximumError > 3) throw new IOException($"Clockwise GPU rotation differs from expected corner pixels by {maximumError} code values.");
+        return $"GPU 0/90/180/270/0-degree rotation, forced portrait/landscape fit, frame cloning and black letterboxing passed; maximum RGB error={maximumError}. Synthetic readback only; not a presentation/latency measurement.";
+    }
+
+    private static unsafe int RunMode(PresentationOrientation mode, int wideOffset, int tallOffset)
+    {
+        using var presenter = new GpuPresenter(60, orientation: mode);
         presenter.Prepare(320, 160);
         if (!presenter.SupportsVideoRotation)
             throw new NotSupportedException("The GPU does not support video-processor rotation; videoRotation must not be advertised.");
@@ -23,15 +32,18 @@ public static class RotationDiagnostics
             pixels[y * width + x] = luma[(y >= height / 2 ? 2 : 0) + (x >= width / 2 ? 1 : 0)];
         Array.Fill(pixels, (byte)128, width * height, width * height / 2);
         var maximumError = 0;
+        var verifiedPresentedRotation = false;
         fixed (byte* data = pixels)
         {
             using var texture = presenter.Device.CreateTexture2D(new Texture2DDescription(Format.NV12,
                 width, height, 1, 1, BindFlags.RenderTarget), new SubresourceData((nint)data, width));
             int[][] expectedCorners = [[0, 1, 2, 3], [2, 0, 3, 1], [3, 2, 1, 0], [1, 3, 0, 2]];
+            foreach (var monitor in new[] { (Width: 1920, Height: 1080), (Width: 1080, Height: 1920) })
             foreach (var viewport in new[] { (Width: 640, Height: 480), (Width: 480, Height: 640) })
             foreach (var turns in new[] { 0, 1, 2, 3, 0 })
             {
                 presenter.SetViewport(viewport.Width, viewport.Height, 1, 1);
+                presenter.SetMonitorSize(monitor.Width, monitor.Height);
                 var native = ffmpeg.av_frame_alloc();
                 if (native == null) throw new OutOfMemoryException();
                 native->buf[0] = ffmpeg.av_buffer_alloc(1);
@@ -47,6 +59,9 @@ public static class RotationDiagnostics
                 using var clone = frame.Clone();
                 if (clone.RotationDegrees != turns * 90) throw new IOException("Cloning lost the picture rotation.");
                 var inspected = false;
+                var previousRotation = presenter.LastPresentedRotationDegrees;
+                var previousRedraws = presenter.RedrawnFrames;
+                var outputTurns = (turns + (monitor.Width > monitor.Height ? wideOffset : tallOffset)) % 4;
                 presenter.InspectForDiagnostics(clone, output =>
                 {
                     var description = output.Description;
@@ -59,12 +74,12 @@ public static class RotationDiagnostics
                     var mapped = context.Map(staging, 0, MapMode.Read);
                     try
                     {
-                        var rect = VideoLayout.Fit(width, height, turns * 90, viewport.Width, viewport.Height);
+                        var rect = VideoLayout.Fit(width, height, outputTurns * 90, viewport.Width, viewport.Height);
                         for (var corner = 0; corner < 4; corner++)
                         {
                             var x = rect.X + rect.Width * (corner % 2 == 0 ? 1 : 3) / 4;
                             var y = rect.Y + rect.Height * (corner < 2 ? 1 : 3) / 4;
-                            var expected = (int)Math.Round((luma[expectedCorners[turns][corner]] - 16) * 255.0 / 219);
+                            var expected = (int)Math.Round((luma[expectedCorners[outputTurns][corner]] - 16) * 255.0 / 219);
                             for (var component = 0; component < 3; component++)
                             {
                                 var actual = Marshal.ReadByte(mapped.DataPointer, checked(y * (int)mapped.RowPitch + x * 4 + component));
@@ -79,9 +94,14 @@ public static class RotationDiagnostics
                     finally { context.Unmap(staging, 0); }
                 });
                 if (!inspected) throw new IOException("GPU rotation diagnostic did not render its test frame.");
+                var presented = presenter.RedrawnFrames > previousRedraws;
+                if (presenter.LastPresentedRotationDegrees != (presented ? outputTurns * 90 : previousRotation))
+                    throw new IOException("Displayed rotation statistics do not match the last successful presentation.");
+                verifiedPresentedRotation |= presented && outputTurns != turns;
             }
         }
-        if (maximumError > 3) throw new IOException($"Clockwise GPU rotation differs from expected corner pixels by {maximumError} code values.");
-        return $"GPU 0/90/180/270/0-degree rotation, portrait/landscape fit, frame cloning and black letterboxing passed; maximum RGB error={maximumError}. Synthetic readback only; not a presentation/latency measurement.";
+        if (mode != PresentationOrientation.Auto && !verifiedPresentedRotation)
+            throw new IOException("GPU diagnostic did not present a redraw with forced rotation.");
+        return maximumError;
     }
 }

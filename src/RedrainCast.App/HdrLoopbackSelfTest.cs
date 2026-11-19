@@ -151,7 +151,7 @@ public sealed partial class MainWindow
                 previous is not null && (!recovery || !previous.Disposed))
                 throw new IOException("HDR loopback admission changed color or allowed capture before acceptance.");
             if (previous is null) AcceptedBeforeCapture = true;
-            var presenter = new GpuPresenter(request.VideoProcessingFramesPerSecond, request.ColorFormat);
+            var presenter = new GpuPresenter(request.VideoProcessingFramesPerSecond, request.ColorFormat, request.Presentation);
             HardwareDecoder? decoder = null;
             try
             {

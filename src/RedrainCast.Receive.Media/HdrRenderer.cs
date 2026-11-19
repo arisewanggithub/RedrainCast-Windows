@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
+using RedrainCast.Receive.Core;
 using RedrainCast.Send.Core;
 using SharpGen.Runtime;
 using Vortice;
@@ -209,8 +210,10 @@ internal sealed class HdrRenderer : IDisposable
         });
     }
 
-    public void Draw(HardwareFrame frame, ID3D11Texture2D output, HdrDisplayPolicy policy)
+    public void Draw(HardwareFrame frame, ID3D11Texture2D output, HdrDisplayPolicy policy,
+        int? outputRotation = null)
     {
+        var rotation = outputRotation ?? frame.RotationDegrees;
         policy.Validate();
         var expectedOutput = policy.NativeHdr ? Format.R16G16B16A16_Float : Format.B8G8R8A8_UNorm;
         if (output.Description.Format != expectedOutput)
@@ -229,7 +232,7 @@ internal sealed class HdrRenderer : IDisposable
             OutputPeak = policy.PeakNits,
             Width = frame.Width,
             Height = frame.Height,
-            Rotation = frame.RotationDegrees / 90
+            Rotation = rotation / 90
         };
         context.UpdateSubresource(in values, constants);
         if (policy.NativeHdr)
@@ -250,7 +253,7 @@ internal sealed class HdrRenderer : IDisposable
         }
         using var target = device.CreateRenderTargetView(output);
         context.ClearRenderTargetView(target, new(0, 0, 0, 1));
-        var fit = RedrainCast.Receive.Core.VideoLayout.Fit(frame.Width, frame.Height, frame.RotationDegrees,
+        var fit = VideoLayout.Fit(frame.Width, frame.Height, rotation,
             (int)output.Description.Width, (int)output.Description.Height);
         context.IASetInputLayout(null);
         context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);

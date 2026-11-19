@@ -14,6 +14,28 @@ public sealed class VideoLayoutTests
         Assert.Equal((x, y, width, height), VideoLayout.Fit(320, 160, rotation, 640, 480));
 
     [Theory]
+    [InlineData(PresentationOrientation.Portrait, 0, 270, 0, 0, 1920, 1080)]
+    [InlineData(PresentationOrientation.Portrait, 90, 0, 656, 0, 607, 1080)]
+    [InlineData(PresentationOrientation.Portrait, 270, 180, 656, 0, 607, 1080)]
+    [InlineData(PresentationOrientation.Auto, 0, 0, 656, 0, 607, 1080)]
+    [InlineData(PresentationOrientation.Landscape, 0, 0, 656, 0, 607, 1080)]
+    public void PortraitStreamUsesLandscapeMonitorLongEdgeOnlyWhenForced(
+        PresentationOrientation mode, int streamRotation, int expectedRotation, int x, int y, int width, int height)
+    {
+        var rotation = VideoLayout.OutputRotation(streamRotation, mode, 1920, 1080);
+        Assert.Equal(expectedRotation, rotation);
+        Assert.Equal((x, y, width, height), VideoLayout.Fit(720, 1280, rotation, 1920, 1080));
+    }
+
+    [Theory]
+    [InlineData(PresentationOrientation.Landscape, 270, 1080, 1920)]
+    [InlineData(PresentationOrientation.Portrait, 0, 1080, 1920)]
+    [InlineData(PresentationOrientation.Portrait, 0, 1080, 1080)]
+    public void CorrectlyOrientedAndSquareOutputsDoNotReceiveAnExtraTurn(
+        PresentationOrientation mode, int rotation, int width, int height) =>
+        Assert.Equal(rotation, VideoLayout.OutputRotation(0, mode, width, height));
+
+    [Theory]
     [InlineData(-90)]
     [InlineData(45)]
     [InlineData(360)]

@@ -40,10 +40,8 @@ public sealed class VideoProcessingRateTests
 
     [Theory]
     [InlineData("vp9", "auto")]
-    [InlineData("h264", "landscape")]
-    [InlineData("h264", "portrait")]
     [InlineData("h265", "invalid")]
-    public void CodecAndAutoOrientationRestrictionsRemain(string codec, string orientation) =>
+    public void InvalidCodecAndOrientationAreRejected(string codec, string orientation) =>
         Assert.Throws<ProtocolException>(() =>
             new CastRequest(codec, null, 120, orientation).VideoProcessingFramesPerSecond);
 }

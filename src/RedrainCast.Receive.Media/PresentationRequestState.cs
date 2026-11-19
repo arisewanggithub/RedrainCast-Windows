@@ -4,7 +4,14 @@ using RedrainCast.Receive.Core;
 namespace RedrainCast.Receive.Media;
 
 internal sealed record PresentationRequest(
-    int Width, int Height, float ScaleX, float ScaleY, HdrDisplayPolicy Display);
+    int Width, int Height, float ScaleX, float ScaleY, HdrDisplayPolicy Display,
+    (int Width, int Height)? MonitorSize = null)
+{
+    public int OutputRotation(int streamRotation, PresentationOrientation orientation) =>
+        MonitorSize is { } size
+            ? VideoLayout.OutputRotation(streamRotation, orientation, size.Width, size.Height)
+            : streamRotation;
+}
 
 internal sealed class PresentationRequestState
 {
@@ -42,6 +49,17 @@ internal sealed class PresentationRequestState
         {
             if (desired.Display == policy) return false;
             Volatile.Write(ref desired, desired with { Display = policy });
+            return true;
+        }
+    }
+
+    public bool SetMonitorSize(int width, int height)
+    {
+        if (width <= 0 || height <= 0) throw new ArgumentOutOfRangeException(nameof(width));
+        lock (gate)
+        {
+            if (desired.MonitorSize == (width, height)) return false;
+            Volatile.Write(ref desired, desired with { MonitorSize = (width, height) });
             return true;
         }
     }

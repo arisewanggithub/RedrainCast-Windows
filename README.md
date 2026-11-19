@@ -35,9 +35,18 @@ Send and receive screens in one native Windows application. Windows 11 22H2+,
   Manual input accepts spaced endpoints and bracketed IPv6 addresses.
 - Incoming casts are accepted automatically. Once a real video frame is
   hardware-decoded, the video surface is exposed and playback enters fullscreen
-  before its first Present, avoiding a covered-swapchain startup deadlock. When playback
-  ends, the previous window presentation is restored.
-  Enter/F still toggles fullscreen; Esc exits fullscreen. End reception from the sender.
+  before its first Present, avoiding a covered-swapchain startup deadlock. When
+  playback ends, the previous window presentation is restored.
+  Enter/F toggles fullscreen; Esc exits fullscreen. End reception from the sender.
+- The sender's **Receiver orientation** setting selects the playback layout.
+  **Automatic** fits the stream as sent. If Windows sees a landscape monitor,
+  **Portrait** turns the picture 90° counterclockwise for a physically turned monitor.
+  **Landscape** turns it 90° counterclockwise on a portrait monitor. A matching
+  monitor needs no extra turn. Resizing the window does not change the turn.
+  The video still fits without cropping or
+  stretching, and Windows display settings are unchanged.
+  Forced SDR orientation requires hardware video rotation; if unavailable,
+  the receiver rejects the request before capture and asks the sender to use **Automatic**.
 - Receiving is paused while connecting/sending. The inline Stop action, a remote stop,
   or a handled outgoing failure automatically restores the listener.
   READY appears only after listening succeeds and a network address is known.
